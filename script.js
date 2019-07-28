@@ -1455,7 +1455,6 @@ class Editor {
         // Load steps from the script
         let group = make_element('li');
         for (let [i, step] of script.steps.entries()) {
-            console.log(i, step);
             let editor_step = new EditorStep(actor_editor_index.get(step.actor), step);
             editor_step.position = i;
             this.steps.push(editor_step);
@@ -1541,7 +1540,6 @@ class Editor {
             let next_group = group.nextElementSibling;
             // Time to handle pauses.
             if (previous_step.step.pause) {
-                console.log("ok, case 1...", next_group, step.step.pause);
                 // Inserting after a step that pauses means we need to go at
                 // the beginning of the next group.
                 if (! next_group || step.step.pause) {
@@ -1550,7 +1548,6 @@ class Editor {
                     let new_group = make_element('li');
                     new_group.appendChild(step.element);
                     this.steps_el.insertBefore(new_group, next_group);
-                    console.log("inserted", new_group, "before", next_group);
                 }
                 else {
                     next_group.insertBefore(step.element, next_group.firstElementChild);
@@ -1944,7 +1941,6 @@ let XXX_TEST_SCRIPT = {
 // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
 window.addEventListener('load', e => {
     let script = Script.from_legacy_json(XXX_TEST_SCRIPT);
-    console.log(script);
     //let script = new Script();
     let editor = new Editor(script, document.querySelector('.gleam-editor'), document.querySelector('.gleam-player'));
     //editor.player.play();
