@@ -72,12 +72,30 @@ class Actor {
     }
 }
 
+
+// Actors are controlled by Steps
+class Step {
+    constructor(actor) {
+        this.actor = actor;
+    }
+}
+// Set to true if this step should pause and wait for user input
+Step.prototype.pause = false;
+// Set to false if this step's effect should only apply for one verse; for
+// example, changing a character pose should propagate, but a line of dialogue
+// should not
+Step.prototype.propagate = true;
+
+
 class Stage extends Actor {
 }
-Stage.prototype.ACTIONS = {
-    pause: {
-    },
-};
+class Stage_Pause extends Step {}
+Stage_Pause.display_name = 'pause';  // TODO?
+Stage_Pause.prototype.pause = true;
+Stage.prototype.STEP_TYPES = [
+    Stage_Pause,
+];
+
 
 class Curtain extends Actor {
 }
@@ -263,12 +281,6 @@ class PictureFrame extends Actor {
             setTimeout (=> @_advance $el, view_name, next_index), delay
     */
 }
-class Step {
-    constructor(actor) {
-        this.actor = actor;
-    }
-}
-Step.prototype.propagate = true;
 class PictureFrameShowStep extends Step {
 
 
@@ -982,10 +994,6 @@ StageEditor.prototype.HTML = `
             <h2>stage</h2>
         </header>
         <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
-        <div class="gleam-editor-step gleam-editor-step-stage">
-            <div class="-who">stage</div>
-            <div class="-what">pause</div>
-        </div>
     </li>
 `;
 
@@ -1026,32 +1034,9 @@ class Editor {
 
         this.assets = [];
 
-        this.xxx_steps = [];
+        // TODO be able to load existing steps from a script
 
-        let step_list = make_element('ul', 'gleam-editor-steps');
-        for (let step of script.steps) {
-            let li = make_element('li');
-            step_list.appendChild(li);
-            //li.innerHTML = `<span class="-actor-type">${step.actor}</span>: <span class="-actor-name">${step.actor}</span> ${step.action}: ${step[2]}`;
-            let xxx_step_output = '';
-            for (let [key, value] of Object.entries(step)) {
-                if (key === 'actor' || key === 'action')
-                    continue;
-
-                xxx_step_output += `<p>${key} — ${value}</p>`;
-            }
-            li.innerHTML = `
-                <div class="-who">
-                    <span class="-actor-name">${step.actor}</span>
-                    <span class="-action">${step.action}</span>
-                </div>
-                <div class="-what">
-                    ${xxx_step_output}
-                </div>
-            `;
-        }
-        //this.container.appendChild(step_list);
-
+        // Assets panel
         this.assets_container = document.getElementById('gleam-editor-assets');
 
         // XXX test junk for uploading directories
@@ -1107,18 +1092,16 @@ class Editor {
             }, console.error)
         });
 
-        // Components editor
-        this.component_editors = [];
-        this.components_container = document.getElementById('gleam-editor-components');
-        this.components_el = this.components_container.querySelector('.gleam-editor-components');
-        for (let component_editor_type of ACTOR_EDITOR_TYPES) {
+        // Actor panel (labeled "components")
+        this.actor_editors = [];
+        this.actors_container = document.getElementById('gleam-editor-components');
+        this.actors_el = this.actors_container.querySelector('.gleam-editor-components');
+        for (let actor_editor_type of ACTOR_EDITOR_TYPES) {
             let button = make_element('button', null, 'new');
             button.addEventListener('click', ev => {
-                let component_editor = new component_editor_type(this);
-                this.component_editors.push(component_editor);
-                this.components_el.appendChild(component_editor.container);
+                this.add_actor_editor(new actor_editor_type(this));
             });
-            this.components_container.appendChild(button);
+            this.actors_container.appendChild(button);
         }
 
         // Wire up the steps container
@@ -1255,9 +1238,14 @@ class Editor {
             }
         });
         this.steps_container.addEventListener('drop', e => {
+            if (! this.step_drag) {
+                return;
+            }
+
             let step = this.step_drag.step;
+            let position = this.step_drag.position;
             // Dropping onto nothing is a no-op
-            if (this.step_drag.position === null) {
+            if (position === null) {
                 return;
             }
             // Dragging over oneself is a no-op
@@ -1267,7 +1255,11 @@ class Editor {
 
             e.preventDefault();
 
-            this.insert_step(step, this.step_drag.position);
+            // End the drag first, to get rid of the cursor which kinda fucks
+            // up element traversal
+            this.end_step_drag();
+
+            this.insert_step(step, position);
         });
         // Cancel the default behavior of any step drag that makes its way to
         // the root; otherwise it'll be interpreted as a navigation or
@@ -1278,6 +1270,17 @@ class Editor {
                 this.end_step_drag();
             }
         });
+
+        // Initialize with a stage, which the user can't create on their own
+        // because there can only be one
+        let stage_editor = new StageEditor(this);
+        stage_editor.name = 'stage';
+        this.add_actor_editor(stage_editor);
+    }
+
+    add_actor_editor(actor_editor) {
+        this.actor_editors.push(actor_editor);
+        this.actors_el.appendChild(actor_editor.container);
     }
 
     start_step_drag(step) {
@@ -1290,9 +1293,6 @@ class Editor {
             target: null,
             // Position to insert the step
             position: null,
-            // True if the drag is aimed near the bottom of the target, and the
-            // drag should insert after it (otherwise, above/before)
-            aiming_below: false,
         };
     }
     end_step_drag() {
@@ -1333,17 +1333,53 @@ class Editor {
         // TODO insert into script and update that
 
         // Add to the DOM
-        // TODO handle pauses...
+        // FIXME there's a case here that leaves an empty <li> at the end
         if (this.steps.length === 1) {
             // It's the only child!
-            let li = make_element('li');
-            this.steps_el.appendChild(li);
-            li.appendChild(step.element);
+            let group = make_element('li');
+            group.appendChild(step.element);
+            this.steps_el.appendChild(group);
         }
         else {
+            // FIXME adding at position 0 doesn't work, whoops
             let previous_step = this.steps[position - 1];
-            previous_step.element.parentNode.insertBefore(
-                step.element, previous_step.element.nextElementSibling);
+            let previous_el = previous_step.element;
+            let group = previous_el.parentNode;
+            let next_group = group.nextElementSibling;
+            // Time to handle pauses.
+            if (previous_step.step.pause) {
+                console.log("ok, case 1...", next_group, step.step.pause);
+                // Inserting after a step that pauses means we need to go at
+                // the beginning of the next group.
+                if (! next_group || step.step.pause) {
+                    // If there's no next group, or we ALSO pause, then we end
+                    // up in a group by ourselves regardless.
+                    let new_group = make_element('li');
+                    new_group.appendChild(step.element);
+                    this.steps_el.insertBefore(new_group, next_group);
+                    console.log("inserted", new_group, "before", next_group);
+                }
+                else {
+                    next_group.insertBefore(step.element, next_group.firstElementChild);
+                }
+            }
+            else {
+                // Inserting after a step that DOESN'T pause is easy, unless...
+                if (step.step.pause) {
+                    // Ah, we DO pause, so we need to split everything after
+                    // ourselves into a new group.
+                    let new_group = make_element('li');
+                    while (previous_el.nextElementSibling) {
+                        new_group.appendChild(previous_el.nextElementSibling);
+                    }
+                    if (new_group.children) {
+                        this.steps_el.insertBefore(new_group, next_group);
+                    }
+                }
+
+                // Either way, we end up tucked in after the previous element.
+                group.insertBefore(step.element, previous_el.nextElementSibling);
+            }
         }
     }
 }
