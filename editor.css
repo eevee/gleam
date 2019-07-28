@@ -86,10 +86,14 @@ ul.gleam-editor-component-pictureframe-poses img {
     margin: 0 auto;
 }
 
+/* Asset panel */
 .gleam-editor-assets li {
     padding: 0.33em;
     margin: 0.5em;
     background: #383838;
+}
+.gleam-editor-assets li.-missing {
+    background: #803838;
 }
 
 ol.gleam-editor-steps {

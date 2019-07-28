@@ -149,8 +149,8 @@ Jukebox.prototype.STEP_TYPES = {
 class PictureFrame extends Actor {
     constructor(position) {
         super();
-        this.views = [];
-        this.active_view_name = null;
+        this.poses = [];
+        this.active_pose_name = null;
 
         this.initial_state = {
             pose: null,
@@ -160,14 +160,14 @@ class PictureFrame extends Actor {
     static from_legacy_json(json) {
         let pf = new this(json.position);
         for (let [key, value] of Object.entries(json.views)) {
-            pf.add_view(key, value);
+            pf.add_pose(key, value);
         }
         return pf;
     }
 
     // TODO don't really love "view" as the name for this
-    add_view(name, tmp_image_url) {
-        this.views[name] = [{ url: tmp_image_url }];
+    add_pose(name, tmp_image_url) {
+        this.poses[name] = [{ url: tmp_image_url }];
     }
 
     build_into(container) {
@@ -176,10 +176,10 @@ class PictureFrame extends Actor {
         this.element = element;
         container.appendChild(element);
 
-        let view_elements = {};
+        let pose_elements = {};
         let img_promises = [];
-        for (let [view_name, frames] of Object.entries(this.views)) {
-            let frame_elements = view_elements[view_name] = [];
+        for (let [pose_name, frames] of Object.entries(this.poses)) {
+            let frame_elements = pose_elements[pose_name] = [];
             for (let frame of frames) {
                 let image = make_element('img');
                 // Bind the event handler FIRST -- if the image is cached, it
@@ -187,7 +187,7 @@ class PictureFrame extends Actor {
                 img_promises.push(promise_event(image, 'load', 'error'));
                 // FIXME who controls urls, eh
                 image.setAttribute('src', 'res/species-sirens-new/' + frame.url);
-                image.setAttribute('data-view-name', view_name);
+                image.setAttribute('data-pose-name', pose_name);
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
                 element.appendChild(image);
                 frame.element = image;
@@ -223,25 +223,26 @@ class PictureFrame extends Actor {
     }
 
     //add_animation: (name, frames) ->
-    //    @views[name] = frames
+    //    @poses[name] = frames
 
-    show(view_name) {
-        let view = this.views[view_name];
-        if (! view)
-            throw new Error(`No such view ${view_name} for this picture frame`);
+    show(pose_name) {
+        let pose = this.poses[pose_name];
+        if (! pose)
+            // FIXME actors should have names
+            throw new Error(`No such pose ${pose_name} for this picture frame`);
 
         this.element.classList.remove('-immediate')
         // TODO? $el.css marginLeft: "#{offset or 0}px"
 
-        if (view_name === this.active_view_name)
+        if (pose_name === this.active_pose_name)
             return;
-        if (this.active_view_name) {
+        if (this.active_pose_name) {
             // FIXME do every frame's element i guess
-            this.views[this.active_view_name].element.classList.remove('-visible');
+            this.poses[this.active_pose_name].element.classList.remove('-visible');
         }
-        this.active_view_name = view_name;
+        this.active_pose_name = pose_name;
 
-        let child = view.element;
+        let child = pose.element;
         if (child.classList.contains('-visible'))
             return;
 
@@ -251,7 +252,7 @@ class PictureFrame extends Actor {
         /* TODO animation stuff
         delay = $target_child.data 'delay'
         if delay
-            setTimeout (=> @_advance $el, view_name, 0), delay
+            setTimeout (=> @_advance $el, pose_name, 0), delay
         */
 
         return promise;
@@ -264,7 +265,7 @@ class PictureFrame extends Actor {
         // disables it.
         this.element.classList.add('-immediate');
 
-        this.active_view_name = null;
+        this.active_pose_name = null;
 
         let promises = [];
         for (let child of this.element.childNodes) {
@@ -279,11 +280,11 @@ class PictureFrame extends Actor {
     }
 
     /* FIXME animation stuff
-    _advance: ($el, view_name, current_index) =>
-        $view_elements = $el.data 'view-elements'
-        $current = $view_elements[view_name][current_index]
-        next_index = (current_index + 1) % $view_elements[view_name].length
-        $next = $view_elements[view_name][next_index]
+    _advance: ($el, pose_name, current_index) =>
+        $pose_elements = $el.data 'pose-elements'
+        $current = $pose_elements[pose_name][current_index]
+        next_index = (current_index + 1) % $pose_elements[pose_name].length
+        $next = $pose_elements[pose_name][next_index]
 
         if not $current.hasClass '-visible'
             return
@@ -293,7 +294,7 @@ class PictureFrame extends Actor {
 
         delay = $next.data 'delay'
         if delay
-            setTimeout (=> @_advance $el, view_name, next_index), delay
+            setTimeout (=> @_advance $el, pose_name, next_index), delay
     */
 }
 class PictureFrame_Show extends Step {
@@ -303,7 +304,7 @@ class PictureFrame_Show extends Step {
     }
 
     static from_legacy_json(actor, json) {
-        return new this(actor, json.view);
+        return new this(actor, json.pose);
     }
 }
 class PictureFrame_Hide extends Step {
@@ -1056,6 +1057,8 @@ class ActorEditor {
         this._name = name;
         this.container.querySelector('header > h2').textContent = name;
     }
+
+    update_assets() {}
 }
 
 
@@ -1103,6 +1106,43 @@ JukeboxEditor.prototype.HTML = `
 `;
 
 class PictureFrameEditor extends ActorEditor {
+    constructor(...args) {
+        super(...args);
+
+        this.pose_list = this.container.querySelector('.gleam-editor-component-pictureframe-poses');
+        this.populate_pose_list();
+    }
+
+    populate_pose_list() {
+        this.pose_list.textContent = '';
+        for (let [pose_name, pose] of Object.entries(this.actor.poses)) {
+            let frame = pose[0];  // FIXME this format is bonkers
+            let li = make_element('li', null, pose_name);
+            let image = this.main_editor.assets.expect(frame.url);
+            if (image) {
+                let img = make_element('img');
+                if (image.toURL) {
+                    // WebKit only
+                    img.src = image.toURL();
+                }
+                else {
+                    // TODO is this a bad idea?  it's already async so am i doing a thousand reads at once??
+                    image.file(file => {
+                        img.src = URL.createObjectURL(file);
+                    });
+                }
+                li.appendChild(img);
+            }
+            else {
+                li.appendChild(make_element('span', 'gleam-editor-missing-asset', '???'));
+            }
+            this.pose_list.appendChild(li);
+        }
+    }
+
+    update_assets() {
+        this.populate_pose_list();
+    }
 }
 PictureFrameEditor.prototype.ACTOR_TYPE = PictureFrame;
 PictureFrameEditor.actor_type_name = 'picture frame';
@@ -1163,21 +1203,79 @@ const ACTOR_EDITOR_TYPES = [
 // -----------------------------------------------------------------------------
 // Main editor
 
+class AssetLibrary {
+    constructor(main_editor, container) {
+        this.main_editor = main_editor;
+        this.container = container;
+        this.list = this.container.querySelector('.gleam-editor-assets');
+
+        this.assets = {};
+        this.dirty = false;
+    }
+
+    // TODO add an entry from a file drag and drop thing
+    add_entry(entry) {
+    }
+
+    // FIXME hmm so how do you un-expect an asset then?
+    expect(path) {
+        if (!this.assets[path]) {
+            this.assets[path] = null;
+        }
+        return this.assets[path];
+    }
+
+    read_directory_entry(directory_entry) {
+        this.directory_entry = directory_entry;
+        // TODO technically should be calling this repeatedly.  also it's asynchronous.
+        directory_entry.createReader().readEntries(entries => {
+            // TODO hmm, should mark by whether they're present and whether they're used i guess?
+            for (let entry of entries) {
+                this.assets[entry.name] = entry;
+            }
+            this.refresh_dom();
+            for (let actor_editor of this.main_editor.actor_editors) {
+                actor_editor.update_assets();
+            }
+        }, console.error)
+    }
+
+    refresh_dom() {
+        console.log(this.assets);
+        this.list.textContent = '';
+        let paths = Object.keys(this.assets);
+        paths.sort((a, b) => {
+            // By some fucking miracle, JavaScript can do
+            // human-friendly number sorting already, hallelujah
+            return a.localeCompare(b, undefined, { numeric: true });
+        });
+
+        for (let path of paths) {
+            let asset = this.assets[path];
+            let li = make_element('li', null, path);
+            if (asset === null) {
+                li.classList.add('-missing');
+            }
+            this.list.appendChild(li);
+        }
+    }
+}
+
 class Editor {
     constructor(script, container, player_container) {
         // FIXME inject_into method or something?  separate view?
         this.container = container;
         this.player = new Player(script, player_container);
 
-        this.assets = [];
-
         // TODO be able to load existing steps from a script
 
         // Assets panel
         this.assets_container = document.getElementById('gleam-editor-assets');
+        this.assets = new AssetLibrary(this, this.assets_container);
 
-        // XXX test junk for uploading directories
         // FIXME? this always takes a moment to register, not sure why...
+        // FIXME this should only accept an actual directory drag
+        // FIXME should have some other way to get a directory.  file upload control?
         this.assets_container.addEventListener('dragenter', e => {
             if (e.target !== this.assets_container) {
                 return;
@@ -1207,26 +1305,7 @@ class Editor {
             console.log(e.dataTransfer);
             let item = e.dataTransfer.items[0];
             let entry = item.webkitGetAsEntry();
-            let reader = entry.createReader();
-            reader.readEntries(entries => {
-                entries.sort((a, b) => {
-                    let p = a.name;
-                    let q = b.name;
-                    // By some fucking miracle, JavaScript can do
-                    // human-friendly number sorting already, hallelujah
-                    return p.localeCompare(q, undefined, { numeric: true });
-                });
-
-                let ol = this.assets_container.querySelector('.gleam-editor-assets');
-                ol.textContent = '';
-                for (let entry of entries) {
-                    ol.appendChild(make_element('li', null, entry.name));
-                }
-                console.log(entries);
-                console.log(entries[0]);
-                let file = entries[0];
-                console.log(file.name);
-            }, console.error)
+            this.assets.read_directory_entry(entry);
         });
 
         // Actor panel (labeled "components")
@@ -1468,6 +1547,8 @@ class Editor {
         if (group.children.length > 0) {
             this.steps_el.appendChild(group);
         }
+
+        this.assets.refresh_dom();
     }
 
     add_actor_editor(actor_editor) {
