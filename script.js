@@ -78,6 +78,10 @@ class Step {
     constructor(actor) {
         this.actor = actor;
     }
+
+    static from_legacy_json(actor, json) {
+        return new this(actor);
+    }
 }
 // Set to true if this step should pause and wait for user input
 Step.prototype.pause = false;
@@ -92,15 +96,17 @@ class Stage extends Actor {
 class Stage_Pause extends Step {}
 Stage_Pause.display_name = 'pause';  // TODO?
 Stage_Pause.prototype.pause = true;
-Stage.prototype.STEP_TYPES = [
-    Stage_Pause,
-];
+// XXX i don't love that this is implicitly keyed on json names?  hm
+Stage.prototype.STEP_TYPES = {
+    pause: Stage_Pause,
+};
 
 
 class Curtain extends Actor {
 }
-Curtain.prototype.ACTIONS = {
-    
+class Curtain_Lower extends Step {}
+Curtain.prototype.STEP_TYPES = {
+    lower: Curtain_Lower,
 };
 
 // do i need actortemplate?
@@ -124,11 +130,20 @@ class Jukebox extends Actor {
         // TODO
     }
 }
-Jukebox.prototype.ACTIONS = {
-    play: {
-        args: ['track'],
-        method: 'play',
-    },
+class Jukebox_Play extends Step {
+    constructor(actor, track_name) {
+        super(actor);
+        this.track_name = track_name;
+    }
+
+    static from_legacy_json(actor, json) {
+        return new this(actor, json.track);
+    }
+}
+class Jukebox_Stop extends Step {}
+Jukebox.prototype.STEP_TYPES = {
+    play: Jukebox_Play,
+    stop: Jukebox_Stop,
 };
 
 class PictureFrame extends Actor {
@@ -281,17 +296,22 @@ class PictureFrame extends Actor {
             setTimeout (=> @_advance $el, view_name, next_index), delay
     */
 }
-class PictureFrameShowStep extends Step {
+class PictureFrame_Show extends Step {
+    constructor(actor, pose_name) {
+        super(actor);
+        this.pose_name = pose_name;
+    }
 
-
+    static from_legacy_json(actor, json) {
+        return new this(actor, json.view);
+    }
 }
-class PictureFrameHideStep extends Step {
-
+class PictureFrame_Hide extends Step {
 }
-PictureFrame.prototype.STEP_TYPES = [
-    PictureFrameShowStep,
-    PictureFrameHideStep,
-];
+PictureFrame.prototype.STEP_TYPES = {
+    show: PictureFrame_Show,
+    hide: PictureFrame_Hide,
+};
 
 
 class Character extends Actor {
@@ -299,12 +319,19 @@ class Character extends Actor {
         this.xxx_dialogue_box.say(text);
     }
 }
-Character.prototype.ACTIONS = {
-    say: {
-        args: ['text'],
-        method: 'delegate_say',
-        pause: true,
-    },
+class Character_Say extends Step {
+    constructor(actor, phrase) {
+        super(actor);
+        this.phrase = phrase;
+    }
+
+    static from_legacy_json(actor, json) {
+        return new this(actor, json.text);
+    }
+}
+Character_Say.prototype.pause = true;
+Character.prototype.STEP_TYPES = {
+    say: Character_Say,
 };
 
 class DialogueBox extends Actor {
@@ -730,11 +757,26 @@ class DialogueBox extends Actor {
             return
         @_scroll $dialogue, all_letters, letter_index
 */
+class DialogueBox_Say extends Step {
+    constructor(actor, phrase) {
+        super(actor);
+        this.phrase = phrase;
+    }
+
+    static from_legacy_json(actor, json) {
+        return new this(actor, json.text);
+    }
+}
+DialogueBox_Say.prototype.pause = true;
+DialogueBox.prototype.STEP_TYPES = {
+    say: DialogueBox_Say,
+};
 
 class Script {
     constructor() {
         this.actors = {
             __dialogue__: new DialogueBox(),
+            stage: new Stage(),
         };
 
         this.steps = [
@@ -774,6 +816,21 @@ class Script {
 
         // FIXME do i want to keep this step format?  on the one hand, named args!  on the other hand, passing this big blob in feels like a mess.
         this.steps = json.script;
+        this.steps = []
+        for (let json_step of json.script) {
+            if (! json_step.actor) {
+                // FIXME special actions like roll_credits
+                if (json_step.action == 'pause') {
+                    this.steps.push(new Stage_Pause(this.actors.stage));
+                }
+                continue;
+            }
+
+            let actor = this.actors[json_step.actor];
+            let step_type = actor.STEP_TYPES[json_step.action];
+            let step = step_type.from_legacy_json(actor, json_step);
+            this.steps.push(step);
+        }
         /*
         if actordef.type == "character"
             actor = Character.from_json speech, relative_to, actordef
@@ -894,6 +951,7 @@ function make_element(tag, cls, text) {
 
 function make_sample_step_element(actor_editor, step_type) {
     let el = make_element('div', 'gleam-editor-step');
+    el.classList.add(actor_editor.CLASS_NAME);
     // FIXME how does name update?  does the actor editor keep a list, or do these things like listen for an event on us?
     el.appendChild(make_element('div', '-who', actor_editor.name));
     el.appendChild(make_element('div', '-what', step_type.name));
@@ -905,14 +963,25 @@ function make_sample_step_element(actor_editor, step_type) {
     return el;
 }
 
-function make_step_element(actor_editor, step_type) {
+function make_step_element(actor_editor, step) {
     let el = make_element('div', 'gleam-editor-step');
+    el.classList.add(actor_editor.CLASS_NAME);
     // FIXME how does name update?  does the actor editor keep a list, or do these things like listen for an event on us?
     el.appendChild(make_element('div', '-who', actor_editor.name));
-    el.appendChild(make_element('div', '-what', step_type.name));
+    el.appendChild(make_element('div', '-what', step.constructor.name));
     // FIXME how does more than one arg work
-    if (step_type.arg_name) {
+    if (step.arg_name) {
         el.appendChild(make_element('div', '-how', `[${step_type.arg_name}]`));
+    }
+    // FIXME oh steps need way more metadata huh
+    else if (step instanceof Character_Say) {
+        el.appendChild(make_element('div', '-how', step.phrase));
+    }
+    else if (step instanceof Jukebox_Play) {
+        el.appendChild(make_element('div', '-how', step.track_name));
+    }
+    else if (step instanceof PictureFrame_Show) {
+        el.appendChild(make_element('div', '-how', step.pose_name));
     }
     //el.setAttribute('draggable', 'true');
     return el;
@@ -923,8 +992,13 @@ function make_step_element(actor_editor, step_type) {
 class EditorStep {
     constructor(actor_editor, step_type, ...args) {
         this.actor_editor = actor_editor;
-        this.step = new step_type(...args);
-        this.element = make_step_element(actor_editor, step_type);
+        if (step_type instanceof Step) {
+            this.step = step_type;
+        }
+        else {
+            this.step = new step_type(...args);
+        }
+        this.element = make_step_element(actor_editor, this.step);
         this._position = null;
     }
 
@@ -942,20 +1016,21 @@ class EditorStep {
 // Editors for individual actor types
 
 class ActorEditor {
-    constructor(main_editor) {
+    constructor(main_editor, actor = null) {
         this.main_editor = main_editor;
 
         let throwaway = document.createElement('div');
         throwaway.innerHTML = this.HTML;
         this.container = throwaway.firstElementChild;  // FIXME experimental, ugh
-        this.actor = new this.ACTOR_TYPE;
+        this.container.classList.add(this.CLASS_NAME);
+        this.actor = actor || new this.ACTOR_TYPE;
 
         this.name = 'bogus';
 
         // Add step templates
         // FIXME this is for picture frame; please genericify
         this.step_type_map = new Map();  // step element => step type
-        for (let step_type of this.actor.STEP_TYPES) {
+        for (let step_type of Object.values(this.actor.STEP_TYPES)) {
             let step_el = make_sample_step_element(this, step_type);
             this.container.appendChild(step_el);
             this.step_type_map.set(step_el, step_type);
@@ -988,6 +1063,7 @@ class ActorEditor {
 class StageEditor extends ActorEditor {
 }
 StageEditor.prototype.ACTOR_TYPE = Stage;
+StageEditor.prototype.CLASS_NAME = 'gleam-editor-actor-stage';
 StageEditor.prototype.HTML = `
     <li class="gleam-editor-component-stage">
         <header>
@@ -997,11 +1073,40 @@ StageEditor.prototype.HTML = `
     </li>
 `;
 
+class CurtainEditor extends ActorEditor {
+}
+CurtainEditor.prototype.ACTOR_TYPE = Curtain;
+CurtainEditor.actor_type_name = 'curtain';
+CurtainEditor.prototype.CLASS_NAME = 'gleam-editor-actor-curtain';
+CurtainEditor.prototype.HTML = `
+    <li class="gleam-editor-component-curtain">
+        <header>
+            <h2>curtain</h2>
+        </header>
+        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+    </li>
+`;
+
+class JukeboxEditor extends ActorEditor {
+}
+JukeboxEditor.prototype.ACTOR_TYPE = Jukebox;
+JukeboxEditor.actor_type_name = 'jukebox';
+JukeboxEditor.prototype.CLASS_NAME = 'gleam-editor-actor-jukebox';
+JukeboxEditor.prototype.HTML = `
+    <li class="gleam-editor-component-jukebox">
+        <header>
+            <h2>📻 jukebox</h2>
+        </header>
+        <h3>Tracks <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+    </li>
+`;
 
 class PictureFrameEditor extends ActorEditor {
 }
 PictureFrameEditor.prototype.ACTOR_TYPE = PictureFrame;
 PictureFrameEditor.actor_type_name = 'picture frame';
+PictureFrameEditor.prototype.CLASS_NAME = 'gleam-editor-actor-pictureframe';
 PictureFrameEditor.prototype.HTML = `
     <li class="gleam-editor-component-pictureframe">
         <header>
@@ -1015,11 +1120,43 @@ PictureFrameEditor.prototype.HTML = `
     </li>
 `;
 
+class CharacterEditor extends ActorEditor {
+}
+CharacterEditor.prototype.ACTOR_TYPE = Character;
+CharacterEditor.actor_type_name = 'character';
+CharacterEditor.prototype.CLASS_NAME = 'gleam-editor-actor-character';
+CharacterEditor.prototype.HTML = `
+    <li class="gleam-editor-component-character">
+        <header>
+            <h2>backdrop</h2>
+        </header>
+        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+    </li>
+`;
+
+class DialogueBoxEditor extends ActorEditor {
+}
+DialogueBoxEditor.prototype.ACTOR_TYPE = DialogueBox;
+DialogueBoxEditor.actor_type_name = 'dialogue box';
+DialogueBoxEditor.prototype.CLASS_NAME = 'gleam-editor-actor-dialoguebox';
+DialogueBoxEditor.prototype.HTML = `
+    <li class="gleam-editor-component-dialoguebox">
+        <header>
+            <h2>backdrop</h2>
+        </header>
+        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+    </li>
+`;
+
 
 // List of all actor editor types
 const ACTOR_EDITOR_TYPES = [
     StageEditor,
+    CurtainEditor,
+    JukeboxEditor,
     PictureFrameEditor,
+    CharacterEditor,
+    DialogueBoxEditor,
 ];
 
 
@@ -1104,7 +1241,8 @@ class Editor {
             this.actors_container.appendChild(button);
         }
 
-        // Wire up the steps container
+        // Script panel
+        // TODO maybe move this into its own type or something, it's pretty noisy
         this.steps = [];  // list of EditorSteps
         this.steps_container = document.getElementById('gleam-editor-steps');
         this.steps_el = this.steps_container.querySelector('.gleam-editor-steps');
@@ -1224,6 +1362,7 @@ class Editor {
             if (! this.step_drag) {
                 return;
             }
+            // FIXME ah this doesn't always work, christ
             if (e.target !== e.currentTarget) {
                 return;
             }
@@ -1273,9 +1412,63 @@ class Editor {
 
         // Initialize with a stage, which the user can't create on their own
         // because there can only be one
+        /*
         let stage_editor = new StageEditor(this);
         stage_editor.name = 'stage';
         this.add_actor_editor(stage_editor);
+        */
+
+        // Load actors from the script
+        let actor_editor_index = new Map();
+        for (let [ident, actor] of Object.entries(script.actors)) {
+            let actor_editor_type;
+            if (actor instanceof Stage) {
+                actor_editor_type = StageEditor;
+            }
+            else if (actor instanceof Curtain) {
+                actor_editor_type = CurtainEditor;
+            }
+            else if (actor instanceof Jukebox) {
+                actor_editor_type = JukeboxEditor;
+            }
+            else if (actor instanceof PictureFrame) {
+                actor_editor_type = PictureFrameEditor;
+            }
+            else if (actor instanceof Character) {
+                actor_editor_type = CharacterEditor;
+            }
+            else if (actor instanceof DialogueBox) {
+                actor_editor_type = DialogueBoxEditor;
+            }
+
+            if (actor_editor_type) {
+                let actor_editor = new actor_editor_type(this, actor);
+                actor_editor.name = ident;
+                actor_editor_index.set(actor, actor_editor);
+                this.add_actor_editor(actor_editor);
+            }
+            else {
+                console.log("oops, not yet supported", actor.constructor, actor);
+            }
+        }
+
+        // Load steps from the script
+        let group = make_element('li');
+        for (let [i, step] of script.steps.entries()) {
+            console.log(i, step);
+            let editor_step = new EditorStep(actor_editor_index.get(step.actor), step);
+            editor_step.position = i;
+            this.steps.push(editor_step);
+
+            group.appendChild(editor_step.element);
+            if (step.pause) {
+                this.steps_el.appendChild(group);
+                group = make_element('li');
+            }
+        }
+        if (group.children.length > 0) {
+            this.steps_el.appendChild(group);
+        }
     }
 
     add_actor_editor(actor_editor) {
@@ -1384,11 +1577,375 @@ class Editor {
     }
 }
 
+let XXX_TEST_SCRIPT = {
+    "asset_root": ".",
+    "name": "species-sirens-new",
+    "title": "Species Ref: Beholding Sirens (new)",
+    "date": "2017-09-04",
+    "preview": "preview.png",
+    "credits": {
+        "people": [
+            {
+                "who": "Glip",
+                "for": "Art, Music",
+                "website": "http://glitchedpuppet.com/",
+                "deviantart": "glitchedpuppet",
+                "tumblr": "glitchedpuppet",
+                "twitter": "glitchedpuppet"
+            },
+            {
+                "who": "Eevee",
+                "for": "Programming",
+                "website": "https://eev.ee/",
+                "deviantart": "lexyeevee",
+                "tumblr": "lexyeevee",
+                "twitter": "eevee"
+            }
+        ],
+        "footer_html": [
+            "<a href='http://floraverse.com/'>Floraverse</a>",
+            "<a href='https://floraverse.bandcamp.com/'>Bandcamp</a>",
+            "1ogout successſul",
+            "␄"
+        ]
+    },
+    "actors": {
+        "curtain": {
+            "type": "curtain"
+        },
+        "jukebox": {
+            "type": "jukebox",
+            "tracks": {
+                "talab_4": "talab_4.ogg",
+                "talab_5": "talab_5.ogg"
+            }
+        },
+        "backdrop": {
+            "type": "spot",
+            "position": "backdrop",
+            "views": {
+                "splash": "title.png",
+                "monitor": "monitor.png",
+                "epilogue1": "epilogue1.png",
+                "epilogue2": "epilogue2.png",
+                "epilogue3": "epilogue3.png",
+                "epilogue4": "epilogue4.png"
+            }
+        },
+        "siren": {
+            "type": "spot",
+            "position": "imagespot-goat",
+            "views": {
+                "bigtall": "bigtall.png",
+                "beehair": "beehair.png",
+                "onearm": "onearm.png",
+                "flowerball": "flowerball.png",
+                "%%%%%": "IMAGE_DAINTY.gif",
+                "!!!!!": "IMAGE_NOIMAGE.gif"
+            }
+        },
+        "interaction": {
+            "type": "character",
+            "position": "interaction",
+            "name": null,
+            "color": "black"
+        },
+        "data": {
+            "type": "character",
+            "position": "data",
+            "name": null,
+            "color": "black"
+        }
+    },
+    "script": [
+        {
+            "actor": "backdrop",
+            "action": "show",
+            "view": "splash"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": ""
+        },
+        {
+            "actor": "jukebox",
+            "action": "play",
+            "track": "talab_4"
+        },
+        {
+            "actor": "backdrop",
+            "action": "show",
+            "view": "monitor"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "<span class='-term'>Local Panel TY_KN_01</span>\n\f\f<span class='-panel'>New hardware detected. Connect to the Cybernet to look for drivers?</span>\n\n&gt; \fN\n\n&gt; \fDreamTransfer.tx\n\f\f<span class='-panel'>DREAM DATA AUDIO/VIDEO TRANSFER PROGRAM -K1D NE0N</span>\n\n&gt; \fLATEST\n<span class='-panel'>COZMO77.DDF</span>\n\n&gt; \fCONVERT COZMO77\n<span class='-panel'>PLEASE WAIT...\nCOZMO77.TDF SUCCESSFULLY CREATED</span>\n\n&gt; \fexit"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "<span class='-term'>Local Panel TY_KN_01</span>\n\n&gt; datasheet.txt cozmo77.tdf -scanner\n<span class='-panel'>For help, please type ? or 'help'</span>\n\n&gt; \fdatasheet.txt cozmo77.tdf \f-scan\f\n<span class='-panel'>For help, please type ? or 'help'</span>\n\n&gt; \fhey TAL\n\n<span class='-tal'>Hello, Dr. Neon! Did you mean to type -analyze?</span>\n\n&gt; what's the analyze argument\n&gt; oh\n&gt; ty\n\n<span class='-tal'>Is there anything else I can help with?</span>\n\n&gt; not atm\n\n<span class='-tal'>Understood.</span>\n\n&gt; datasheet.txt cozmo77.tdf -analyze\n\nSIRENS, COMMON\n\n<span class='-panel'>ANALYZING. PLEASE WAIT.\n\f.\f.\f.\fDONE.</span>\n\n&gt; \flist\n<span class='-panel'>SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6</span>\n\n&gt; \fdisplay subj_1 - subj_6"
+        },
+        {
+            "actor": "siren",
+            "action": "show",
+            "view": "bigtall"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "<span class='-panel'>SUBJ_1 - IMAGE_BIGTALL\nHereditary influence: None\nEnvironmental influence: High\nLanguage: Audio scans detect similarities to Abyssal.\nAffinity: None detected, suggesting Spirit or a variant.\nWeaknesses: No data available.\nResistances: No data available.</span>"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "Neon Note: Build suggests immense physical strength and agility. Despite appearances, its claws are dull. Sirens prefer dealing crushing blows to slashing, as crushing is less likely to kill a fleeing victim."
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "Note to self: Ask Cozmo if freckles are real, and if markings around eyes are natural or eyeliner. Sirens aren't ever found on Owel, so how do they possess knowledge of common cosmetic markings?"
+        },
+        {
+            "actor": "siren",
+            "action": "show",
+            "view": "beehair"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "<span class='-panel'>SUBJ_2 - IMAGE_BEEHAIR\nHereditary influence: None\nEnvironmental influence: High\nLanguage: Audio scans detect similarities to Abyssal.\nAffinity: None detected, suggesting Spirit or its variants.\nWeaknesses: No data available.\nResistances: No data available.</span>"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "Neon Note: The appearance of this siren makes no sense, aesthetically speaking. It may be attempting to camouflage itself as one of the local trees. The presence of the highly venomous bee abominations gives my hypothesis some validity. Its elongated eyelashes are similar to those of the bees, suggesting that it is capable of controlling them, or communicating with them. The bees detected Cozmo almost as soon as he stepped foot into the gorge, which must have been the reason the Sirens knew of his impending arrival."
+        },
+        {
+            "actor": "siren",
+            "action": "show",
+            "view": "onearm"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "<span class='-panel'>SUBJ_3 - IMAGE_ONEARM\nHereditary influence: None\nEnvironmental influence: High\nLanguage: Audio scans detect similarities to Abyssal.\nAffinity: None detected, suggesting Spirit or its variants.\nWeaknesses: No data available.\nResistances: No data available.</span>"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "Neon Note: This siren seems to have sacrificed its individual \"beauty\" in favor of utility. Its comparatively plain body and stoic expression forces one's eyes to look at the flowers it wears. Initial scans suggest that these flowers are capable of rotating, which would almost certainly produce a hypnotic effect. This would validate theories of individuals being controlled by Sirens.\n\nNote to self: Ask Cozmo if flowers can spin."
+        },
+        {
+            "actor": "siren",
+            "action": "show",
+            "view": "flowerball"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "<span class='-panel'>SUBJ_4 - IMAGE_FLOWERBALL\nHereditary influence: None\nEnvironmental influence: High\nLanguage: Audio scans detect similarities to Abyssal.\nAffinity: None detected, suggesting Spirit or its variants.\nWeaknesses: No data available.\nResistances: No data available.</span>"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "Neon Note: The smallest and \"cutest\" of the bunch. Cultivating an appearance of meekness and timidity is a proven Siren strategy. And the rosy cheeks are evidence that Sirens are capable of learning what our cultures find appealing. The flower attachment is most likely a lure, similar to that of a deep-sea anglerfish. Probably contains some kind of contact or airborne poison."
+        },
+        {
+            "actor": "siren",
+            "action": "hide"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "<span class='-panel'>End of file.</span>"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "&gt; \f\flist\n<span class='-panel'>SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4</span>\n\n&gt; \flist subj_5 subj_6\n<span class='-panel'>SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4</span>\n\n&gt; \f\fdisplay subj_5"
+        },
+        {
+            "actor": "jukebox",
+            "action": "play",
+            "track": "talab_5"
+        },
+        {
+            "actor": "siren",
+            "action": "show",
+            "view": "%%%%%"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "<span class='-panel'>SUBJ_5 - No data available\nHereditary influence: No data available\nEnvironmental influence: No data available\nLanguage: No data available\nAffinity: No data available\nWeaknesses: No data available.\nResistances: No data available.</span>"
+        },
+        {
+            "actor": "siren",
+            "action": "hide"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "&gt; \f\fdisplay subj_4"
+        },
+        {
+            "actor": "siren",
+            "action": "show",
+            "view": "flowerball"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "<span class='-panel'>SUBJ_4 - IMAGE_FLOWERBALL\nHereditary influence: None\nEnvironmental influence: High\nLanguage: Audio scans detect similarities to Abyssal.\nAffinity: None detected, suggesting Spirit or its variants.\nWeaknesses: No data available.\nResistances: No data available.</span>"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "Neon Note: The smallest and \"cutest\" of the bunch. Cultivating an appearance of meekness and timidity is a proven Siren strategy. And the rosy cheeks are evidence that Sirens are capable of learning what our cultures find appealing. The flower attachment is most likely a lure, similar to that of a deep-sea anglerfish. Probably contains some kind of contact or airborne poison."
+        },
+        {
+            "actor": "siren",
+            "action": "hide"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "&gt; display subj_5"
+        },
+        {
+            "actor": "siren",
+            "action": "show",
+            "view": "%%%%%"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "<span class='-panel'>SUBJ_5 - No data available\nHereditary influence: No data available\nEnvironmental influence: No data available\nLanguage: No data available\nAffinity: No data available\nWeaknesses: No data available.\nResistances: No data available.</span>"
+        },
+        {
+            "actor": "siren",
+            "action": "hide"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "&gt; what??\n&gt; \f\fTAL what's wrong with the image\n\n<span class='-tal'>There does not appear to be anything wrong with it. Could you be more specific about the problem you are experiencing?</span>\n\n&gt; \fit's glitching uot\n&gt; out*\n&gt; \fi can't tell what it's supposed to be at all; there are streaks of purple and white\n\n<span class='-tal'>Are you able to view the other images?</span>\n\n&gt; i could see subj1-4 and just rechecked one to be sure and it's still fine; 5 is the one that has issues"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "&gt; \fwait does that mean you can see it\n\n<span class='-tal'>Yes.</span>\n\n&gt; \fcan you see subj1 through 6??\n\n<span class='-tal'>I can see subj1-5.</span>\n\n&gt; \fokay\n&gt; \fum\n&gt; \fwhat does subj5 look like? a short desc is fine.\n\n<span class='-tal'>A dainty, purple horse. Pink leaves adorning a long white mane and tail. Face with three eyes. Would you like more detail?</span>\n\n&gt; no that's good, thanks. i'll just troubleshoot it later and add more observations myself."
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "<span class='-tal'>Is there anything else I can do for you?</span>\n\n&gt; no. thanks though.\n&gt; \f\fwait yes actually\n&gt; what about subj_6???\n\n<span class='-tal'>What are you referring to?</span>\n\n&gt; \fwhat? there were 6 in the original list, can you see it or not\n\n<span class='-tal'>I do not see a subj_6.</span>\n\n&gt; ugh\n&gt; okay. thanks."
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "&gt; \fdisplay \f\fsubj_6"
+        },
+        {
+            "actor": "siren",
+            "action": "show",
+            "view": "!!!!!"
+        },
+        {
+            "actor": "data",
+            "action": "say",
+            "text": "<span class='-panel'>\f\fSUB\f\f\fJ_\f6 - \f\f\f\f\fSUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6 SUBJ_1 SUBJ_2 SUBJ_3 SUBJ_4 SUBJ_5 SUBJ_6...</span>"
+        },
+        {
+            "actor": "siren",
+            "action": "hide"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "<span class='-panel'>Too many results to display. Try refining your search.</span>\n\n&gt; \f\fdisplay \"subj_6\"\n<span class='-panel'>PLEASE WAIT.\n\f...DONE.</span>\n\n&gt; \flist\n<span class='-panel'>PLEASE \fWAIT.\n\f...DONE.</span>\n\n&gt; \flist all\n<span class='-panel'>PLE\fAS\fE WA\fIT.\n\f\f\f...DONE.</span>\n\n&gt; \flist subj_6\n<span class='-panel'>P\fL\fE\fA\fS\fE \fW\fA\fI\fT.</span>"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "<span class='-term'>Local Panel TY_KN_01</span>\n\n&gt; \fdatasheet.txt cozmo77.tdf -restore_backup\n<span class='-panel'>PLEA\f\fSE WAI\f\f\f\fT.</span>"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "<span class='-term'>Local Panel TY_KN_01</span>\n\n&gt; \foh my god what\n&gt; TAL please tell me there's a backup of my data\n\n<span class='-tal'>There has been no activity on my end. I can only restore data from remote panels. Are you on a local panel?</span>\n\n&gt; \f\f\f\foh\n&gt; \fmy\n&gt; \fgod\n\n<span class='-tal'>Is there anything I can do to help?</span>\n\n&gt; asjhgfjhdgg\n&gt; \fi'll just try to restore it on my end\n&gt; god damnit\n\n<span class='-panel'>REBOOTING. PLEASE WAIT.</span>\n\n&gt; stop\n&gt; abort"
+        },
+        {
+            "actor": "interaction",
+            "action": "say",
+            "text": "\f\f\f\f<span class='-term'>Local Panel TY_KN_01</span>\n\f\f<span class='-panel'>New hardware detected. Connect to the Cybernet to look for drivers?</span>\n\n&gt; NO\n\n\f<span class='-panel'>Installing drivers.</span>\n\n&gt; stop\n&gt; abort\n&gt; x\n&gt; ^X\n\n\f\f<span class='-panel'>ERROR</span>\n\n\f\f<span class='-panel'>ERROR</span>\n\n\f\f<span class='-panel'>ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR</span>\n\n\f\f<span class='-panel'>Hardware-level failure detected. Installation cannot continue.</span>"
+        },
+        {
+            "action": "notext"
+        },
+        {
+            "actor": "jukebox",
+            "action": "play",
+            "track": "talab_4"
+        },
+        {
+            "actor": "backdrop",
+            "action": "show",
+            "view": "epilogue1"
+        },
+        {
+            "action": "pause"
+        },
+        {
+            "actor": "backdrop",
+            "action": "show",
+            "view": "epilogue2"
+        },
+        {
+            "action": "pause"
+        },
+        {
+            "actor": "backdrop",
+            "action": "show",
+            "view": "epilogue3"
+        },
+        {
+            "action": "pause"
+        },
+        {
+            "actor": "backdrop",
+            "action": "show",
+            "view": "epilogue4"
+        },
+        {
+            "action": "pause"
+        },
+        {
+            "actor": "jukebox",
+            "action": "stop"
+        },
+        {
+            "actor": "curtain",
+            "action": "lower"
+        },
+        {
+            "actor": "backdrop",
+            "action": "hide"
+        },
+        {
+            "action": "roll_credits"
+        }
+    ]
+};
 
 // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
 window.addEventListener('load', e => {
-    //let script = Script.from_legacy_json(XXX_TEST_SCRIPT);
-    let script = new Script();
+    let script = Script.from_legacy_json(XXX_TEST_SCRIPT);
+    console.log(script);
+    //let script = new Script();
     let editor = new Editor(script, document.querySelector('.gleam-editor'), document.querySelector('.gleam-player'));
     //editor.player.play();
 });

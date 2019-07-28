@@ -62,14 +62,12 @@ ol.gleam-editor-components > li {
     background: white;
     color: #202020;
 }
-ol.gleam-editor-components > li > header {
+ol.gleam-editor-components > li h2 {
     padding: 0.25em 0.5em;
-    background: hsl(330, 50%, 75%);
-}
-ol.gleam-editor-components > li > header h2 {
     margin: 0;
+    background: hsl(0, 0%, 75%);
 }
-ol.gleam-editor-components > li > h3 {
+ol.gleam-editor-components > li h3 {
     margin: 0.5em 0 0;
     padding: 0.125em 0.5em;
     border-bottom: 2px solid #404040;
@@ -126,6 +124,7 @@ ol.gleam-editor-steps > li {
     background: hsl(210, 90%, 60%);
 }
 
+/* Steps, used in components and the script panel */
 .gleam-editor-step + .gleam-editor-step {
     border-top: 1px solid #aaa;
 }
@@ -133,39 +132,69 @@ ol.gleam-editor-steps > li {
     z-index: 1;
     padding: 0.25em 0.5em;
     padding-right: 1em;
-    background: hsl(330, 0%, 75%);
+    background: hsl(0, 0%, 75%);
     border-top-right-radius: 1.5em 2em;
     border-bottom-right-radius: 1.5em 2em;
-}
-.gleam-editor-step.gleam-editor-step-pictureframe > .-who {
-    background: hsl(330, 50%, 75%);
-}
-.gleam-editor-step.gleam-editor-step-pictureframe > .-who::before {
-    content: '🖼️';
-    margin-right: 0.25em;
-}
-.gleam-editor-step.gleam-editor-step-jukebox > .-who {
-    background: hsl(270, 50%, 75%);
-}
-.gleam-editor-step.gleam-editor-step-jukebox > .-who::before {
-    content: '📻';
-    margin-right: 0.25em;
 }
 .gleam-editor-step > .-what {
     padding: 0.25em 0.5em;
     margin-left: -1em;
     padding-left: 1.5em;
     padding-right: 1em;
-    background: hsl(330, 0%, 82.5%);
+    background: hsl(0, 0%, 82.5%);
     border-top-right-radius: 1.5em 2em;
     border-bottom-right-radius: 1.5em 2em;
 }
 .gleam-editor-step > .-how {
     margin: 0.25em 0.5em;
 }
-.gleam-editor-step > .-what p {
+.gleam-editor-step > .-how p {
     margin: 0.25em;
 }
+
+/* Special styling for particular actor types; applies to steps and to the
+ * headers of their properties in the actor list */
+/* Stage */
+.gleam-editor-step.gleam-editor-actor-stage > .-who,
+ol.gleam-editor-components > li.gleam-editor-actor-stage h2 {
+    background: hsl(0, 50%, 75%);
+}
+.gleam-editor-step.gleam-editor-actor-stage > .-who::before,
+ol.gleam-editor-components > li.gleam-editor-actor-stage h2::before {
+    content: '📻';
+    margin-right: 0.25em;
+}
+/* Jukebox */
+.gleam-editor-step.gleam-editor-actor-jukebox > .-who,
+ol.gleam-editor-components > li.gleam-editor-actor-jukebox h2 {
+    background: hsl(270, 50%, 75%);
+}
+.gleam-editor-step.gleam-editor-actor-jukebox > .-who::before,
+ol.gleam-editor-components > li.gleam-editor-actor-jukebox h2::before {
+    content: '📻';
+    margin-right: 0.25em;
+}
+/* Picture frame */
+.gleam-editor-step.gleam-editor-actor-pictureframe > .-who,
+ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2 {
+    background: hsl(330, 50%, 75%);
+}
+.gleam-editor-step.gleam-editor-actor-pictureframe > .-who::before,
+ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2::before {
+    content: '🖼️';
+    margin-right: 0.25em;
+}
+/* Character */
+.gleam-editor-step.gleam-editor-actor-character > .-who,
+ol.gleam-editor-components > li.gleam-editor-actor-character h2 {
+    background: hsl(210, 50%, 75%);
+}
+.gleam-editor-step.gleam-editor-actor-pictureframe > .-who::before,
+ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2::before {
+    content: '🗣️';
+    margin-right: 0.25em;
+}
+
 
 .xxx-debug-outline {
     outline: 2px solid red;
