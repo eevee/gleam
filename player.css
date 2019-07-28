@@ -1,0 +1,18 @@
+.gleam-player {
+    position: relative;
+    width: 800px;
+    height: 600px;
+    border: 1px solid black;
+}
+
+.gleam-pictureframe {
+    position: absolute;
+}
+.gleam-pictureframe img {
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+}
+.gleam-pictureframe img.-visible {
+    visibility: visible;
+}

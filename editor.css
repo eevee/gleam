@@ -1,0 +1,172 @@
+ul, ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+html {
+    height: 100%;
+}
+body {
+    display: grid;
+    grid-template:
+        "assets components player" 1fr
+        "assets components steps " 1fr
+    ;
+    height: 100%;
+    margin: 0;
+
+    background: #404040;
+    color: white;
+    font-size: 18px;
+}
+body > section {
+    /* FIXME can't figure out how to make the grid not expand without this */
+    overflow: auto;
+    border: 2px solid #101010;
+}
+body > section > header {
+    margin: 0;
+    padding: 0.33em 0.5em;
+    background: #202020;
+}
+body > section > header h1 {
+    margin: 0;
+}
+#gleam-editor-player {
+    grid-area: player;
+}
+#gleam-editor-components {
+    grid-area: components;
+}
+#gleam-editor-assets {
+    grid-area: assets;
+}
+#gleam-editor-steps {
+    grid-area: steps;
+}
+
+body > section.gleam-editor-drag-hover {
+    border-color: hsl(210, 50%, 6.25%);
+    background-color: hsl(210, 50%, 25%);
+}
+body > section.gleam-editor-drag-hover > header {
+    background-color: hsl(210, 50%, 12.5%);
+}
+
+ol.gleam-editor-components {
+}
+ol.gleam-editor-components > li {
+    margin: 0.5em;
+    border: 1px solid #202020;
+    background: white;
+    color: #202020;
+}
+ol.gleam-editor-components > li > header {
+    padding: 0.25em 0.5em;
+    background: hsl(330, 50%, 75%);
+}
+ol.gleam-editor-components > li > header h2 {
+    margin: 0;
+}
+ol.gleam-editor-components > li > h3 {
+    margin: 0.5em 0 0;
+    padding: 0.125em 0.5em;
+    border-bottom: 2px solid #404040;
+    font-weight: normal;
+    font-size: 1.2em;
+}
+ul.gleam-editor-component-pictureframe-poses {
+    margin: 0.5em;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+}
+ul.gleam-editor-component-pictureframe-poses img {
+    display: block;
+    max-width: 100px;
+    max-height: 100px;
+    margin: 0 auto;
+}
+
+.gleam-editor-assets li {
+    padding: 0.33em;
+    margin: 0.5em;
+    background: #383838;
+}
+
+ol.gleam-editor-steps {
+    position: relative;
+    display: flex;
+    margin: 0.5em 1em;
+    padding: 0;
+    flex-direction: column;
+}
+ol.gleam-editor-steps > li {
+    margin: 0.25em 0;
+    border: 1px solid #202020;
+    box-shadow: 0 0.125em 0.25em #202020;
+}
+.gleam-editor-step {
+    display: flex;
+    background: #f0f0f0;
+    color: #202020;
+}
+.gleam-editor-step.gleam-editor--dragged-step {
+    opacity: 0.5;
+}
+.gleam-editor-step-cursor {
+    position: absolute;
+    z-index: 99;
+    margin: 0;
+    margin-top: -2px;  /* overlap the border */
+    left: 0;
+    right: 0;
+    height: 3px;
+    border: none;
+    background: hsl(210, 90%, 60%);
+}
+
+.gleam-editor-step + .gleam-editor-step {
+    border-top: 1px solid #aaa;
+}
+.gleam-editor-step > .-who {
+    z-index: 1;
+    padding: 0.25em 0.5em;
+    padding-right: 1em;
+    background: hsl(330, 0%, 75%);
+    border-top-right-radius: 1.5em 2em;
+    border-bottom-right-radius: 1.5em 2em;
+}
+.gleam-editor-step.gleam-editor-step-pictureframe > .-who {
+    background: hsl(330, 50%, 75%);
+}
+.gleam-editor-step.gleam-editor-step-pictureframe > .-who::before {
+    content: '🖼️';
+    margin-right: 0.25em;
+}
+.gleam-editor-step.gleam-editor-step-jukebox > .-who {
+    background: hsl(270, 50%, 75%);
+}
+.gleam-editor-step.gleam-editor-step-jukebox > .-who::before {
+    content: '📻';
+    margin-right: 0.25em;
+}
+.gleam-editor-step > .-what {
+    padding: 0.25em 0.5em;
+    margin-left: -1em;
+    padding-left: 1.5em;
+    padding-right: 1em;
+    background: hsl(330, 0%, 82.5%);
+    border-top-right-radius: 1.5em 2em;
+    border-bottom-right-radius: 1.5em 2em;
+}
+.gleam-editor-step > .-how {
+    margin: 0.25em 0.5em;
+}
+.gleam-editor-step > .-what p {
+    margin: 0.25em;
+}
+
+.xxx-debug-outline {
+    outline: 2px solid red;
+}

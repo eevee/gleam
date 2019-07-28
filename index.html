@@ -1,16 +1,159 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="utf8">
     <title>GLEAM visual novel creator</title>
     <link rel="stylesheet" type="text/css" href="editor.css">
     <link rel="stylesheet" type="text/css" href="player.css">
+    <script src="script.js"></script>
 </head>
 <body>
-    <div class="gleam-wrapper">
+    <section id="gleam-editor-player">
+        <header><h1>Stage</h1></header>
         <div class="gleam-player">
         </div>
-        <div class="gleam-editor">
-        </div>
-    </div>
+    </section>
+    <section id="gleam-editor-components">
+        <header><h1>Components</h1></header>
+        <!-- ok remember the current types of thing
+            - image set
+            - dialogue box
+            - "character", which is really glue between dialogue + images
+            - arbitrary html block
+            - jukebox
+            - curtain
+            - the stage itself, for some one-offs
+        -->
+        <ol class="gleam-editor-components">
+            <li class="gleam-editor-component-stage">
+                <header>
+                    <h2>stage</h2>
+                </header>
+                <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+                <div class="gleam-editor-step gleam-editor-step-stage">
+                    <div class="-who">stage</div>
+                    <div class="-what">pause</div>
+                </div>
+            </li>
+            <li class="gleam-editor-component-pictureframe">
+                <header>
+                    <h2>🖼️ backdrop</h2>
+                </header>
+                <h3>Poses <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+                <ul class="gleam-editor-component-pictureframe-poses">
+                    <li><img src="res/hostage/hostage1.png"></li>
+                    <li><img src="res/hostage/hostage1.png"></li>
+                    <li><img src="res/hostage/hostage1.png"></li>
+                    <li><img src="res/hostage/hostage1.png"></li>
+                    <li><img src="res/hostage/hostage1.png"></li>
+                    <li><img src="res/hostage/hostage1.png"></li>
+                    <li><img src="res/hostage/hostage1.png"></li>
+                    <li><img src="res/hostage/hostage1.png"></li>
+                    <li><img src="res/hostage/hostage1.png"></li>
+                </ul>
+                <button>preview</button>
+                <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+                <div class="gleam-editor-step gleam-editor-step-pictureframe">
+                    <div class="-who">backdrop</div>
+                    <div class="-what">show [pose]</div>
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-pictureframe">
+                    <div class="-who">backdrop</div>
+                    <div class="-what">hide</div>
+                </div>
+            </li>
+            <li class="gleam-editor-component-jukebox">
+                <header>
+                    <h2>📻 jukebox</h2>
+                </header>
+                <h3>Tracks <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+                steps:
+                    play [track]
+                    stop
+                <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+                <div class="gleam-editor-step gleam-editor-step-jukebox">
+                    <div class="-who">jukebox</div>
+                    <div class="-what">show [pose]</div>
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-jukebox">
+                    <div class="-who">jukebox</div>
+                    <div class="-what">hide</div>
+                </div>
+            </li>
+            <li class="gleam-editor-component-dialoguebox">
+            </li>
+            <li class="gleam-editor-component-character">
+            </li>
+            <li class="gleam-editor-component-curtain">
+            </li>
+        </ol>
+    </section>
+    <section id="gleam-editor-assets">
+        <header><h1>Assets</h1></header>
+        <ol class="gleam-editor-assets">
+            <li>hostage1.png</li>
+        </ol>
+    </section>
+    <section id="gleam-editor-steps">
+        <header><h1>Steps</h1></header>
+        <ol class="gleam-editor-steps">
+            <!--
+            <li>
+                <div class="gleam-editor-step gleam-editor-step-pictureframe">
+                    <div class="-who">backdrop</div>
+                    <div class="-what">show splash</div>
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-stage">
+                    <div class="-who">stage</div>
+                    <div class="-what">pause</div>
+                </div>
+            </li>
+            <li>
+                <div class="gleam-editor-step gleam-editor-step-jukebox">
+                    <div class="-who">jukebox</div>
+                    <div class="-what">play</div>
+                    <div class="-how">exposong</div>
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-pictureframe">
+                    <div class="-who">backdrop</div>
+                    <div class="-what">show</div>
+                    <div class="-how">rom1</div>
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-stage">
+                    <div class="-who">stage</div>
+                    <div class="-what">pause</div>
+                </div>
+            </li>
+            <li>
+                <div class="gleam-editor-step gleam-editor-step-pictureframe">
+                    <div class="-who">backdrop</div>
+                    <div class="-what">show</div>
+                    <div class="-how">rom2</div>
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-stage">
+                    <div class="-who">stage</div>
+                    <div class="-what">pause</div>
+                </div>
+            </li>
+            <li>
+                <div class="gleam-editor-step gleam-editor-step-jukebox">
+                    <div class="-who">jukebox</div>
+                    <div class="-what">stop</div>
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-curtain">
+                    lower
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-pictureframe">
+                    <div class="-who">backdrop</div>
+                    <div class="-what">hide</div>
+                </div>
+                <div class="gleam-editor-step gleam-editor-step-global">
+                    roll credits
+                </div>
+            </li>
+            -->
+        </ol>
+        <!-- TODO waterfall view?  see what the state of anything is at any point? -->
+    </section>
 </body>
 </html>
