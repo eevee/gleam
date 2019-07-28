@@ -263,19 +263,23 @@ class PictureFrame extends Actor {
             setTimeout (=> @_advance $el, view_name, next_index), delay
     */
 }
-PictureFrame.prototype.STEP_TYPES = [{
-    name: 'show',
-    arg_name: 'pose',
-}, {
-    name: 'hide',
-}];
 class Step {
+    constructor(actor) {
+        this.actor = actor;
+    }
 }
 Step.prototype.propagate = true;
-class PictureFrameShowStep {
+class PictureFrameShowStep extends Step {
+
 
 }
-PictureFrameShowStep.prototype.propagate = false;
+class PictureFrameHideStep extends Step {
+
+}
+PictureFrame.prototype.STEP_TYPES = [
+    PictureFrameShowStep,
+    PictureFrameHideStep,
+];
 
 
 class Character extends Actor {
@@ -902,6 +906,25 @@ function make_step_element(actor_editor, step_type) {
     return el;
 }
 
+// Wrapper for a step that also keeps ahold of the step element and the
+// associated ActorEditor
+class EditorStep {
+    constructor(actor_editor, step_type, ...args) {
+        this.actor_editor = actor_editor;
+        this.step = new step_type(...args);
+        this.element = make_step_element(actor_editor, step_type);
+        this._position = null;
+    }
+
+    get position() {
+        return this._position;
+    }
+    set position(position) {
+        this._position = position;
+        this.element.setAttribute('data-position', String(position));
+    }
+}
+
 
 // -----------------------------------------------------------------------------
 // Editors for individual actor types
@@ -919,8 +942,11 @@ class ActorEditor {
 
         // Add step templates
         // FIXME this is for picture frame; please genericify
+        this.step_type_map = new Map();  // step element => step type
         for (let step_type of this.actor.STEP_TYPES) {
-            this.container.appendChild(make_sample_step_element(this, step_type));
+            let step_el = make_sample_step_element(this, step_type);
+            this.container.appendChild(step_el);
+            this.step_type_map.set(step_el, step_type);
         }
 
         // Enable dragging steps into the script
@@ -931,7 +957,8 @@ class ActorEditor {
             e.dataTransfer.dropEffect = 'copy';
             e.dataTransfer.setData('text/plain', null);
             // FIXME oughta create a pristine new step element
-            this.main_editor.start_step_drag(e.target.cloneNode(true));
+            let step_type = this.step_type_map.get(e.target);
+            this.main_editor.start_step_drag(new EditorStep(this, step_type));
         });
     }
 
@@ -1095,6 +1122,7 @@ class Editor {
         }
 
         // Wire up the steps container
+        this.steps = [];  // list of EditorSteps
         this.steps_container = document.getElementById('gleam-editor-steps');
         this.steps_el = this.steps_container.querySelector('.gleam-editor-steps');
         // TODO i dont know how to do this tbh
@@ -1129,12 +1157,11 @@ class Editor {
 
             // GOAL: Find where the step should be inserted based on the mouse
             // position, or in other words, which step the mouse is aiming at.
-            let steps = this.steps_el.querySelectorAll('.gleam-editor-step');
 
             // If there are no steps, there's nothing to do: a new step can
             // only be inserted at position 0.
             let position;
-            if (steps.length === 0) {
+            if (this.steps.length === 0) {
                 position = 0;
             }
             else {
@@ -1150,7 +1177,13 @@ class Editor {
                 }
                 if (pointed_step) {
                     let rect = pointed_step.getBoundingClientRect();
-                    position = Array.indexOf(steps, pointed_step);
+                    for (let [i, step] of this.steps.entries()) {
+                        if (pointed_step === step.element) {
+                            position = i;
+                            break;
+                        }
+                    }
+                    // XXX position MUST be set here
                     if (cy > (rect.top + rect.bottom) / 2) {
                         position++;
                     }
@@ -1160,12 +1193,12 @@ class Editor {
                     // search of the steps' client bounding rects, which are
                     // relative to the viewport, which is pretty appropriate
                     // for a visual effect like drag and drop.
-                    let l = steps.length;
+                    let l = this.steps.length;
                     let a = 0;
                     let b = l;
                     while (a < b) {
                         let n = Math.floor((a + b) / 2);
-                        let rect = steps[n].getBoundingClientRect();
+                        let rect = this.steps[n].element.getBoundingClientRect();
                         // Compare to the vertical midpoint of the step: if
                         // we're just above that, we should go before that step
                         // and take its place; otherwise, we should go after it
@@ -1190,15 +1223,15 @@ class Editor {
             }
 
             let cursor_y;
-            if (steps.length === 0) {
+            if (this.steps.length === 0) {
                 cursor_y = 0;
             }
-            else if (position >= steps.length) {
-                let last_step = steps[steps.length - 1];
+            else if (position >= this.steps.length) {
+                let last_step = this.steps[this.steps.length - 1].element;
                 cursor_y = last_step.offsetTop + last_step.offsetHeight;
             }
             else {
-                cursor_y = steps[position].offsetTop;
+                cursor_y = this.steps[position].element.offsetTop;
             }
             cursor.style.top = `${cursor_y}px`;
         });
@@ -1222,19 +1255,19 @@ class Editor {
             }
         });
         this.steps_container.addEventListener('drop', e => {
-            let step_el = this.step_drag.step_el;
+            let step = this.step_drag.step;
             // Dropping onto nothing is a no-op
             if (this.step_drag.position === null) {
                 return;
             }
             // Dragging over oneself is a no-op
-            if (step_el === this.step_drag.target) {
+            if (step.element === this.step_drag.target) {
                 return;
             }
 
             e.preventDefault();
 
-            this.insert_step(step_el, this.step_drag.position);
+            this.insert_step(step, this.step_drag.position);
         });
         // Cancel the default behavior of any step drag that makes its way to
         // the root; otherwise it'll be interpreted as a navigation or
@@ -1247,10 +1280,10 @@ class Editor {
         });
     }
 
-    start_step_drag(step_el) {
+    start_step_drag(step) {
         this.step_drag = {
-            // Step being dragged
-            step_el: step_el,
+            // EditorStep being dragged
+            step: step,
             // Element showing where the step will be inserted
             cursor: make_element('hr', 'gleam-editor-step-cursor'),
             // Existing step being dragged over
@@ -1275,23 +1308,43 @@ class Editor {
         this.step_drag = null;
     }
 
-    remove_step(step_el) {
+    get_step_for_element(element) {
+        if (element.dataset.position === undefined) {
+            return null;
+        }
+
+        return this.steps[parseInt(element.dataset.position, 10)];
     }
 
-    insert_step(step_el, position) {
-        console.log(step_el, position);
-        let steps = this.steps_el.querySelectorAll('.gleam-editor-step');
+    remove_step(step) {
+    }
+
+    // Insert an EditorStep at the given position
+    insert_step(step, position) {
+        if (position > this.steps.length) {
+            position = this.steps.length;
+        }
+
+        // Add to our own step list
+        this.steps.splice(position, 0, step);
+        for (let i = position; i < this.steps.length; i++) {
+            this.steps[i].position = i;
+        }
+        // TODO insert into script and update that
+
+        // Add to the DOM
         // TODO handle pauses...
-        if (steps.length === 0) {
+        if (this.steps.length === 1) {
+            // It's the only child!
             let li = make_element('li');
             this.steps_el.appendChild(li);
-            li.appendChild(step_el);
+            li.appendChild(step.element);
         }
         else {
-            let previous_step = steps[position - 1];
-            previous_step.parentNode.insertBefore(step_el, previous_step.nextElementSibling);
+            let previous_step = this.steps[position - 1];
+            previous_step.element.parentNode.insertBefore(
+                step.element, previous_step.element.nextElementSibling);
         }
-            // TODO associate with step; add step to our own step list; insert into script; etc, etc
     }
 }
 
