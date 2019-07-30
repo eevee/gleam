@@ -70,7 +70,10 @@ class Actor {
 
     update(dt) {
     }
+
+    apply_state(state) {}
 }
+Actor.prototype.initial_state = {};
 
 
 // Actors are controlled by Steps
@@ -82,6 +85,11 @@ class Step {
     static from_legacy_json(actor, json) {
         return new this(actor);
     }
+
+    // TODO
+    check() {}
+
+    update_state(state) {}
 }
 // Set to true if this step should pause and wait for user input
 Step.prototype.pause = false;
@@ -149,7 +157,7 @@ Jukebox.prototype.STEP_TYPES = {
 class PictureFrame extends Actor {
     constructor(position) {
         super();
-        this.poses = [];
+        this.poses = {};
         this.active_pose_name = null;
 
         this.initial_state = {
@@ -224,6 +232,16 @@ class PictureFrame extends Actor {
 
     //add_animation: (name, frames) ->
     //    @poses[name] = frames
+
+    apply_state(state) {
+        let current_state = this.current_state || this.initial_state;
+
+        if (state.pose !== current_state.pose) {
+            this.show(state.pose);
+        }
+
+        this.current_state = state;
+    }
 
     show(pose_name) {
         let pose = this.poses[pose_name];
@@ -304,7 +322,13 @@ class PictureFrame_Show extends Step {
     }
 
     static from_legacy_json(actor, json) {
-        return new this(actor, json.pose);
+        return new this(actor, json.view);
+    }
+
+    // TODO check?
+
+    update_state(state) {
+        state.pose = this.pose_name;
     }
 }
 class PictureFrame_Hide extends Step {
@@ -343,6 +367,12 @@ class DialogueBox extends Actor {
     build_into(container) {
         this.element = make_element('div', 'gleam--dialoguebox');
         container.appendChild(this.element);
+    }
+
+    apply_state(state) {
+        if (state.phrase) {
+            return this.say(state.phrase);
+        }
     }
 
     say(text) {
@@ -767,6 +797,10 @@ class DialogueBox_Say extends Step {
     static from_legacy_json(actor, json) {
         return new this(actor, json.text);
     }
+
+    update_state(state) {
+        state.phrase = phrase;
+    }
 }
 DialogueBox_Say.prototype.pause = true;
 DialogueBox.prototype.STEP_TYPES = {
@@ -801,7 +835,7 @@ class Script {
             spot: PictureFrame,
             character: Character,
         };
-            
+
         for (let [name, actor_def] of Object.entries(json.actors)) {
             let type = ACTOR_TYPES[actor_def.type];
             if (! type) {
@@ -832,6 +866,8 @@ class Script {
             let step = step_type.from_legacy_json(actor, json_step);
             this.steps.push(step);
         }
+
+        this.consolidate_steps();
         /*
         if actordef.type == "character"
             actor = Character.from_json speech, relative_to, actordef
@@ -858,30 +894,55 @@ class Script {
         return this;
     }
 
-    advance() {
-        return;  // FIXME have not figured out how this works yet
-        while (true) {
-            let step = this.steps[this.cursor];
-            if (! step)
-                return;
-
-            // FIXME don't allow arbitrary methods, use a dict of messages
-            //let [actor, method, ...args] = step;
-            //let pause = actor[method](...args);
-            
-            let actor_name = step.actor;
-            let actor = this.actors[actor_name];
-            let action = actor.ACTIONS[step.action];
-            let args = [];
-            for (let argname of action.args) {
-                args.push(step[argname]);
-            }
-            actor[action.method](...args);
-
-            this.cursor++;
-            if (action.pause)
-                return;
+    consolidate_steps() {
+        this.states = [];
+        let state = new Map();
+        let actors_dirty = new Map();
+        for (let [name, actor] of Object.entries(this.actors)) {
+            state.set(actor, actor.initial_state);
+            actors_dirty.set(actor, false);
         }
+
+        for (let step of this.steps) {
+            let actor = step.actor;
+            // Clone the actor's current state, if it hasn't been done yet
+            if (! actors_dirty.get(actor)) {
+                state.set(actor, Object.assign({}, state.get(actor)));
+                actors_dirty.set(actor, true);
+            }
+
+            step.update_state(state.get(actor));
+
+            if (step.pause) {
+                this.states.push(state);
+                state = new Map(state);
+                for (let key of actors_dirty.keys()) {
+                    actors_dirty.set(key, false);
+                }
+            }
+        }
+
+        // TODO only if last step wasn't a pause probably.  or maybe i should push as i go.  but that doesn't work if the last step IS a pause.
+        this.states.push(state);
+
+        console.log(this.states);
+    }
+
+    advance() {
+        console.log("ADVANCING");
+        let stateset = this.states[this.cursor];
+        if (! stateset)
+            return;
+
+        // TODO ahh can the action "methods" return whether they pause?
+
+        for (let [actor, state] of stateset) {
+            console.log(actor, state);
+            actor.apply_state(state);
+        }
+
+        // FIXME probably doesn't go here
+        this.cursor++;
     }
 
     update(dt) {
@@ -974,7 +1035,7 @@ function make_step_element(actor_editor, step) {
     if (step.arg_name) {
         el.appendChild(make_element('div', '-how', `[${step_type.arg_name}]`));
     }
-    // FIXME oh steps need way more metadata huh
+    // FIXME oh steps need way more metadata huh.  boy this is a bit of a nightmare
     else if (step instanceof Character_Say) {
         el.appendChild(make_element('div', '-how', step.phrase));
     }
