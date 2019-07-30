@@ -5,14 +5,40 @@
     border: 1px solid black;
 }
 
-.gleam-pictureframe {
+.gleam-actor-pictureframe {
     position: absolute;
 }
-.gleam-pictureframe img {
+.gleam-actor-pictureframe img {
     position: absolute;
     visibility: hidden;
     pointer-events: none;
 }
-.gleam-pictureframe img.-visible {
+.gleam-actor-pictureframe img.-visible {
     visibility: visible;
+    pointer-events: initial;
+}
+
+.gleam-actor-dialoguebox {
+    position: absolute;
+    /* In front of pictures...  and so the z nightmare begins */
+    z-index: 1;
+    /* Anchored to bottom */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* Three lines tall */
+    line-height: 1.33;
+    height: 4em;
+
+    background-color: #00000080;
+    color: white;
+}
+.gleam-actor-dialoguebox.-hidden {
+    display: none;
+}
+.gleam-actor-dialoguebox .-phrase {
+    white-space: pre-wrap;
+}
+.gleam-actor-dialoguebox .-hidden {
+    visibility: hidden;
 }

@@ -77,8 +77,10 @@ class Actor {
 
     build_into(container) {}
 
-    update(dt) {
-    }
+    update(dt) {}
+
+    // Return false to interrupt the advance
+    advance() {}
 
     apply_state(state) {}
 }
@@ -96,14 +98,21 @@ class Step {
         this.args = args;
     }
 
-    update_state(state) {
+    update_state(builder) {
         let debug = [];
-        for (let [key, value] of Object.entries(this.type.twiddles)) {
-            if (value !== null) {
-                value = this.args[value];
+        for (let twiddle_change of this.type.twiddles) {
+            let actor = this.actor;
+            if (twiddle_change.delegate) {
+                actor = actor[twiddle_change.delegate];
             }
-            state[key] = value;
-            debug.push(`${key} => ${value}`);
+
+            let value = twiddle_change.value;
+            if (twiddle_change.arg !== undefined) {
+                value = this.args[twiddle_change.arg];
+            }
+
+            builder.set_twiddle(actor, twiddle_change.key, value);
+            debug.push(`${twiddle_change.key} => ${value}`);
         }
         console.log("updating state for", this.actor.constructor.name, debug.join(", "));
     }
@@ -118,7 +127,7 @@ Stage.STEP_TYPES = {
         display_name: "pause",
         pause: true,
         args: [],
-        twiddles: {},
+        twiddles: [],
     },
 };
 // TODO from legacy json, and target any actorless actions at us?
@@ -137,9 +146,10 @@ Curtain.STEP_TYPES = {
     lower: {
         display_name: 'lower',
         args: [],
-        twiddles: {
-            lowered: true,
-        },
+        twiddles: [{
+            key: 'lowered',
+            value: true,
+        }],
     },
 };
 Curtain.LEGACY_JSON_ACTIONS = {
@@ -181,16 +191,18 @@ Jukebox.STEP_TYPES = {
             type: 'key',
             type_key_prop: 'tracks',
         }],
-        twiddles: {
-            track: 0,
-        },
+        twiddles: [{
+            key: 'track',
+            arg: 0,
+        }],
     },
     stop: {
         display_name: "stop",
         args: [],
-        twiddles: {
-            track: null,
-        },
+        twiddles: [{
+            key: 'track',
+            value: null,
+        }],
     },
 };
 Jukebox.LEGACY_JSON_ACTIONS = {
@@ -219,7 +231,7 @@ class PictureFrame extends Actor {
     }
 
     build_into(container) {
-        let element = make_element('div', 'gleam-pictureframe');
+        let element = make_element('div', 'gleam-actor-pictureframe');
         // FIXME add position class
         this.element = element;
         container.appendChild(element);
@@ -378,16 +390,18 @@ PictureFrame.STEP_TYPES = {
             type: 'key',
             type_key_prop: 'poses',
         }],
-        twiddles: {
-            pose: 0,
-        },
+        twiddles: [{
+            key: 'pose',
+            arg: 0,
+        }],
     },
     hide: {
         display_name: 'hide',
         args: [],
-        twiddles: {
-            pose: null,
-        },
+        twiddles: [{
+            key: 'pose',
+            value: null,
+        }],
     },
 }
 PictureFrame.LEGACY_JSON_ACTIONS = {
@@ -397,8 +411,12 @@ PictureFrame.LEGACY_JSON_ACTIONS = {
 
 
 class Character extends Actor {
-    delegate_say(text) {
-        this.xxx_dialogue_box.say(text);
+    constructor() {
+        super();
+
+        // Character delegates to a dialogue box, which must be assigned here, ASAP
+        // TODO need editor ui for this!
+        this.dialogue_box = null;
     }
 }
 // XXX aha, this could be a problem.  a character is a delegate; it doesn't have any actual twiddles of its own!
@@ -414,11 +432,11 @@ Character.STEP_TYPES = {
             type: 'prose',
             nullable: false,
         }],
-        twiddles: {},
-        update_state(actor, state, prose) {
-            // FIXME ah, no, the state goes to the attached dialogue box, which i don't know how to get from here!  fucking christ hell
-            state.phrase = prose;
-        },
+        twiddles: [{
+            delegate: 'dialogue_box',
+            key: 'phrase',
+            arg: 0,
+        }],
     },
 };
 Character.LEGACY_JSON_ACTIONS = {
@@ -430,10 +448,23 @@ Character.LEGACY_JSON_ACTIONS = {
 class DialogueBox extends Actor {
     constructor() {
         super();
+
+        this.scroll_timeout = null;
+        this.element = null;
+        this.letter_elements = [];
+        // One of:
+        // done -- there is no text left to display
+        // waiting -- there was too much text to fit in the box and we are now waiting on a call to advance() to show more
+        // fill -- this is dumb actually
+        // scrolling -- we are actively showing text
+        this.scroll_state = 'done';
+        // Amount of (extra) time to wait until resuming scrolling
+        this.delay = 0;
     }
 
     build_into(container) {
-        this.element = make_element('div', 'gleam--dialoguebox');
+        // XXX what happens if you try to build twice?
+        this.element = make_element('div', 'gleam-actor-dialoguebox');
         container.appendChild(this.element);
     }
 
@@ -444,18 +475,97 @@ class DialogueBox extends Actor {
     }
 
     say(text) {
-        this._build_dialogue(text);
-        return true;
+        // TODO
+        let speaker;
+
+        if (text === "") {
+            // TODO all the speaker handling is hacky ugh.  this is just to
+            // allow setting the class before actually showing any text, to fix
+            // the transition on the terminal in scrapgoats
+            if (speaker && speaker.position) {
+                this.element.setAttribute('data-position', speaker.position);
+            }
+            this.hide();
+            return;
+        }
+        this.element.classList.remove('-hidden');
+
+        // Create the dialogue DOM
+        if (this.phrase_element) {
+            this.element.removeChild(this.phrase_element);
+        }
+        this._build_phrase_dom(text);
+
+        // Purge old speaker tags
+        // TODO man this code all sucks; stick in separate method plz
+        // TODO this isn't gonna fly anyway really
+        let keep_speaker = (speaker === this.speaker);
+
+        if (! keep_speaker && this.speaker_element) {
+            let old_speaker_element = this.speaker_element;
+            this.speaker_element = null;
+            old_speaker_element.classList.remove('-active');
+            promise_transition(old_speaker_element).then(() => {
+                old_speaker_element.parentNode.removeChild(old_speaker_element);
+            });
+        }
+
+        // TODO super weird bug: set the transition time to something huge like
+        // 10s and mash arrow keys mid-transition and sometimes you end up with
+        // dialogue attributed to the wrong speaker!
+        if (keep_speaker) {
+            // do nothing
+        }
+        else if (speaker && speaker.name) {
+            /* TODO make all this stuff work
+            rgb_color = normalize_color speaker.color
+            background_color = rgb_color.replace /^rgb([(].+)[)]$/, "rgba$1, 0.8)"
+
+            // TODO need to reset this when anything else happens ugh
+            this.element.css
+                backgroundColor: background_color
+                color: speaker.color
+
+            $speaker = $('<div>',
+                class: 'cutscene--speaker'
+                text: speaker.name
+                css: backgroundColor: speaker.color
+                data: speaker: speaker
+            )
+            $speaker.attr 'data-position', speaker.position
+            this.element.append $speaker
+            // Force recompute or this won't actually transition anything
+            $speaker[0].offsetTop
+            $speaker.addClass '-active'
+            */
+        }
+        else {
+            this.element.style.backgroundColor = '';
+            this.element.style.color = '';
+            this.element.removeAttribute('data-position');
+        }
+        if (speaker && speaker.position) {
+            this.element.setAttribute('data-position', speaker.position);
+        }
+
+        this.scroll_state = 'scrolling';
+        this._start_scrolling();
     }
 
-    _build_dialogue(text) {
+    hide() {
+        // TODO
+    }
+
+    _build_phrase_dom(text) {
+        // Break 'text' -- which is taken to be raw HTML! -- into a sequence of
+        // characters, cleverly preserving the nesting of any tags used within.
         let source = document.createElement('div');
         source.innerHTML = text;
         let target = document.createDocumentFragment();
 
         let current_node = source.firstChild;
         let current_target = target;
-        let all_letters = [];
+        let letters = [];
         let all_word_endings = [];
         while (current_node) {
             if (current_node.nodeType === Node.TEXT_NODE) {
@@ -475,15 +585,15 @@ class DialogueBox extends Actor {
                     // the DOM size by a decent chunk which makes life faster
                     // all around.  And it doesn't matter if the space is on
                     // the boundary of an inline element, either!
-                    if (all_letters.length && ch === " ") {
-                        let letter = all_letters[all_letters.length - 1];
+                    if (letters.length > 0 && ch === " ") {
+                        let letter = letters[letters.length - 1];
                         letter.textContent += ch;
                         all_word_endings.push(letter);
                     }
                     else {
                         let letter = document.createElement('span');
                         letter.textContent = ch;
-                        all_letters.push(letter)
+                        letters.push(letter);
                         current_target.appendChild(letter);
                     }
                 }
@@ -515,21 +625,113 @@ class DialogueBox extends Actor {
             }
         }
 
-        for (let letter of all_letters) {
+        // Start out with all letters hidden
+        for (let letter of letters) {
             letter.classList.add('-hidden');
         }
 
-        let container = document.createElement('div');
-        container.className = 'gleam--dialogue';
-        container.appendChild(target);
-        this.element.appendChild(container);
-        this.all_letters = all_letters;
+        // TODO do something with old one...?  caller does atm, but
+        this.phrase_element = make_element('div', '-phrase');
+        this.phrase_element.appendChild(target);
+        this.element.appendChild(this.phrase_element);
+        this.letter_elements = letters;
         this.cursor = -1;
     }
 
-    _next_letter() {
-        this.cursor++;
-        return this.cursor;
+    _start_scrolling() {
+        // Start scrolling the current text into view, if applicable.
+        //
+        // Returns true iff there was any text to display.
+        if (this.scroll_state === 'done') {
+            // Nothing left to do!
+            return false;
+        }
+
+        // Do some math: figure out where the bottom of the available space is
+        // now, and in the case of text that doesn't fit in the box all at once,
+        // "slide" all the previously-shown text out of the way.
+        let first_letter_y = this.letter_elements[0].offsetTop;
+        let next_letter_y = this.letter_elements[this.cursor + 1].offsetTop;
+        this.phrase_element.style.marginTop = `${first_letter_y - next_letter_y}px`;
+        // XXX what
+        this.container_bottom = this.phrase_element.offsetParent.offsetHeight + next_letter_y;
+
+        this.scroll_state = 'scrolling';
+    }
+
+    update(dt) {
+        if (this.scroll_state === 'done') {
+            return;
+        }
+
+        // Handle delays
+        if (this.delay > 0) {
+            this.delay = Math.max(0, this.delay - dt);
+            return;
+        }
+
+        // Reveal as many letters as appropriate
+        let letter;
+        while (true) {
+            this.cursor++;
+            letter = this.letter_elements[this.cursor];
+            if (! letter) {
+                this.scroll_state = 'done';
+                return;
+            }
+
+            // TODO this doesn't work if we're still in the middle of loading oops
+            // TODO i don't remember what the above comment was referring to
+            // If we ran out of room, stop here and wait for an advance
+            if (letter.offsetTop + letter.offsetHeight >= this.container_bottom) {
+                this.scroll_state = 'waiting';
+                this.cursor--;
+                return;
+            }
+
+            letter.classList.remove('-hidden');
+
+            if (this.scroll_state !== 'fill') {
+                if (letter.textContent === "\f") {
+                    this.delay = 0.5;
+                }
+
+                break;
+            }
+        }
+    }
+
+    advance() {
+        // Called when the audience tries to advance to the next beat.  Does a
+        // couple interesting things:
+        // 1. If the text is still scrolling, fill the textbox instantly.
+        // 2. If the textbox is full but there's still more text to show,
+        // clear it and continue scrolling.
+        // In either case, the advancement is stopped.
+
+        // TODO if there's only one character left, maybe don't count this as a fill?
+        // TODO i don't remember what that meant either  :(
+
+        if (this.scroll_state === 'scrolling') {
+            // Case 1: Still running -- update state so the next update knows
+            // to fill
+            this.paused = false;
+            this.scroll_state = 'fill';
+            // TODO just fill it here dumbass
+            return false;
+        }
+        else if (this.scroll_state === 'waiting') {
+            // Case 2: more text to show
+
+            // Hide the letters from any previous text shown
+            for (let letter of this.letter_elements) {
+                letter.classList.add('-hidden');
+            }
+
+            this._start_scrolling();
+
+            return false;
+        }
     }
 }
 /*
@@ -567,171 +769,6 @@ class DialogueBox extends Actor {
                 $parent.triggerHandler 'stage:jump', [label]
 
         return [$element, promise_always()]
-
-    _change: (event, speaker, text) ->
-        $el = $ event.currentTarget
-        if text == ""
-            # TODO all the speaker handling is hacky ugh.  this is just to
-            # allow setting the class before actually showing any text, to fix
-            # the transition on the terminal in scrapgoats
-            if speaker and speaker.position
-                $el.attr 'data-position', speaker.position
-            @_hide event
-            return
-        $el.removeClass '-hidden'
-
-        $el.attr 'data-state', ''
-        $dialogue = @_build_dialogue text
-        # Remove everything...  but not the speaker tag, because we want to
-        # fade that out smoothly.
-        $el.children().not('.cutscene--speaker').remove()
-        $el.append $dialogue
-
-        # Purge old speaker tags
-        # TODO man this code all sucks; stick in separate method plz
-        $old_speakers = $el.find('.cutscene--speaker')
-        if speaker == $old_speakers.data 'speaker'
-            leave_speaker = true
-        else
-            leave_speaker = false
-
-        if not leave_speaker
-            $old_speakers.removeClass '-active'
-            promise_event $old_speakers, 'transitionend'
-                .done -> $old_speakers.remove()
-
-        # TODO super weird bug: set the transition time to something huge like
-        # 10s and mash arrow keys mid-transition and sometimes you end up with
-        # dialogue attributed to the wrong speaker!
-        if leave_speaker
-            # do nothing
-        else if speaker and speaker.name?
-            rgb_color = normalize_color speaker.color
-            background_color = rgb_color.replace /^rgb([(].+)[)]$/, "rgba$1, 0.8)"
-
-            # TODO need to reset this when anything else happens ugh
-            $el.css
-                backgroundColor: background_color
-                color: speaker.color
-
-            $speaker = $('<div>',
-                class: 'cutscene--speaker'
-                text: speaker.name
-                css: backgroundColor: speaker.color
-                data: speaker: speaker
-            )
-            $speaker.attr 'data-position', speaker.position
-            $el.append $speaker
-            # Force recompute or this won't actually transition anything
-            $speaker[0].offsetTop
-            $speaker.addClass '-active'
-        else
-            $el.css
-                backgroundColor: ''
-                color: ''
-            $el.removeAttr 'data-position'
-        if speaker and speaker.position
-            $el.attr 'data-position', speaker.position
-
-        @_start_scrolling $dialogue
-
-        return
-
-
-    _start_scrolling: ($dialogue) ->
-        ###
-        Start scrolling the current text into view, if applicable.
-
-        Returns true iff there was any text to display.
-        ###
-        if $dialogue.data 'timeout'
-            # Already running!
-            return true
-        if 'done' == $dialogue.parent().attr 'data-state'
-            # Nothing left to do!
-            return false
-
-        all_letters = $dialogue.data 'all_letters'
-        $all_letters = $(all_letters)
-
-        letter_index = @_next_letter $dialogue
-        if letter_index >= all_letters.length
-            # The end of the text is visible, so, nothing to do here
-            $dialogue.parent().attr 'data-state', 'done'
-            return false
-
-        # Hide all the letters so we start from scratch
-        $all_letters.addClass '-hidden'
-
-        @_scroll $dialogue, all_letters, letter_index
-        return true
-
-    _scroll: ($dialogue, all_letters, letter_index) ->
-        # Do some math: figure out where the bottom of the available space is
-        # now, and in the case of text that doesn't fit in the box all at once,
-        # "slide" all the previously-shown text out of the way.
-        next_letter_top = all_letters[letter_index].offsetTop
-        container_bottom = $dialogue.offsetParent().height() + next_letter_top
-        $dialogue.css 'margin-top', all_letters[0].offsetTop - next_letter_top
-
-        $dialogue.parent().attr 'data-state', 'scrolling'
-
-        cb = =>
-            $dialogue.data timeout: null
-            state = $dialogue.parent().attr 'data-state'
-
-            while true
-                el = all_letters[letter_index]
-                if not el
-                    $dialogue.parent().attr 'data-state', 'done'
-                    return
-
-                # TODO this doesn't work if we're still in the middle of loading oops
-                # TODO i don't remember what the above comment was referring to
-                # If we ran out of room, stop here and wait for a "next" event
-                if el.offsetTop + el.offsetHeight >= container_bottom
-                    $dialogue.parent().attr 'data-state', 'waiting'
-                    return
-
-                letter_index++
-                $(el).removeClass '-hidden'
-
-                if state != 'fill'
-                    break
-
-            if el and el.textContent == "\f"
-                # TODO this will break the pause button during this delay
-                # TODO also i don't think we'll catch stage:next correctly?
-                $dialogue.data timeout: setTimeout cb, 500
-            else
-                $dialogue.data timeout: requestAnimationFrame cb
-
-        cb()
-
-    _possibly_fill: (event, $el) ->
-        ###
-        Called when the stage receives a "next" event.  Possibly interrupts it.
-
-        1. If the text is still scrolling, fill the textbox instead of
-        advancing to the next step.
-        2. If the textbox is full but there's still more text to show, scroll
-        down and keep going instead of advancing to the next step.
-        ###
-        $dialogue = $el.children '.cutscene--dialogue'
-        if not $dialogue.length
-            return
-
-        # TODO if there's only one character left, maybe don't count this as a fill?
-        # TODO i don't remember what that meant either  :(
-
-        if $dialogue.data 'timeout'
-            # Case 1: Still running -- update state so the next update knows to fill
-            $dialogue.data paused: false
-            $dialogue.parent().attr 'data-state', 'fill'
-            event.preventDefault()
-        else if @_start_scrolling $dialogue
-            # Case 2: more text to show
-            event.preventDefault()
 
     _menu: (event, labels_to_captions) ->
         $el = $ event.currentTarget
@@ -865,10 +902,73 @@ DialogueBox.prototype.TWIDDLES = {
 DialogueBox.STEP_TYPES = {};
 DialogueBox.LEGACY_JSON_ACTIONS = {};
 
+
+class BeatBuilder {
+    // A beat is the current state of all actors in a script, compiled from a
+    // contiguous sequence of steps and generally followed by a pause.  It
+    // describes where everyone is on stage while a line of dialogue is being
+    // spoken, for example.  This type helps construct beats from steps.
+    constructor(actors) {
+        // Map of actor => states
+        this.states = new Map();
+        // Which actors have had steps occur since the previous beat
+        this.dirty = new Set();
+
+        // Populate initial states
+        for (let [name, actor] of Object.entries(actors)) {
+            this.states.set(actor, actor.make_initial_state());
+        }
+    }
+
+    add_step(step) {
+        step.update_state(this);
+    }
+
+    set_twiddle(actor, key, value) {
+        let state = this.states.get(actor);
+
+        // If this actor hasn't had a step yet this beat, clone their state
+        if (! this.dirty.has(actor)) {
+            let new_state = {};
+            for (let [key, value] of Object.entries(state)) {
+                let twiddle = actor.TWIDDLES[key];
+                if (twiddle.propagate === undefined) {
+                    // Keep using the current value
+                    new_state[key] = value;
+                }
+                else {
+                    // Revert to the given propagate value
+                    new_state[key] = twiddle.propagate;
+                }
+            }
+            state = new_state;
+            this.states.set(actor, state);
+            this.dirty.add(actor);
+        }
+
+        state[key] = value;
+    }
+
+    end_beat() {
+        // End the current beat, returning it, and start a new one
+        let beat = this.states;
+        this.states = new Map(this.states);
+        this.dirty.clear();
+        return beat;
+    }
+}
+
 class Script {
+    // A Script describes the entirety of a play (VN).  It has some number of
+    // Actors (dialogue boxes, picture frames, etc.), and is defined by some
+    // number of Steps -- discrete commands which control those actors.  The
+    // steps are compiled into a set of beats, which are the states of the
+    // actors at a given moment in time.  A Beat is followed by a pause,
+    // usually to wait for the audience to click or press a key, but
+    // occasionally for a fixed amount of time or until some task is complete.
+
     constructor() {
         this.actors = {
-            __dialogue__: new DialogueBox(),
             stage: new Stage(),
         };
 
@@ -888,6 +988,10 @@ class Script {
         return script;
     }
     _load_legacy_json(json) {
+        // Legacy JSON has an implicit dialogue box
+        let dialogue_box = new DialogueBox();
+        this.actors['__dialogue__'] = dialogue_box;
+
         // FIXME ???  how do i do registration, hmm
         let ACTOR_TYPES = {
             curtain: Curtain,
@@ -903,9 +1007,10 @@ class Script {
             }
 
             this.actors[name] = type.from_legacy_json(actor_def);
-            // FIXME
             if (actor_def.type === 'character') {
-                this.actors[name].xxx_dialogue_box = this.actors['__dialogue__'];
+                // JSON characters implicitly use the implicit dialogue box
+                // TODO i wonder if this could be in Character.from_legacy_json
+                this.actors[name].dialogue_box = dialogue_box;
             }
         }
 
@@ -955,58 +1060,26 @@ class Script {
     set_steps(steps) {
         this.steps = steps;
 
-        // Consolidate steps into bundles of twiddle states
-        this.states = [];
-        let state = new Map();
-        let actors_dirty = new Map();
-        for (let [name, actor] of Object.entries(this.actors)) {
-            state.set(actor, actor.make_initial_state());
-            actors_dirty.set(actor, false);
-        }
+        // Consolidate steps into beats -- maps of actor => state
+        this.beats = [];
+        let builder = new BeatBuilder(this.actors);
 
         for (let step of this.steps) {
-            let actor = step.actor;
-            let actor_state = state.get(actor);
-
-            // Clone the actor's current state, if it hasn't been done yet
-            if (! actors_dirty.get(actor)) {
-                // FIXME need to take propagate into account
-                let new_state = {};
-                for (let [key, value] of Object.entries(actor_state)) {
-                    let twiddle = actor.TWIDDLES[key];
-                    if (twiddle.propagate === undefined) {
-                        // Keep using the current value
-                        new_state[key] = value;
-                    }
-                    else {
-                        // Revert to the given propagate value
-                        new_state[key] = twiddle.propagate;
-                    }
-                }
-                actor_state = new_state;
-                state.set(actor, actor_state);
-                actors_dirty.set(actor, true);
-            }
-
-            step.update_state(actor_state);
+            builder.add_step(step);
 
             if (step.type.pause) {
-                this.states.push(state);
-                state = new Map(state);
-                for (let key of actors_dirty.keys()) {
-                    actors_dirty.set(key, false);
-                }
+                this.beats.push(builder.end_beat());
             }
         }
 
         // TODO only if last step wasn't a pause probably.  or maybe i should push as i go.  but that doesn't work if the last step IS a pause.
-        this.states.push(state);
+        this.beats.push(builder.end_beat());
 
         for (let [name, actor] of Object.entries(this.actors)) {
             console.log("---", name, actor.constructor.name, "---");
             let prev = null;
-            for (let [i, stateset] of this.states.entries()) {
-                let state = stateset.get(actor);
+            for (let [i, beat] of this.beats.entries()) {
+                let state = beat.get(actor);
                 if (state !== prev) {
                     console.log(i, state);
                     prev = state;
@@ -1017,13 +1090,29 @@ class Script {
 
     advance() {
         console.log("ADVANCING");
-        let stateset = this.states[this.cursor];
-        if (! stateset)
+
+        // Some actors (namely, dialogue box) can do their own waiting for an
+        // advance, so consult them all first, and eject if any of them say
+        // they're still busy
+        let busy = false;
+        for (let actor of Object.values(this.actors)) {
+            if (actor.advance() === false) {
+            console.log("AH, BUSY", actor);
+                busy = true;
+            }
+        }
+        if (busy) {
+            return;
+        }
+
+        // If we're still here, advance to the next beat
+        let beat = this.beats[this.cursor];
+        if (! beat)
             return;
 
         // TODO ahh can the action "methods" return whether they pause?
 
-        for (let [actor, state] of stateset) {
+        for (let [actor, state] of beat) {
             console.log(actor.constructor.name, actor, state);
             actor.apply_state(state);
         }
@@ -2181,7 +2270,8 @@ window.addEventListener('load', e => {
     let script = Script.from_legacy_json(XXX_TEST_SCRIPT);
     //let script = new Script();
     let editor = new Editor(script, document.querySelector('.gleam-editor'), document.querySelector('.gleam-player'));
-    //editor.player.play();
+    // TODO this seems, counterintuitive?  editor should do it, surely.  but there's no way to pause it atm?  but updates don't happen without it.
+    editor.player.play();
 });
 
 return {
