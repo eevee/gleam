@@ -101,12 +101,19 @@ ol.gleam-editor-steps {
     display: flex;
     margin: 0.5em 1em;
     padding: 0;
+    /* make room for numbers */
+    padding-left: 1em;
     flex-direction: column;
 }
 ol.gleam-editor-steps > li {
+    list-style-type: decimal;
     margin: 0.25em 0;
     border: 1px solid #202020;
     box-shadow: 0 0.125em 0.25em #202020;
+}
+/* FIXME this doesn't work in chrome */
+ol.gleam-editor-steps > li::marker {
+    padding-right: 0.25em;
 }
 .gleam-editor-step {
     display: flex;
@@ -137,8 +144,8 @@ ol.gleam-editor-steps > li {
     padding: 0.25em 0.5em;
     padding-right: 1em;
     background: hsl(0, 0%, 75%);
-    border-top-right-radius: 1.5em 2em;
-    border-bottom-right-radius: 1.5em 2em;
+    border-top-right-radius: 0.75em 1em;
+    border-bottom-right-radius: 0.75em 1em;
 }
 .gleam-editor-step > .-what {
     padding: 0.25em 0.5em;
@@ -146,8 +153,8 @@ ol.gleam-editor-steps > li {
     padding-left: 1.5em;
     padding-right: 1em;
     background: hsl(0, 0%, 82.5%);
-    border-top-right-radius: 1.5em 2em;
-    border-bottom-right-radius: 1.5em 2em;
+    border-top-right-radius: 0.75em 1em;
+    border-bottom-right-radius: 0.75em 1em;
 }
 .gleam-editor-step > .-how {
     margin: 0.25em 0.5em;
@@ -155,6 +162,12 @@ ol.gleam-editor-steps > li {
 .gleam-editor-step > .-how p {
     margin: 0.25em;
 }
+
+/* Step arguments */
+.gleam-editor-arg-prose {
+    white-space: pre-wrap;
+}
+
 
 /* Special styling for particular actor types; applies to steps and to the
  * headers of their properties in the actor list */
@@ -197,9 +210,4 @@ ol.gleam-editor-components > li.gleam-editor-actor-character h2 {
 ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2::before {
     content: '🗣️';
     margin-right: 0.25em;
-}
-
-
-.xxx-debug-outline {
-    outline: 2px solid red;
 }

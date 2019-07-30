@@ -66,6 +66,15 @@ class Actor {
         return new this();
     }
 
+    make_initial_state() {
+        let state = {};
+        console.log(this);
+        for (let [key, twiddle] of Object.entries(this.TWIDDLES)) {
+            state[key] = twiddle.initial;
+        }
+        return state;
+    }
+
     build_into(container) {}
 
     update(dt) {
@@ -73,48 +82,68 @@ class Actor {
 
     apply_state(state) {}
 }
-Actor.prototype.initial_state = {};
+Actor.prototype.TWIDDLES = {};
+// Must also be defined on subclasses:
+Actor.STEP_TYPES = null;
+Actor.LEGACY_JSON_ACTIONS = null;
 
 
 // Actors are controlled by Steps
 class Step {
-    constructor(actor) {
+    constructor(actor, type, args) {
         this.actor = actor;
+        this.type = type;
+        this.args = args;
     }
 
-    static from_legacy_json(actor, json) {
-        return new this(actor);
+    update_state(state) {
+        let debug = [];
+        for (let [key, value] of Object.entries(this.type.twiddles)) {
+            if (value !== null) {
+                value = this.args[value];
+            }
+            state[key] = value;
+            debug.push(`${key} => ${value}`);
+        }
+        console.log("updating state for", this.actor.constructor.name, debug.join(", "));
     }
-
-    // TODO
-    check() {}
-
-    update_state(state) {}
 }
-// Set to true if this step should pause and wait for user input
-Step.prototype.pause = false;
-// Set to false if this step's effect should only apply for one verse; for
-// example, changing a character pose should propagate, but a line of dialogue
-// should not
-Step.prototype.propagate = true;
 
 
 class Stage extends Actor {
 }
-class Stage_Pause extends Step {}
-Stage_Pause.display_name = 'pause';  // TODO?
-Stage_Pause.prototype.pause = true;
-// XXX i don't love that this is implicitly keyed on json names?  hm
-Stage.prototype.STEP_TYPES = {
-    pause: Stage_Pause,
+Stage.prototype.TWIDDLES = {};
+Stage.STEP_TYPES = {
+    pause: {
+        display_name: "pause",
+        pause: true,
+        args: [],
+        twiddles: {},
+    },
 };
+// TODO from legacy json, and target any actorless actions at us?
 
 
 class Curtain extends Actor {
 }
-class Curtain_Lower extends Step {}
-Curtain.prototype.STEP_TYPES = {
-    lower: Curtain_Lower,
+Curtain.prototype.TWIDDLES = {
+    lowered: {
+        initial: false,
+        type: Boolean,
+        propagate: false,
+    },
+};
+Curtain.STEP_TYPES = {
+    lower: {
+        display_name: 'lower',
+        args: [],
+        twiddles: {
+            lowered: true,
+        },
+    },
+};
+Curtain.LEGACY_JSON_ACTIONS = {
+    lower: ["lower"],
 };
 
 // do i need actortemplate?
@@ -138,20 +167,35 @@ class Jukebox extends Actor {
         // TODO
     }
 }
-class Jukebox_Play extends Step {
-    constructor(actor, track_name) {
-        super(actor);
-        this.track_name = track_name;
-    }
-
-    static from_legacy_json(actor, json) {
-        return new this(actor, json.track);
-    }
-}
-class Jukebox_Stop extends Step {}
-Jukebox.prototype.STEP_TYPES = {
-    play: Jukebox_Play,
-    stop: Jukebox_Stop,
+Jukebox.prototype.TWIDDLES = {
+    track: {
+        initial: null,
+        // XXX type?  index into Jukebox.tracks
+    },
+};
+Jukebox.STEP_TYPES = {
+    play: {
+        display_name: "play",
+        args: [{
+            display_name: "track",
+            type: 'key',
+            type_key_prop: 'tracks',
+        }],
+        twiddles: {
+            track: 0,
+        },
+    },
+    stop: {
+        display_name: "stop",
+        args: [],
+        twiddles: {
+            track: null,
+        },
+    },
+};
+Jukebox.LEGACY_JSON_ACTIONS = {
+    play: ["play", 'track'],
+    stop: ["stop"],
 };
 
 class PictureFrame extends Actor {
@@ -159,10 +203,6 @@ class PictureFrame extends Actor {
         super();
         this.poses = {};
         this.active_pose_name = null;
-
-        this.initial_state = {
-            pose: null,
-        };
     }
 
     static from_legacy_json(json) {
@@ -234,7 +274,7 @@ class PictureFrame extends Actor {
     //    @poses[name] = frames
 
     apply_state(state) {
-        let current_state = this.current_state || this.initial_state;
+        let current_state = this.current_state || this.make_initial_state();
 
         if (state.pose !== current_state.pose) {
             this.show(state.pose);
@@ -315,27 +355,44 @@ class PictureFrame extends Actor {
             setTimeout (=> @_advance $el, pose_name, next_index), delay
     */
 }
-class PictureFrame_Show extends Step {
-    constructor(actor, pose_name) {
-        super(actor);
-        this.pose_name = pose_name;
-    }
-
-    static from_legacy_json(actor, json) {
-        return new this(actor, json.view);
-    }
-
-    // TODO check?
-
-    update_state(state) {
-        state.pose = this.pose_name;
-    }
+PictureFrame.prototype.TWIDDLES = {
+    pose: {
+        initial: null,
+        // XXX type?  index into PictureFrame.poses
+        check(actor, value) {
+            if (value !== null && actor.poses[value] === undefined) {
+                return `No such pose: ${value}`;
+            }
+        }
+    },
+};
+// TODO ok so the thing here, is, that, uh, um
+// - i need conversion from "legacy" json actions
+// - i need to know what to show in the ui
+// - if i save stuff as twiddle changes, i need to know how to convert those back to ui steps too, but maybe that's the same problem
+PictureFrame.STEP_TYPES = {
+    show: {
+        display_name: 'show',
+        args: [{
+            display_name: 'pose',
+            type: 'key',
+            type_key_prop: 'poses',
+        }],
+        twiddles: {
+            pose: 0,
+        },
+    },
+    hide: {
+        display_name: 'hide',
+        args: [],
+        twiddles: {
+            pose: null,
+        },
+    },
 }
-class PictureFrame_Hide extends Step {
-}
-PictureFrame.prototype.STEP_TYPES = {
-    show: PictureFrame_Show,
-    hide: PictureFrame_Hide,
+PictureFrame.LEGACY_JSON_ACTIONS = {
+    show: ["show", 'view'],
+    hide: ["hide"],
 };
 
 
@@ -344,19 +401,30 @@ class Character extends Actor {
         this.xxx_dialogue_box.say(text);
     }
 }
-class Character_Say extends Step {
-    constructor(actor, phrase) {
-        super(actor);
-        this.phrase = phrase;
-    }
-
-    static from_legacy_json(actor, json) {
-        return new this(actor, json.text);
-    }
-}
-Character_Say.prototype.pause = true;
-Character.prototype.STEP_TYPES = {
-    say: Character_Say,
+// XXX aha, this could be a problem.  a character is a delegate; it doesn't have any actual twiddles of its own!
+// in the old code (by which i mean, round two), the character even OWNS the pictureframe...
+// so "Character:say" is really two twiddle updates on the dialogue box: the phrase AND the speaker whose style to use.  hrm.
+Character.prototype.TWIDDLES = {};
+Character.STEP_TYPES = {
+    say: {
+        display_name: 'say',
+        pause: true,
+        args: [{
+            display_name: 'phrase',
+            type: 'prose',
+            nullable: false,
+        }],
+        twiddles: {},
+        update_state(actor, state, prose) {
+            // FIXME ah, no, the state goes to the attached dialogue box, which i don't know how to get from here!  fucking christ hell
+            state.phrase = prose;
+        },
+    },
+};
+Character.LEGACY_JSON_ACTIONS = {
+    say: ["say", 'text'],
+    pose: ["pose", 'view'],
+    leave: ["leave"],
 };
 
 class DialogueBox extends Actor {
@@ -788,24 +856,14 @@ class DialogueBox extends Actor {
             return
         @_scroll $dialogue, all_letters, letter_index
 */
-class DialogueBox_Say extends Step {
-    constructor(actor, phrase) {
-        super(actor);
-        this.phrase = phrase;
-    }
-
-    static from_legacy_json(actor, json) {
-        return new this(actor, json.text);
-    }
-
-    update_state(state) {
-        state.phrase = phrase;
-    }
-}
-DialogueBox_Say.prototype.pause = true;
-DialogueBox.prototype.STEP_TYPES = {
-    say: DialogueBox_Say,
+DialogueBox.prototype.TWIDDLES = {
+    phrase: {
+        initial: null,
+        propagate: null,
+    },
 };
+DialogueBox.STEP_TYPES = {};
+DialogueBox.LEGACY_JSON_ACTIONS = {};
 
 class Script {
     constructor() {
@@ -820,6 +878,8 @@ class Script {
         ];
 
         this.cursor = 0;
+
+        this.set_steps([]);
     }
 
     static from_legacy_json(json) {
@@ -849,25 +909,23 @@ class Script {
             }
         }
 
-        // FIXME do i want to keep this step format?  on the one hand, named args!  on the other hand, passing this big blob in feels like a mess.
-        this.steps = json.script;
-        this.steps = []
+        let steps = [];
         for (let json_step of json.script) {
             if (! json_step.actor) {
                 // FIXME special actions like roll_credits
                 if (json_step.action == 'pause') {
-                    this.steps.push(new Stage_Pause(this.actors.stage));
+                    steps.push(new Step(this.actors.stage, Stage.STEP_TYPES.pause, []));
                 }
                 continue;
             }
 
             let actor = this.actors[json_step.actor];
-            let step_type = actor.STEP_TYPES[json_step.action];
-            let step = step_type.from_legacy_json(actor, json_step);
-            this.steps.push(step);
+            let actor_type = actor.constructor;
+            let [step_key, ...arg_keys] = actor_type.LEGACY_JSON_ACTIONS[json_step.action];
+            steps.push(new Step(actor, actor_type.STEP_TYPES[step_key], arg_keys.map(key => json_step[key])));
         }
 
-        this.consolidate_steps();
+        this.set_steps(steps);
         /*
         if actordef.type == "character"
             actor = Character.from_json speech, relative_to, actordef
@@ -894,26 +952,45 @@ class Script {
         return this;
     }
 
-    consolidate_steps() {
+    set_steps(steps) {
+        this.steps = steps;
+
+        // Consolidate steps into bundles of twiddle states
         this.states = [];
         let state = new Map();
         let actors_dirty = new Map();
         for (let [name, actor] of Object.entries(this.actors)) {
-            state.set(actor, actor.initial_state);
+            state.set(actor, actor.make_initial_state());
             actors_dirty.set(actor, false);
         }
 
         for (let step of this.steps) {
             let actor = step.actor;
+            let actor_state = state.get(actor);
+
             // Clone the actor's current state, if it hasn't been done yet
             if (! actors_dirty.get(actor)) {
-                state.set(actor, Object.assign({}, state.get(actor)));
+                // FIXME need to take propagate into account
+                let new_state = {};
+                for (let [key, value] of Object.entries(actor_state)) {
+                    let twiddle = actor.TWIDDLES[key];
+                    if (twiddle.propagate === undefined) {
+                        // Keep using the current value
+                        new_state[key] = value;
+                    }
+                    else {
+                        // Revert to the given propagate value
+                        new_state[key] = twiddle.propagate;
+                    }
+                }
+                actor_state = new_state;
+                state.set(actor, actor_state);
                 actors_dirty.set(actor, true);
             }
 
-            step.update_state(state.get(actor));
+            step.update_state(actor_state);
 
-            if (step.pause) {
+            if (step.type.pause) {
                 this.states.push(state);
                 state = new Map(state);
                 for (let key of actors_dirty.keys()) {
@@ -925,7 +1002,17 @@ class Script {
         // TODO only if last step wasn't a pause probably.  or maybe i should push as i go.  but that doesn't work if the last step IS a pause.
         this.states.push(state);
 
-        console.log(this.states);
+        for (let [name, actor] of Object.entries(this.actors)) {
+            console.log("---", name, actor.constructor.name, "---");
+            let prev = null;
+            for (let [i, stateset] of this.states.entries()) {
+                let state = stateset.get(actor);
+                if (state !== prev) {
+                    console.log(i, state);
+                    prev = state;
+                }
+            }
+        }
     }
 
     advance() {
@@ -937,7 +1024,7 @@ class Script {
         // TODO ahh can the action "methods" return whether they pause?
 
         for (let [actor, state] of stateset) {
-            console.log(actor, state);
+            console.log(actor.constructor.name, actor, state);
             actor.apply_state(state);
         }
 
@@ -1011,17 +1098,28 @@ function make_element(tag, cls, text) {
 ////////////////////////////////////////////////////////////////////////////////
 // EDITOR
 
+// -----------------------------------------------------------------------------
+// Step argument configuration
+
+const STEP_ARGUMENT_TYPES = {
+    prose: {
+        build(arg_def, value) {
+            return make_element('div', 'gleam-editor-arg-prose', value);
+        },
+    },
+};
+
+
 function make_sample_step_element(actor_editor, step_type) {
     let el = make_element('div', 'gleam-editor-step');
     el.classList.add(actor_editor.CLASS_NAME);
     // FIXME how does name update?  does the actor editor keep a list, or do these things like listen for an event on us?
     el.appendChild(make_element('div', '-who', actor_editor.name));
-    el.appendChild(make_element('div', '-what', step_type.name));
-    // FIXME how does more than one arg work
-    if (step_type.arg_name) {
-        el.appendChild(make_element('div', '-how', `[${step_type.arg_name}]`));
+    el.appendChild(make_element('div', '-what', step_type.display_name));
+    for (let arg_def of step_type.args) {
+        el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
     }
-    //el.setAttribute('draggable', 'true');
+    el.setAttribute('draggable', 'true');
     return el;
 }
 
@@ -1030,36 +1128,30 @@ function make_step_element(actor_editor, step) {
     el.classList.add(actor_editor.CLASS_NAME);
     // FIXME how does name update?  does the actor editor keep a list, or do these things like listen for an event on us?
     el.appendChild(make_element('div', '-who', actor_editor.name));
-    el.appendChild(make_element('div', '-what', step.constructor.name));
-    // FIXME how does more than one arg work
-    if (step.arg_name) {
-        el.appendChild(make_element('div', '-how', `[${step_type.arg_name}]`));
+    el.appendChild(make_element('div', '-what', step.type.display_name));
+    for (let [i, arg_def] of step.type.args.entries()) {
+        let value = step.args[i];
+        // TODO custom editors and display based on types!
+        let arg_element = make_element('div', '-how');
+        let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
+        if (arg_type) {
+            arg_element.appendChild(arg_type.build(arg_def, value));
+        }
+        else {
+            arg_element.textContent = value;
+        }
+        el.appendChild(arg_element);
     }
-    // FIXME oh steps need way more metadata huh.  boy this is a bit of a nightmare
-    else if (step instanceof Character_Say) {
-        el.appendChild(make_element('div', '-how', step.phrase));
-    }
-    else if (step instanceof Jukebox_Play) {
-        el.appendChild(make_element('div', '-how', step.track_name));
-    }
-    else if (step instanceof PictureFrame_Show) {
-        el.appendChild(make_element('div', '-how', step.pose_name));
-    }
-    //el.setAttribute('draggable', 'true');
+    el.setAttribute('draggable', 'true');
     return el;
 }
 
 // Wrapper for a step that also keeps ahold of the step element and the
 // associated ActorEditor
 class EditorStep {
-    constructor(actor_editor, step_type, ...args) {
+    constructor(actor_editor, step, ...args) {
         this.actor_editor = actor_editor;
-        if (step_type instanceof Step) {
-            this.step = step_type;
-        }
-        else {
-            this.step = new step_type(...args);
-        }
+        this.step = step;
         this.element = make_step_element(actor_editor, this.step);
         this._position = null;
     }
@@ -1087,12 +1179,17 @@ class ActorEditor {
         this.container.classList.add(this.CLASS_NAME);
         this.actor = actor || new this.ACTOR_TYPE;
 
+        // FIXME name propagation, and also give actors names of their own probably?
         this.name = 'bogus';
 
+        this.initialize_steps();
+    }
+
+    initialize_steps() {
         // Add step templates
         // FIXME this is for picture frame; please genericify
         this.step_type_map = new Map();  // step element => step type
-        for (let step_type of Object.values(this.actor.STEP_TYPES)) {
+        for (let step_type of Object.values(this.ACTOR_TYPE.STEP_TYPES)) {
             let step_el = make_sample_step_element(this, step_type);
             this.container.appendChild(step_el);
             this.step_type_map.set(step_el, step_type);
@@ -1105,9 +1202,8 @@ class ActorEditor {
         this.container.addEventListener('dragstart', e => {
             e.dataTransfer.dropEffect = 'copy';
             e.dataTransfer.setData('text/plain', null);
-            // FIXME oughta create a pristine new step element
             let step_type = this.step_type_map.get(e.target);
-            this.main_editor.start_step_drag(new EditorStep(this, step_type));
+            this.main_editor.start_step_drag(new EditorStep(this, new Step(this.actor, step_type)));
         });
     }
 
@@ -1252,7 +1348,7 @@ DialogueBoxEditor.prototype.HTML = `
 
 // List of all actor editor types
 const ACTOR_EDITOR_TYPES = [
-    StageEditor,
+    //StageEditor,
     CurtainEditor,
     JukeboxEditor,
     PictureFrameEditor,
@@ -1374,7 +1470,7 @@ class Editor {
         this.actors_container = document.getElementById('gleam-editor-components');
         this.actors_el = this.actors_container.querySelector('.gleam-editor-components');
         for (let actor_editor_type of ACTOR_EDITOR_TYPES) {
-            let button = make_element('button', null, 'new');
+            let button = make_element('button', null, `new ${actor_editor_type.actor_type_name}`);
             button.addEventListener('click', ev => {
                 this.add_actor_editor(new actor_editor_type(this));
             });
@@ -1600,7 +1696,7 @@ class Editor {
             this.steps.push(editor_step);
 
             group.appendChild(editor_step.element);
-            if (step.pause) {
+            if (step.type.pause) {
                 this.steps_el.appendChild(group);
                 group = make_element('li');
             }
@@ -1681,10 +1777,10 @@ class Editor {
             let group = previous_el.parentNode;
             let next_group = group.nextElementSibling;
             // Time to handle pauses.
-            if (previous_step.step.pause) {
+            if (previous_step.step.type.pause) {
                 // Inserting after a step that pauses means we need to go at
                 // the beginning of the next group.
-                if (! next_group || step.step.pause) {
+                if (! next_group || step.step.type.pause) {
                     // If there's no next group, or we ALSO pause, then we end
                     // up in a group by ourselves regardless.
                     let new_group = make_element('li');
@@ -1697,7 +1793,7 @@ class Editor {
             }
             else {
                 // Inserting after a step that DOESN'T pause is easy, unless...
-                if (step.step.pause) {
+                if (step.step.type.pause) {
                     // Ah, we DO pause, so we need to split everything after
                     // ourselves into a new group.
                     let new_group = make_element('li');
