@@ -289,7 +289,12 @@ class PictureFrame extends Actor {
         let current_state = this.current_state || this.make_initial_state();
 
         if (state.pose !== current_state.pose) {
-            this.show(state.pose);
+            if (state.pose === null) {
+                this.disable();
+            }
+            else {
+                this.show(state.pose);
+            }
         }
 
         this.current_state = state;
@@ -339,7 +344,7 @@ class PictureFrame extends Actor {
 
         let promises = [];
         for (let child of this.element.childNodes) {
-            if (! child.classList.has('-visible'))
+            if (! child.classList.contains('-visible'))
                 continue;
 
             promises.push(promise_transition(child));
