@@ -1572,8 +1572,9 @@ class ScriptPanel extends Panel {
         this.beat_toolbar.appendChild(button);
         this.body.appendChild(this.beat_toolbar);
 
-        // This one bubbles!
-        this.beats_list.addEventListener('mouseover', ev => {
+        this.selected_beat_index = null;
+        this.beats_list.addEventListener('click', ev => {
+            // TODO do step selection too
             let el = ev.target;
             while (el && el.tagName !== 'LI' && el.parentNode !== this.beats_list) {
                 el = el.parentNode;
@@ -1585,22 +1586,12 @@ class ScriptPanel extends Panel {
                     position++;
                     el = el.previousElementSibling;
                 }
-
-                if (position !== hovered_beat_position) {
-                    hovered_beat_position = position;
-                    this.beat_toolbar.style.display = '';
-                    // FIXME sigh, yet again, big assumptions about parentage
-                    this.beat_toolbar.style.top = `${li.offsetTop + li.offsetParent.offsetTop}px`;
-                    // note the use of clientWidth to avoid the scrollbar
-                    this.beat_toolbar.style.right = `${this.body.clientWidth - (li.offsetLeft + li.offsetParent.offsetLeft + li.offsetWidth)}px`;
+                if (position !== this.selected_beat_index) {
+                    // TODO hmm, this assumes the script is working atm
+                    this.editor.script.jump(position);
                 }
             }
         });
-        this.body.addEventListener('mouseleave', ev => {
-            hovered_beat_position = null;
-            this.beat_toolbar.style.display = 'none';
-        });
-
 
         /*
          * FIXME restore
@@ -1777,6 +1768,19 @@ class ScriptPanel extends Panel {
         });
     }
 
+    set_beat_index(index) {
+        if (index === this.selected_beat_index)
+            return;
+
+        if (this.selected_beat_index !== null) {
+            this.beats_list.children[this.selected_beat_index].classList.remove('--current');
+        }
+        this.selected_beat_index = index;
+        if (this.selected_beat_index !== null) {
+            this.beats_list.children[this.selected_beat_index].classList.add('--current');
+        }
+    }
+
     insert_step_element(step, position) {
         // Add to the DOM
         // FIXME there's a case here that leaves an empty <li> at the end
@@ -1785,6 +1789,9 @@ class ScriptPanel extends Panel {
             let group = make_element('li');
             group.appendChild(step.element);
             this.beats_list.appendChild(group);
+            // Auto-select the first beat
+            // TODO this should really do a script jump, once the script works
+            this.set_beat_index(0);
         }
         else {
             // FIXME adding at position 0 doesn't work, whoops
@@ -1987,12 +1994,7 @@ class Editor {
 
     // FIXME hooks for the script
     on_beat() {
-        let current_beat_li = this.script_panel.beats_list.querySelector('.--current');
-        if (current_beat_li) {
-            current_beat_li.classList.remove('--current');
-        }
-
-        this.script_panel.beats_list.children[this.script.cursor].classList.add('--current');
+        this.script_panel.set_beat_index(this.script.cursor);
     }
 
     add_actor_editor(actor_editor) {
