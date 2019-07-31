@@ -1100,27 +1100,9 @@ class Script {
         }
     }
 
-    advance() {
-        console.log("ADVANCING");
-
-        // Some actors (namely, dialogue box) can do their own waiting for an
-        // advance, so consult them all first, and eject if any of them say
-        // they're still busy
-        let busy = false;
-        for (let actor of Object.values(this.actors)) {
-            if (actor.advance() === false) {
-            console.log("AH, BUSY", actor);
-                busy = true;
-            }
-        }
-        if (busy) {
-            return;
-        }
-
-        // If we're still here, advance to the next beat
+    jump(beat_index) {
+        this.cursor = beat_index;
         let beat = this.beats[this.cursor];
-        if (! beat)
-            return;
 
         // TODO ahh can the action "methods" return whether they pause?
 
@@ -1129,11 +1111,35 @@ class Script {
             actor.apply_state(state);
         }
 
-        // FIXME probably doesn't go here
-        this.cursor++;
         if (this.xxx_hook) {
             this.xxx_hook.on_beat();
         }
+    }
+
+    advance() {
+        console.log("ADVANCING");
+
+        // Some actors (namely, dialogue box) can do their own waiting for an
+        // advance, so consult them all first, and eject if any of them say
+        // they're still busy
+        if (this.cursor >= 0) {
+            let busy = false;
+            for (let actor of Object.values(this.actors)) {
+                if (actor.advance() === false) {
+                console.log("AH, BUSY", actor);
+                    busy = true;
+                }
+            }
+            if (busy) {
+                return;
+            }
+        }
+
+        // If we're still here, advance to the next beat
+        if (this.cursor >= this.beats.length)
+            return;
+
+        this.jump(this.cursor + 1);
     }
 
     update(dt) {
@@ -1219,7 +1225,6 @@ function make_sample_step_element(actor_editor, step_type) {
     let el = make_element('div', 'gleam-editor-step');
     el.classList.add(actor_editor.CLASS_NAME);
     // FIXME how does name update?  does the actor editor keep a list, or do these things like listen for an event on us?
-    el.appendChild(make_element('div', '-who', actor_editor.name));
     el.appendChild(make_element('div', '-what', step_type.display_name));
     for (let arg_def of step_type.args) {
         el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
@@ -1308,7 +1313,12 @@ class ActorEditor {
             e.dataTransfer.dropEffect = 'copy';
             e.dataTransfer.setData('text/plain', null);
             let step_type = this.step_type_map.get(e.target);
-            this.main_editor.start_step_drag(new EditorStep(this, new Step(this.actor, step_type)));
+            let args = [];
+            for (let arg_def of step_type.args) {
+                // TODO?
+                args.push(null);
+            }
+            this.main_editor.script_panel.begin_step_drag(new EditorStep(this, new Step(this.actor, step_type, args)));
         });
     }
 
@@ -1517,6 +1527,334 @@ class AssetLibrary {
     }
 }
 
+class Panel {
+    constructor(editor, container) {
+        this.editor = editor;
+        this.container = container;
+        this.nav = container.querySelector('.gleam-editor-panel > header > nav');
+        this.body = container.querySelector('.gleam-editor-panel > .gleam-editor-panel-body');
+    }
+}
+
+// Panel containing the script, which is a list of steps grouped into beats
+class ScriptPanel extends Panel {
+    constructor(editor, container) {
+        super(editor, container);
+
+        this.beats_list = this.container.querySelector('.gleam-editor-beats-list');
+        // State of a step drag happening anywhere in the editor; initialized
+        // in begin_step_drag
+        this.drag = null;
+
+        // Add some nav controls
+        let button = make_element('button', null, '←');
+        button.addEventListener('click', ev => {
+            // FIXME better api for this
+            this.editor.script.jump(this.editor.script.cursor - 1);
+        });
+        this.nav.appendChild(button);
+        button = make_element('button', null, '→');
+        button.addEventListener('click', ev => {
+            // FIXME better api for this
+            this.editor.script.jump(this.editor.script.cursor + 1);
+        });
+        this.nav.appendChild(button);
+
+        // Create the per-beat toolbar
+        // TODO i don't super understand how this should work, or how per-step should work either, ugh
+        this.beat_toolbar = make_element('nav', 'gleam-editor-beat-toolbar');
+        button = make_element('button', null, 'jump');
+        let hovered_beat_position = null;
+        button.addEventListener('click', ev => {
+            console.log(hovered_beat_position);
+            this.editor.script.jump(hovered_beat_position);
+        });
+        this.beat_toolbar.appendChild(button);
+        this.body.appendChild(this.beat_toolbar);
+
+        // This one bubbles!
+        this.beats_list.addEventListener('mouseover', ev => {
+            let el = ev.target;
+            while (el && el.tagName !== 'LI' && el.parentNode !== this.beats_list) {
+                el = el.parentNode;
+            }
+            if (el) {
+                let li = el;
+                let position = 0;
+                while (el.previousElementSibling) {
+                    position++;
+                    el = el.previousElementSibling;
+                }
+
+                if (position !== hovered_beat_position) {
+                    hovered_beat_position = position;
+                    this.beat_toolbar.style.display = '';
+                    // FIXME sigh, yet again, big assumptions about parentage
+                    this.beat_toolbar.style.top = `${li.offsetTop + li.offsetParent.offsetTop}px`;
+                    // note the use of clientWidth to avoid the scrollbar
+                    this.beat_toolbar.style.right = `${this.body.clientWidth - (li.offsetLeft + li.offsetParent.offsetLeft + li.offsetWidth)}px`;
+                }
+            }
+        });
+        this.body.addEventListener('mouseleave', ev => {
+            hovered_beat_position = null;
+            this.beat_toolbar.style.display = 'none';
+        });
+
+
+        /*
+         * FIXME restore
+         * FIXME drag handle?  how?
+        this.beats_list.addEventListener('dragstart', e => {
+            e.dataTransfer.dropEffect = 'move';  // FIXME?  should be set in enter/over?
+            e.dataTransfer.setData('text/plain', null);
+            dragged_step = e.target;
+            dragged_step.classList.add('gleam-editor--dragged-step');
+        });
+        */
+        // Note that this fires on the original target, and NOT if the original node is moved???
+        this.beats_list.addEventListener('dragend', e => {
+            // FIXME return dragged step to where it was, if it was dragged from the step list in the first place
+            this.end_step_drag();
+        });
+
+        // Set up dropping a step into the script (either from elsewhere in the
+        // script, or from an actor)
+        // Fires repeatedly on a valid drop target, which FIXME I thought was determined by dragenter???
+        this.container.addEventListener('dragover', ev => {
+            // Only listen to drags of steps
+            if (this.drag === null) {
+                return;
+            }
+            ev.preventDefault();
+
+            // GOAL: Find where the step should be inserted based on the mouse
+            // position, or in other words, which step the mouse is aiming at.
+
+            // If there are no steps, there's nothing to do: a new step can
+            // only be inserted at position 0.
+            let position;
+            if (this.editor.steps.length === 0) {
+                position = 0;
+            }
+            else {
+                // If the mouse is already over a step, we're basically done.
+                let cy = ev.clientY;
+                let pointed_step = ev.target;
+                while (pointed_step && ! pointed_step.classList.contains('gleam-editor-step')) {
+                    pointed_step = pointed_step.parentNode;
+                    if (! this.beats_list.contains(pointed_step)) {
+                        pointed_step = null;
+                        break;
+                    }
+                }
+                if (pointed_step) {
+                    let rect = pointed_step.getBoundingClientRect();
+                    for (let [i, step] of this.editor.steps.entries()) {
+                        if (pointed_step === step.element) {
+                            position = i;
+                            break;
+                        }
+                    }
+                    // XXX position MUST be set here
+                    if (cy > (rect.top + rect.bottom) / 2) {
+                        position++;
+                    }
+                }
+                else {
+                    // The mouse is outside the list.  Resort to a binary
+                    // search of the steps' client bounding rects, which are
+                    // relative to the viewport, which is pretty appropriate
+                    // for a visual effect like drag and drop.
+                    let l = this.editor.steps.length;
+                    let a = 0;
+                    let b = l;
+                    while (a < b) {
+                        let n = Math.floor((a + b) / 2);
+                        let rect = this.editor.steps[n].element.getBoundingClientRect();
+                        // Compare to the vertical midpoint of the step: if
+                        // we're just above that, we should go before that step
+                        // and take its place; otherwise, we should go after it
+                        if (cy < (rect.top + rect.bottom) / 2) {
+                            b = n;
+                        }
+                        else {
+                            a = n + 1;
+                        }
+                    }
+                    position = a;
+                }
+            }
+
+            this.drag.position = position;
+
+            // Ensure the caret is in the step container, and adjust its position
+            // FIXME position changes a bit depending on whether the new step pauses or not
+            let caret = this.drag.caret;
+            if (! caret.parentNode) {
+                this.container.appendChild(caret);
+                caret.style.left = `${this.beats_list.offsetLeft}px`;
+                caret.style.width = `${this.beats_list.offsetWidth}px`;
+            }
+
+            let caret_y;
+            let caret_mid_beat = false;
+            if (this.editor.steps.length === 0) {
+                caret_y = 0;
+            }
+            else if (position >= this.editor.steps.length) {
+                let last_step = this.editor.steps[this.editor.steps.length - 1].element;
+                caret_y = last_step.offsetTop + last_step.offsetHeight;
+            }
+            else {
+                // Position it at the top of the step it would be replacing
+                caret_y = this.editor.steps[position].element.offsetTop;
+                // If this new step would pause, and the step /behind/ it
+                // already pauses, then the caret will be at the end of a beat
+                // gap.  Move it up to appear in the middle of the beat.
+                if (position > 0 &&
+                    this.drag.step.step.type.pause &&
+                    this.editor.steps[position - 1].step.type.pause)
+                {
+                    caret_mid_beat = true;
+                }
+            }
+            caret.style.top = `${caret_y + this.beats_list.offsetTop}px`;
+            caret.classList.toggle('--mid-beat', caret_mid_beat);
+        });
+        // Fires when leaving a valid drop target (but actually when leaving
+        // any child of it too, ugh?  XXX check on this)
+        this.container.addEventListener('dragleave', e => {
+            if (! this.drag) {
+                return;
+            }
+            // FIXME ah this doesn't always work, christ
+            if (e.target !== e.currentTarget) {
+                return;
+            }
+
+            // Hide the caret and clear out the step position if we're not
+            // aiming at the step list
+            this.drag.position = null;
+
+            let caret = this.drag.caret;
+            if (caret.parentNode) {
+                caret.parentNode.removeChild(caret);
+            }
+        });
+        this.container.addEventListener('drop', e => {
+            if (! this.drag) {
+                return;
+            }
+
+            let step = this.drag.step;
+            let position = this.drag.position;
+            // Dropping onto nothing is a no-op
+            if (position === null) {
+                return;
+            }
+            // Dragging over oneself is a no-op
+            if (step.element === this.drag.target) {
+                return;
+            }
+
+            e.preventDefault();
+
+            // End the drag first, to get rid of the caret which kinda fucks
+            // up element traversal
+            this.end_step_drag();
+
+            this.editor.insert_step(step, position);
+        });
+        // Cancel the default behavior of any step drag that makes its way to
+        // the root; otherwise it'll be interpreted as a navigation or
+        // something
+        document.documentElement.addEventListener('drop', ev => {
+            if (this.drag) {
+                ev.preventDefault();
+                this.end_step_drag();
+            }
+        });
+    }
+
+    insert_step_element(step, position) {
+        // Add to the DOM
+        // FIXME there's a case here that leaves an empty <li> at the end
+        if (this.beats_list.children.length === 0) {
+            // It's the only child!  Easy.
+            let group = make_element('li');
+            group.appendChild(step.element);
+            this.beats_list.appendChild(group);
+        }
+        else {
+            // FIXME adding at position 0 doesn't work, whoops
+            let previous_step = this.editor.steps[position - 1];
+            let previous_el = previous_step.element;
+            let group = previous_el.parentNode;
+            let next_group = group.nextElementSibling;
+            // Time to handle pauses.
+            if (previous_step.step.type.pause) {
+                // Inserting after a step that pauses means we need to go at
+                // the beginning of the next group.
+                if (! next_group || step.step.type.pause) {
+                    // If there's no next group, or we ALSO pause, then we end
+                    // up in a group by ourselves regardless.
+                    let new_group = make_element('li');
+                    new_group.appendChild(step.element);
+                    this.beats_list.insertBefore(new_group, next_group);
+                }
+                else {
+                    next_group.insertBefore(step.element, next_group.firstElementChild);
+                }
+            }
+            else {
+                // Inserting after a step that DOESN'T pause is easy, unless...
+                if (step.step.type.pause) {
+                    // Ah, we DO pause, so we need to split everything after
+                    // ourselves into a new group.
+                    let new_group = make_element('li');
+                    while (previous_el.nextElementSibling) {
+                        new_group.appendChild(previous_el.nextElementSibling);
+                    }
+                    if (new_group.children) {
+                        this.beats_list.insertBefore(new_group, next_group);
+                    }
+                }
+
+                // Either way, we end up tucked in after the previous element.
+                group.insertBefore(step.element, previous_el.nextElementSibling);
+            }
+        }
+    }
+
+    begin_step_drag(step) {
+        this.drag = {
+            // EditorStep being dragged
+            step: step,
+            // Element showing where the step will be inserted
+            caret: make_element('hr', 'gleam-editor-step-caret'),
+            // Existing step being dragged over
+            target: null,
+            // Position to insert the step
+            position: null,
+        };
+    }
+
+    end_step_drag() {
+        let caret = this.drag.caret;
+        if (caret.parentNode) {
+            caret.parentNode.removeChild(caret);
+        }
+
+        if (this.drag.step_el) {
+            this.drag.step_el.classList.remove('gleam-editor--dragged-step');
+        }
+
+        this.drag = null;
+    }
+
+}
+
 class Editor {
     constructor(script, container, player_container) {
         // FIXME inject_into method or something?  separate view?
@@ -1525,6 +1863,7 @@ class Editor {
         this.player = new Player(script, player_container);
 
         // TODO be able to load existing steps from a script
+        this.steps = [];  // list of EditorSteps
 
         // Assets panel
         this.assets_container = document.getElementById('gleam-editor-assets');
@@ -1577,175 +1916,7 @@ class Editor {
             this.actors_container.querySelector('.gleam-editor-panel-body').appendChild(button);
         }
 
-        // Script panel
-        // TODO maybe move this into its own type or something, it's pretty noisy
-        this.steps = [];  // list of EditorSteps
-        this.steps_container = document.getElementById('gleam-editor-steps');
-        this.steps_el = this.steps_container.querySelector('.gleam-editor-steps');
-        // TODO i dont know how to do this tbh
-        for (let el of this.steps_el.querySelectorAll('.gleam-editor-step')) {
-            el.setAttribute('draggable', 'true');
-        }
-        this.step_drag = null;
-        /*
-         * FIXME restore
-        this.steps_el.addEventListener('dragstart', e => {
-            e.dataTransfer.dropEffect = 'move';  // FIXME?  should be set in enter/over?
-            e.dataTransfer.setData('text/plain', null);
-            dragged_step = e.target;
-            dragged_step.classList.add('gleam-editor--dragged-step');
-        });
-        */
-        // Note that this fires on the original target, and NOT if the original node is moved???
-        this.steps_el.addEventListener('dragend', e => {
-            // FIXME return dragged step to where it was, if it was dragged from the step list in the first place
-            this.end_step_drag();
-        });
-
-        // Set up dropping a step into the script (either from elsewhere in the
-        // script, or from an actor)
-        // Fires repeatedly on a valid drop target, which FIXME I thought was determined by dragenter???
-        this.steps_container.addEventListener('dragover', ev => {
-            // Only listen to drags of steps
-            if (this.step_drag === null) {
-                return;
-            }
-            ev.preventDefault();
-
-            // GOAL: Find where the step should be inserted based on the mouse
-            // position, or in other words, which step the mouse is aiming at.
-
-            // If there are no steps, there's nothing to do: a new step can
-            // only be inserted at position 0.
-            let position;
-            if (this.steps.length === 0) {
-                position = 0;
-            }
-            else {
-                // If the mouse is already over a step, we're basically done.
-                let cy = ev.clientY;
-                let pointed_step = ev.target;
-                while (pointed_step && ! pointed_step.classList.contains('gleam-editor-step')) {
-                    pointed_step = pointed_step.parentNode;
-                    if (! this.steps_el.contains(pointed_step)) {
-                        pointed_step = null;
-                        break;
-                    }
-                }
-                if (pointed_step) {
-                    let rect = pointed_step.getBoundingClientRect();
-                    for (let [i, step] of this.steps.entries()) {
-                        if (pointed_step === step.element) {
-                            position = i;
-                            break;
-                        }
-                    }
-                    // XXX position MUST be set here
-                    if (cy > (rect.top + rect.bottom) / 2) {
-                        position++;
-                    }
-                }
-                else {
-                    // The mouse is outside the list.  Resort to a binary
-                    // search of the steps' client bounding rects, which are
-                    // relative to the viewport, which is pretty appropriate
-                    // for a visual effect like drag and drop.
-                    let l = this.steps.length;
-                    let a = 0;
-                    let b = l;
-                    while (a < b) {
-                        let n = Math.floor((a + b) / 2);
-                        let rect = this.steps[n].element.getBoundingClientRect();
-                        // Compare to the vertical midpoint of the step: if
-                        // we're just above that, we should go before that step
-                        // and take its place; otherwise, we should go after it
-                        if (cy < (rect.top + rect.bottom) / 2) {
-                            b = n;
-                        }
-                        else {
-                            a = n + 1;
-                        }
-                    }
-                    position = a;
-                }
-            }
-
-            this.step_drag.position = position;
-
-            // Ensure the caret is in the step container, and adjust its position
-            // FIXME position changes a bit depending on whether the new step pauses or not
-            let caret = this.step_drag.caret;
-            if (! caret.parentNode) {
-                this.steps_container.appendChild(caret);
-            }
-
-            let caret_y;
-            if (this.steps.length === 0) {
-                caret_y = 0;
-            }
-            else if (position >= this.steps.length) {
-                let last_step = this.steps[this.steps.length - 1].element;
-                caret_y = last_step.offsetTop + last_step.offsetHeight;
-            }
-            else {
-                // Position it at the top of the step it would be replacing
-                caret_y = this.steps[position].element.offsetTop;
-            }
-            caret.style.top = `${caret_y + this.steps_el.offsetTop}px`;
-        });
-        // Fires when leaving a valid drop target (but actually when leaving
-        // any child of it too, ugh?  XXX check on this)
-        this.steps_container.addEventListener('dragleave', e => {
-            if (! this.step_drag) {
-                return;
-            }
-            // FIXME ah this doesn't always work, christ
-            if (e.target !== e.currentTarget) {
-                return;
-            }
-
-            // Hide the caret and clear out the step position if we're not
-            // aiming at the step list
-            this.step_drag.position = null;
-
-            let caret = this.step_drag.caret;
-            if (caret.parentNode) {
-                caret.parentNode.removeChild(caret);
-            }
-        });
-        this.steps_container.addEventListener('drop', e => {
-            if (! this.step_drag) {
-                return;
-            }
-
-            let step = this.step_drag.step;
-            let position = this.step_drag.position;
-            // Dropping onto nothing is a no-op
-            if (position === null) {
-                return;
-            }
-            // Dragging over oneself is a no-op
-            if (step.element === this.step_drag.target) {
-                return;
-            }
-
-            e.preventDefault();
-
-            // End the drag first, to get rid of the caret which kinda fucks
-            // up element traversal
-            this.end_step_drag();
-
-            this.insert_step(step, position);
-        });
-        // Cancel the default behavior of any step drag that makes its way to
-        // the root; otherwise it'll be interpreted as a navigation or
-        // something
-        document.documentElement.addEventListener('drop', ev => {
-            if (this.step_drag) {
-                ev.preventDefault();
-                this.end_step_drag();
-            }
-        });
+        this.script_panel = new ScriptPanel(this, document.getElementById('gleam-editor-script'));
 
         // Initialize with a stage, which the user can't create on their own
         // because there can only be one
@@ -1798,12 +1969,12 @@ class Editor {
 
             group.appendChild(editor_step.element);
             if (step.type.pause) {
-                this.steps_el.appendChild(group);
+                this.script_panel.beats_list.appendChild(group);
                 group = make_element('li');
             }
         }
         if (group.children.length > 0) {
-            this.steps_el.appendChild(group);
+            this.script_panel.beats_list.appendChild(group);
         }
 
         this.assets.refresh_dom();
@@ -1816,42 +1987,17 @@ class Editor {
 
     // FIXME hooks for the script
     on_beat() {
-        let current_beat_li = this.steps_el.querySelector('.--current');
+        let current_beat_li = this.script_panel.beats_list.querySelector('.--current');
         if (current_beat_li) {
             current_beat_li.classList.remove('--current');
         }
 
-        this.steps_el.children[this.script.cursor].classList.add('--current');
+        this.script_panel.beats_list.children[this.script.cursor].classList.add('--current');
     }
 
     add_actor_editor(actor_editor) {
         this.actor_editors.push(actor_editor);
         this.actors_el.appendChild(actor_editor.container);
-    }
-
-    start_step_drag(step) {
-        this.step_drag = {
-            // EditorStep being dragged
-            step: step,
-            // Element showing where the step will be inserted
-            caret: make_element('hr', 'gleam-editor-step-caret'),
-            // Existing step being dragged over
-            target: null,
-            // Position to insert the step
-            position: null,
-        };
-    }
-    end_step_drag() {
-        let caret = this.step_drag.caret;
-        if (caret.parentNode) {
-            caret.parentNode.removeChild(caret);
-        }
-
-        if (this.step_drag.step_el) {
-            this.step_drag.step_el.classList.remove('gleam-editor--dragged-step');
-        }
-
-        this.step_drag = null;
     }
 
     get_step_for_element(element) {
@@ -1878,53 +2024,7 @@ class Editor {
         }
         // TODO insert into script and update that
 
-        // Add to the DOM
-        // FIXME there's a case here that leaves an empty <li> at the end
-        if (this.steps.length === 1) {
-            // It's the only child!
-            let group = make_element('li');
-            group.appendChild(step.element);
-            this.steps_el.appendChild(group);
-        }
-        else {
-            // FIXME adding at position 0 doesn't work, whoops
-            let previous_step = this.steps[position - 1];
-            let previous_el = previous_step.element;
-            let group = previous_el.parentNode;
-            let next_group = group.nextElementSibling;
-            // Time to handle pauses.
-            if (previous_step.step.type.pause) {
-                // Inserting after a step that pauses means we need to go at
-                // the beginning of the next group.
-                if (! next_group || step.step.type.pause) {
-                    // If there's no next group, or we ALSO pause, then we end
-                    // up in a group by ourselves regardless.
-                    let new_group = make_element('li');
-                    new_group.appendChild(step.element);
-                    this.steps_el.insertBefore(new_group, next_group);
-                }
-                else {
-                    next_group.insertBefore(step.element, next_group.firstElementChild);
-                }
-            }
-            else {
-                // Inserting after a step that DOESN'T pause is easy, unless...
-                if (step.step.type.pause) {
-                    // Ah, we DO pause, so we need to split everything after
-                    // ourselves into a new group.
-                    let new_group = make_element('li');
-                    while (previous_el.nextElementSibling) {
-                        new_group.appendChild(previous_el.nextElementSibling);
-                    }
-                    if (new_group.children) {
-                        this.steps_el.insertBefore(new_group, next_group);
-                    }
-                }
-
-                // Either way, we end up tucked in after the previous element.
-                group.insertBefore(step.element, previous_el.nextElementSibling);
-            }
-        }
+        this.script_panel.insert_step_element(step, position);
     }
 }
 

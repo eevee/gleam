@@ -19,9 +19,11 @@ body {
 
     background: #404040;
     color: white;
+    font-family: 'Source Sans Pro', Helvetica, sans-serif;
     font-size: 18px;
 }
 
+/* Panels, which the entire editor UI is made of */
 section.gleam-editor-panel {
     display: flex;
     flex-direction: column;
@@ -29,14 +31,24 @@ section.gleam-editor-panel {
 }
 section.gleam-editor-panel > header {
     flex: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin: 0;
     padding: 0.33em 0.5em;
     background: #202020;
 }
 section.gleam-editor-panel > header h1 {
+    flex: 0 0 auto;
+    margin: 0;
+}
+section.gleam-editor-panel > header nav {
+    flex: 0 0 auto;
+    display: flex;
     margin: 0;
 }
 section.gleam-editor-panel > .gleam-editor-panel-body {
+    position: relative;
     flex: 1 0 0;
     overflow: auto;
 }
@@ -49,7 +61,7 @@ section.gleam-editor-panel > .gleam-editor-panel-body {
 #gleam-editor-assets {
     grid-area: assets;
 }
-#gleam-editor-steps {
+#gleam-editor-script {
     grid-area: steps;
 }
 
@@ -61,6 +73,19 @@ body > section.gleam-editor-drag-hover > header {
     background-color: hsl(210, 50%, 12.5%);
 }
 
+/* TODO super can't get away with this for long */
+nav button {
+    margin: 0 0.25em;
+    padding: 0.5em;
+    line-height: 1em;
+    border-radius: 3px;
+    border: none;
+    background: #606060;
+    color: black;
+}
+nav button:hover {
+    background: #808080;
+}
 
 /* Stage panel */
 #gleam-editor-player {
@@ -87,6 +112,7 @@ ol.gleam-editor-components > li {
 ol.gleam-editor-components > li h2 {
     padding: 0.25em 0.5em;
     margin: 0;
+    font-size: 1.25em;
     background: hsl(0, 0%, 75%);
 }
 ol.gleam-editor-components > li h3 {
@@ -110,8 +136,8 @@ ul.gleam-editor-component-pictureframe-poses img {
 
 /* Asset panel */
 .gleam-editor-assets li {
-    padding: 0.33em;
-    margin: 0.5em;
+    padding: 0.25em 0.33em;
+    margin: 0.25em;
     background: #383838;
 }
 .gleam-editor-assets li.-missing {
@@ -119,27 +145,26 @@ ul.gleam-editor-component-pictureframe-poses img {
 }
 
 /* Script panel */
-#gleam-editor-steps {
+#gleam-editor-script {
     /* Need this for positioning the drag caret */
     position: relative;
 }
-ol.gleam-editor-steps {
+ol.gleam-editor-beats-list {
+    /* Need this for positioning the numbers */
     position: relative;
-    display: flex;
     margin: 0.5em 1em;
     padding: 0;
-    flex-direction: column;
 
     /* make room for numbers */
     padding-left: 1.5em;
     counter-reset: beat;
 }
-ol.gleam-editor-steps > li {
-    margin: 0.25em 0;
+ol.gleam-editor-beats-list > li {
+    margin: 0.5em 0;
     border: 1px solid #202020;
     box-shadow: 0 0.125em 0.25em #202020;
 }
-ol.gleam-editor-steps > li::before {
+ol.gleam-editor-beats-list > li::before {
     counter-increment: beat;
     content: counter(beat);
     display: block;
@@ -150,20 +175,39 @@ ol.gleam-editor-steps > li::before {
     text-align: right;
 }
 /* Step currently showing on stage */
-ol.gleam-editor-steps > li.--current {
+ol.gleam-editor-beats-list > li.--current {
     outline: 2px solid gold;
+}
+.gleam-editor-beat-toolbar {
+    position: absolute;
+    /* needs to be above the items */
+    z-index: 1;
+    font-size: 0.5em;
+    padding: 0.33em;
+    /* must match the right margin on the beat list */
+    right: 1em;
+    /* FIXME this fucking sucks, i want to align the BOTTOM to a TOP edge */
+    transform: translateY(-100%);
+    border: 1px solid black;
+    border-bottom: none;
+    border-top-right-radius: 3px;
+    border-top-left-radius: 3px;
+    background: black;
 }
 .gleam-editor-step-caret {
     position: absolute;
     z-index: 99;
     margin: 0;
     margin-top: -2px;  /* overlap the border */
-    /* These should match the total horizontal margin on an <li> */
-    left: 2em;
-    right: 1em;
+    left: 0;
+    right: 0;
     height: 3px;
     border: none;
     background: hsl(210, 90%, 60%);
+}
+.gleam-editor-step-caret.--mid-beat {
+    /* Half of the margin between beats */
+    margin-top: calc(-0.5em + 2px);
 }
 
 /* Steps, used in components and the script panel */
@@ -188,12 +232,14 @@ ol.gleam-editor-steps > li.--current {
 }
 .gleam-editor-step > .-what {
     padding: 0.25em 0.5em;
-    margin-left: -1em;
-    padding-left: 1.5em;
     padding-right: 1em;
     background: hsl(0, 0%, 82.5%);
     border-top-right-radius: 0.75em 1em;
     border-bottom-right-radius: 0.75em 1em;
+}
+.gleam-editor-step > .-who + .-what {
+    padding-left: 1.5em;
+    margin-left: -1em;
 }
 .gleam-editor-step > .-how {
     margin: 0.25em 0.5em;
@@ -238,6 +284,16 @@ ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2 {
 .gleam-editor-step.gleam-editor-actor-pictureframe > .-who::before,
 ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2::before {
     content: '🖼️';
+    margin-right: 0.25em;
+}
+/* Dialogue box */
+.gleam-editor-step.gleam-editor-actor-dialoguebox > .-who,
+ol.gleam-editor-components > li.gleam-editor-actor-dialoguebox h2 {
+    background: hsl(60, 50%, 75%);
+}
+.gleam-editor-step.gleam-editor-actor-dialoguebox > .-who::before,
+ol.gleam-editor-components > li.gleam-editor-actor-dialoguebox h2::before {
+    content: '💬️';
     margin-right: 0.25em;
 }
 /* Character */
