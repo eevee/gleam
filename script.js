@@ -4,6 +4,8 @@
 // is showing this text" or "this background is visible"), and all the engine
 // actually does is adjust the states as appropriate.  Even the transitions are
 // all CSS.
+
+// FIXME i'm a bit inconsistent with how DialogueBox.cursor vs Script.cursor works: is it the next step or the current one?
 window.Gleam = (function() {
 "use strict";
 
@@ -264,7 +266,7 @@ class PictureFrame extends Actor {
         // able to "skip" a transition while holding down right arrow  >:(
         /*
         $parent.on 'stage:next' + NS, (event) =>
-            $x = $element.find('.-visible')
+            $x = $element.find('.--visible')
             #$x.css 'transition-property', 'none'
             $x.css 'transition-duration', '0s'
             $x.css 'opacity', '1.0'
@@ -313,15 +315,15 @@ class PictureFrame extends Actor {
             return;
         if (this.active_pose_name) {
             // FIXME do every frame's element i guess
-            this.poses[this.active_pose_name].element.classList.remove('-visible');
+            this.poses[this.active_pose_name].element.classList.remove('--visible');
         }
         this.active_pose_name = pose_name;
 
         let child = pose.element;
-        if (child.classList.contains('-visible'))
+        if (child.classList.contains('--visible'))
             return;
 
-        child.classList.add('-visible');
+        child.classList.add('--visible');
         let promise = promise_transition(child);
 
         /* TODO animation stuff
@@ -344,11 +346,11 @@ class PictureFrame extends Actor {
 
         let promises = [];
         for (let child of this.element.childNodes) {
-            if (! child.classList.contains('-visible'))
+            if (! child.classList.contains('--visible'))
                 continue;
 
             promises.push(promise_transition(child));
-            child.classList.remove('-visible');
+            child.classList.remove('--visible');
         }
 
         return Promise.all(promises);
@@ -361,11 +363,11 @@ class PictureFrame extends Actor {
         next_index = (current_index + 1) % $pose_elements[pose_name].length
         $next = $pose_elements[pose_name][next_index]
 
-        if not $current.hasClass '-visible'
+        if not $current.hasClass '--visible'
             return
 
-        $current.removeClass '-visible'
-        $next.addClass '-visible'
+        $current.removeClass '--visible'
+        $next.addClass '--visible'
 
         delay = $next.data 'delay'
         if delay
@@ -493,7 +495,7 @@ class DialogueBox extends Actor {
             this.hide();
             return;
         }
-        this.element.classList.remove('-hidden');
+        this.element.classList.remove('--hidden');
 
         // Create the dialogue DOM
         if (this.phrase_element) {
@@ -632,7 +634,7 @@ class DialogueBox extends Actor {
 
         // Start out with all letters hidden
         for (let letter of letters) {
-            letter.classList.add('-hidden');
+            letter.classList.add('--hidden');
         }
 
         // TODO do something with old one...?  caller does atm, but
@@ -694,7 +696,7 @@ class DialogueBox extends Actor {
                 return;
             }
 
-            letter.classList.remove('-hidden');
+            letter.classList.remove('--hidden');
 
             if (this.scroll_state !== 'fill') {
                 if (letter.textContent === "\f") {
@@ -730,7 +732,7 @@ class DialogueBox extends Actor {
 
             // Hide the letters from any previous text shown
             for (let letter of this.letter_elements) {
-                letter.classList.add('-hidden');
+                letter.classList.add('--hidden');
             }
 
             this._start_scrolling();
@@ -794,7 +796,7 @@ class DialogueBox extends Actor {
             $el.parent().triggerHandler 'stage:jump', [when_complete_label]
             return
 
-        $el.removeClass '-hidden'
+        $el.removeClass '--hidden'
         $el.empty()
         # TODO dry; XXX remove speaker!!!
         $el.css
@@ -871,7 +873,7 @@ class DialogueBox extends Actor {
 
     _hide: (event) ->
         $el = $ event.currentTarget
-        $el.addClass '-hidden'
+        $el.addClass '--hidden'
         $el.text ''
 
     _disable: (event) ->
@@ -1124,6 +1126,9 @@ class Script {
 
         // FIXME probably doesn't go here
         this.cursor++;
+        if (this.xxx_hook) {
+            this.xxx_hook.on_beat();
+        }
     }
 
     update(dt) {
@@ -1133,6 +1138,7 @@ class Script {
     }
 }
 
+// FIXME should the script be static and the player contains all the mutable state??  and, same question about actors i suppose?
 class Player {
     constructor(script, container) {
         this.script = script;
@@ -1515,6 +1521,7 @@ class AssetLibrary {
 class Editor {
     constructor(script, container, player_container) {
         // FIXME inject_into method or something?  separate view?
+        this.script = script;
         this.container = container;
         this.player = new Player(script, player_container);
 
@@ -1666,25 +1673,26 @@ class Editor {
 
             this.step_drag.position = position;
 
-            // Ensure the cursor is in the step list, and adjust its position
+            // Ensure the caret is in the step container, and adjust its position
             // FIXME position changes a bit depending on whether the new step pauses or not
-            let cursor = this.step_drag.cursor;
-            if (! cursor.parentNode) {
-                this.steps_el.appendChild(cursor);
+            let caret = this.step_drag.caret;
+            if (! caret.parentNode) {
+                this.steps_container.appendChild(caret);
             }
 
-            let cursor_y;
+            let caret_y;
             if (this.steps.length === 0) {
-                cursor_y = 0;
+                caret_y = 0;
             }
             else if (position >= this.steps.length) {
                 let last_step = this.steps[this.steps.length - 1].element;
-                cursor_y = last_step.offsetTop + last_step.offsetHeight;
+                caret_y = last_step.offsetTop + last_step.offsetHeight;
             }
             else {
-                cursor_y = this.steps[position].element.offsetTop;
+                // Position it at the top of the step it would be replacing
+                caret_y = this.steps[position].element.offsetTop;
             }
-            cursor.style.top = `${cursor_y}px`;
+            caret.style.top = `${caret_y + this.steps_el.offsetTop}px`;
         });
         // Fires when leaving a valid drop target (but actually when leaving
         // any child of it too, ugh?  XXX check on this)
@@ -1697,13 +1705,13 @@ class Editor {
                 return;
             }
 
-            // Hide the cursor and clear out the step position if we're not
+            // Hide the caret and clear out the step position if we're not
             // aiming at the step list
             this.step_drag.position = null;
 
-            let cursor = this.step_drag.cursor;
-            if (cursor.parentNode) {
-                cursor.parentNode.removeChild(cursor);
+            let caret = this.step_drag.caret;
+            if (caret.parentNode) {
+                caret.parentNode.removeChild(caret);
             }
         });
         this.steps_container.addEventListener('drop', e => {
@@ -1724,7 +1732,7 @@ class Editor {
 
             e.preventDefault();
 
-            // End the drag first, to get rid of the cursor which kinda fucks
+            // End the drag first, to get rid of the caret which kinda fucks
             // up element traversal
             this.end_step_drag();
 
@@ -1800,6 +1808,21 @@ class Editor {
         }
 
         this.assets.refresh_dom();
+
+
+        // FIXME this is very bad
+        script.xxx_hook = this;
+        this.on_beat();
+    }
+
+    // FIXME hooks for the script
+    on_beat() {
+        let current_beat_li = this.steps_el.querySelector('.--current');
+        if (current_beat_li) {
+            current_beat_li.classList.remove('--current');
+        }
+
+        this.steps_el.children[this.script.cursor].classList.add('--current');
     }
 
     add_actor_editor(actor_editor) {
@@ -1812,7 +1835,7 @@ class Editor {
             // EditorStep being dragged
             step: step,
             // Element showing where the step will be inserted
-            cursor: make_element('hr', 'gleam-editor-step-cursor'),
+            caret: make_element('hr', 'gleam-editor-step-caret'),
             // Existing step being dragged over
             target: null,
             // Position to insert the step
@@ -1820,9 +1843,9 @@ class Editor {
         };
     }
     end_step_drag() {
-        let cursor = this.step_drag.cursor;
-        if (cursor.parentNode) {
-            cursor.parentNode.removeChild(cursor);
+        let caret = this.step_drag.caret;
+        if (caret.parentNode) {
+            caret.parentNode.removeChild(caret);
         }
 
         if (this.step_drag.step_el) {

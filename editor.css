@@ -96,25 +96,54 @@ ul.gleam-editor-component-pictureframe-poses img {
     background: #803838;
 }
 
+/* Script panel */
+#gleam-editor-steps {
+    /* Need this for positioning the drag caret */
+    position: relative;
+}
 ol.gleam-editor-steps {
     position: relative;
     display: flex;
     margin: 0.5em 1em;
     padding: 0;
+    flex-direction: column;
+
     /* make room for numbers */
     padding-left: 1em;
-    flex-direction: column;
+    counter-reset: beat;
 }
 ol.gleam-editor-steps > li {
-    list-style-type: decimal;
     margin: 0.25em 0;
     border: 1px solid #202020;
     box-shadow: 0 0.125em 0.25em #202020;
 }
-/* FIXME this doesn't work in chrome */
-ol.gleam-editor-steps > li::marker {
-    padding-right: 0.25em;
+ol.gleam-editor-steps > li::before {
+    counter-increment: beat;
+    content: counter(beat);
+    display: block;
+    position: absolute;
+    width: 1em;
+    margin-left: -1.5em;
+    text-align: right;
 }
+/* Step currently showing on stage */
+ol.gleam-editor-steps > li.--current {
+    outline: 2px solid gold;
+}
+.gleam-editor-step-caret {
+    position: absolute;
+    z-index: 99;
+    margin: 0;
+    margin-top: -2px;  /* overlap the border */
+    /* These should match the total horizontal margin on an <li> */
+    left: 2em;
+    right: 1em;
+    height: 3px;
+    border: none;
+    background: hsl(210, 90%, 60%);
+}
+
+/* Steps, used in components and the script panel */
 .gleam-editor-step {
     display: flex;
     background: #f0f0f0;
@@ -123,19 +152,6 @@ ol.gleam-editor-steps > li::marker {
 .gleam-editor-step.gleam-editor--dragged-step {
     opacity: 0.5;
 }
-.gleam-editor-step-cursor {
-    position: absolute;
-    z-index: 99;
-    margin: 0;
-    margin-top: -2px;  /* overlap the border */
-    left: 0;
-    right: 0;
-    height: 3px;
-    border: none;
-    background: hsl(210, 90%, 60%);
-}
-
-/* Steps, used in components and the script panel */
 .gleam-editor-step + .gleam-editor-step {
     border-top: 1px solid #aaa;
 }

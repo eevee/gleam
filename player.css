@@ -13,7 +13,7 @@
     visibility: hidden;
     pointer-events: none;
 }
-.gleam-actor-pictureframe img.-visible {
+.gleam-actor-pictureframe img.--visible {
     visibility: visible;
     pointer-events: initial;
 }
@@ -33,12 +33,12 @@
     background-color: #00000080;
     color: white;
 }
-.gleam-actor-dialoguebox.-hidden {
+.gleam-actor-dialoguebox.--hidden {
     display: none;
 }
 .gleam-actor-dialoguebox .-phrase {
     white-space: pre-wrap;
 }
-.gleam-actor-dialoguebox .-hidden {
+.gleam-actor-dialoguebox .--hidden {
     visibility: hidden;
 }
