@@ -7,11 +7,12 @@ ul, ol {
 html {
     height: 100%;
 }
+/* FIXME grid sizing is very uncooperative */
 body {
     display: grid;
     grid-template:
-        "assets components player" 1fr
-        "assets components steps " 1fr
+        "assets steps player" 1fr
+        "assets steps components" 1fr
     ;
     height: 100%;
     margin: 0;
@@ -20,18 +21,24 @@ body {
     color: white;
     font-size: 18px;
 }
-body > section {
-    /* FIXME can't figure out how to make the grid not expand without this */
-    overflow: auto;
+
+section.gleam-editor-panel {
+    display: flex;
+    flex-direction: column;
     border: 2px solid #101010;
 }
-body > section > header {
+section.gleam-editor-panel > header {
+    flex: 0;
     margin: 0;
     padding: 0.33em 0.5em;
     background: #202020;
 }
-body > section > header h1 {
+section.gleam-editor-panel > header h1 {
     margin: 0;
+}
+section.gleam-editor-panel > .gleam-editor-panel-body {
+    flex: 1 0 0;
+    overflow: auto;
 }
 #gleam-editor-player {
     grid-area: player;
@@ -54,6 +61,21 @@ body > section.gleam-editor-drag-hover > header {
     background-color: hsl(210, 50%, 12.5%);
 }
 
+
+/* Stage panel */
+#gleam-editor-player {
+    background: #303030;
+}
+#gleam-editor-player > .gleam-editor-panel-body {
+    flex: 1;
+    padding: 1em;
+    overflow: visible;
+}
+#gleam-editor-player .gleam-player {
+    margin: auto;
+}
+
+/* Actors panel */
 ol.gleam-editor-components {
 }
 ol.gleam-editor-components > li {
@@ -109,7 +131,7 @@ ol.gleam-editor-steps {
     flex-direction: column;
 
     /* make room for numbers */
-    padding-left: 1em;
+    padding-left: 1.5em;
     counter-reset: beat;
 }
 ol.gleam-editor-steps > li {
@@ -122,8 +144,9 @@ ol.gleam-editor-steps > li::before {
     content: counter(beat);
     display: block;
     position: absolute;
-    width: 1em;
-    margin-left: -1.5em;
+    font-size: 0.75em;
+    width: 1.5rem;
+    margin-left: -2rem;
     text-align: right;
 }
 /* Step currently showing on stage */
@@ -222,8 +245,8 @@ ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2::before {
 ol.gleam-editor-components > li.gleam-editor-actor-character h2 {
     background: hsl(210, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-actor-pictureframe > .-who::before,
-ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2::before {
+.gleam-editor-step.gleam-editor-actor-character > .-who::before,
+ol.gleam-editor-components > li.gleam-editor-actor-character h2::before {
     content: '🗣️';
     margin-right: 0.25em;
 }

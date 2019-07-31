@@ -8,6 +8,7 @@
 // FIXME i'm a bit inconsistent with how DialogueBox.cursor vs Script.cursor works: is it the next step or the current one?
 window.Gleam = (function() {
 "use strict";
+let xxx_global_root;
 
 // -----------------------------------------------------------------------------
 // Promise/event helpers
@@ -247,8 +248,8 @@ class PictureFrame extends Actor {
                 // Bind the event handler FIRST -- if the image is cached, it
                 // might load instantly!
                 img_promises.push(promise_event(image, 'load', 'error'));
-                // FIXME who controls urls, eh
-                image.setAttribute('src', 'res/species-sirens-new/' + frame.url);
+                // FIXME who controls urls, eh?  seems like it should go through the script, which we don't have access to
+                image.setAttribute('src', xxx_global_root + '/' + frame.url);
                 image.setAttribute('data-pose-name', pose_name);
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
                 element.appendChild(image);
@@ -477,7 +478,10 @@ class DialogueBox extends Actor {
 
     apply_state(state) {
         if (state.phrase) {
-            return this.say(state.phrase);
+            this.say(state.phrase);
+        }
+        else {
+            this.hide();
         }
     }
 
@@ -560,7 +564,8 @@ class DialogueBox extends Actor {
     }
 
     hide() {
-        // TODO
+        this.element.classList.add('--hidden');
+        // TODO should this reset any scroll state etc?
     }
 
     _build_phrase_dom(text) {
@@ -1329,7 +1334,6 @@ StageEditor.prototype.HTML = `
         <header>
             <h2>stage</h2>
         </header>
-        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
     </li>
 `;
 
@@ -1343,7 +1347,6 @@ CurtainEditor.prototype.HTML = `
         <header>
             <h2>curtain</h2>
         </header>
-        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
     </li>
 `;
 
@@ -1358,7 +1361,6 @@ JukeboxEditor.prototype.HTML = `
             <h2>📻 jukebox</h2>
         </header>
         <h3>Tracks <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
-        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
     </li>
 `;
 
@@ -1413,7 +1415,6 @@ PictureFrameEditor.prototype.HTML = `
         <ul class="gleam-editor-component-pictureframe-poses">
         </ul>
         <button>preview</button>
-        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
     </li>
 `;
 
@@ -1427,7 +1428,6 @@ CharacterEditor.prototype.HTML = `
         <header>
             <h2>backdrop</h2>
         </header>
-        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
     </li>
 `;
 
@@ -1441,7 +1441,6 @@ DialogueBoxEditor.prototype.HTML = `
         <header>
             <h2>backdrop</h2>
         </header>
-        <h3>Steps <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
     </li>
 `;
 
@@ -1575,7 +1574,7 @@ class Editor {
             button.addEventListener('click', ev => {
                 this.add_actor_editor(new actor_editor_type(this));
             });
-            this.actors_container.appendChild(button);
+            this.actors_container.querySelector('.gleam-editor-panel-body').appendChild(button);
         }
 
         // Script panel
@@ -1932,7 +1931,8 @@ class Editor {
 // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
 window.addEventListener('load', e => {
     // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
-    let root = 'res/species-sirens-new';
+    let root = 'res/brokentoy-part1';
+    xxx_global_root = root;
     let xhr = new XMLHttpRequest;
     xhr.addEventListener('load', ev => {
         console.log(ev);

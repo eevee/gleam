@@ -8,27 +8,34 @@
     <script src="script.js"></script>
 </head>
 <body>
-    <section id="gleam-editor-player">
+    <section class="gleam-editor-panel" id="gleam-editor-player">
         <header><h1>Stage</h1></header>
-        <div class="gleam-player">
+        <div class="gleam-editor-panel-body">
+            <div class="gleam-player">
+            </div>
         </div>
     </section>
-    <section id="gleam-editor-components">
-        <header><h1>Components</h1></header>
-        <ol class="gleam-editor-components">
-        </ol>
+    <section class="gleam-editor-panel" id="gleam-editor-components">
+        <header><h1>Actors</h1></header>
+        <div class="gleam-editor-panel-body">
+            <ol class="gleam-editor-components">
+            </ol>
+        </div>
     </section>
-    <section id="gleam-editor-assets">
+    <section class="gleam-editor-panel" id="gleam-editor-assets">
         <header><h1>Assets</h1></header>
-        <ol class="gleam-editor-assets">
-            <li>hostage1.png</li>
-        </ol>
+        <div class="gleam-editor-panel-body">
+            <ol class="gleam-editor-assets">
+            </ol>
+        </div>
     </section>
-    <section id="gleam-editor-steps">
+    <section class="gleam-editor-panel" id="gleam-editor-steps">
         <header><h1>Script</h1></header>
-        <ol class="gleam-editor-steps">
-        </ol>
-        <!-- TODO waterfall view?  see what the state of anything is at any point? -->
+        <div class="gleam-editor-panel-body">
+            <ol class="gleam-editor-steps">
+            </ol>
+            <!-- TODO waterfall view?  see what the state of anything is at any point? -->
+        </div>
     </section>
 </body>
 </html>
