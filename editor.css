@@ -136,9 +136,7 @@ ul.gleam-editor-component-pictureframe-poses img {
 
 /* Asset panel */
 .gleam-editor-assets li {
-    padding: 0.25em 0.33em;
-    margin: 0.25em;
-    background: #383838;
+    padding: 0.25em 0.5em;
 }
 .gleam-editor-assets li.-missing {
     background: #803838;

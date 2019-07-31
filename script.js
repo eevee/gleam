@@ -5,7 +5,6 @@
 // actually does is adjust the states as appropriate.  Even the transitions are
 // all CSS.
 
-// FIXME i'm a bit inconsistent with how DialogueBox.cursor vs Script.cursor works: is it the next step or the current one?
 window.Gleam = (function() {
 "use strict";
 let xxx_global_root;
@@ -418,20 +417,31 @@ PictureFrame.LEGACY_JSON_ACTIONS = {
 };
 
 
-class Character extends Actor {
-    constructor() {
-        super();
+// FIXME do not love this hierarchy, the picture frame should very be its own thing
+class Character extends PictureFrame {
+    constructor(position) {
+        super(position);
 
         // Character delegates to a dialogue box, which must be assigned here, ASAP
         // TODO need editor ui for this!
         this.dialogue_box = null;
     }
+
+    static from_legacy_json(json) {
+        json.views = json.poses || {};
+        let actor = super.from_legacy_json(json);
+        actor.name = json.name;
+        actor.color = json.color;
+        return actor;
+    }
 }
 // XXX aha, this could be a problem.  a character is a delegate; it doesn't have any actual twiddles of its own!
 // in the old code (by which i mean, round two), the character even OWNS the pictureframe...
 // so "Character:say" is really two twiddle updates on the dialogue box: the phrase AND the speaker whose style to use.  hrm.
-Character.prototype.TWIDDLES = {};
+//Character.prototype.TWIDDLES = {};
 Character.STEP_TYPES = {
+    pose: PictureFrame.STEP_TYPES.show,
+    leave: PictureFrame.STEP_TYPES.hide,
     say: {
         display_name: 'say',
         pause: true,
@@ -659,14 +669,27 @@ class DialogueBox extends Actor {
             return false;
         }
 
-        // Do some math: figure out where the bottom of the available space is
-        // now, and in the case of text that doesn't fit in the box all at once,
-        // "slide" all the previously-shown text out of the way.
+        // If the scroll is starting midway through the text (presumably, at
+        // the start of a line!), slide the text up so the next character is at
+        // the top of the text box
+        // TODO hm, actually, what if it's /not/ at the start of a line?
+        // TODO should there be better text scrolling behavior?
+        // TODO should we be a little clever and vertically center the text
+        // within the box?  it's supposed to be exactly 3 lines but alternate
+        // fonts and whatnot might affect that...  er, but, they would also
+        // defeat anything i could do with line-height, hrm.  i do have the
+        // full layout set in stone ahead of time, so i could calculate ALL the
+        // chunks upfront, and skip some of this janky math as well?
+        // TODO what if the audience does a text zoom at some point?
         let first_letter_y = this.letter_elements[0].offsetTop;
         let next_letter_y = this.letter_elements[this.cursor + 1].offsetTop;
-        this.phrase_element.style.marginTop = `${first_letter_y - next_letter_y}px`;
-        // XXX what
-        this.container_bottom = this.phrase_element.offsetParent.offsetHeight + next_letter_y;
+        let dy = next_letter_y - first_letter_y;
+        this.phrase_element.style.transform = `translateY(-${dy}px)`;
+
+        // Grab the available height for the phrase box; if it fills up, the
+        // audience needs to advance to see more
+        let phrase_height = parseInt(window.getComputedStyle(this.element).height, 10);
+        this.phrase_bottom = phrase_height + dy;
 
         this.scroll_state = 'scrolling';
     }
@@ -683,25 +706,25 @@ class DialogueBox extends Actor {
         }
 
         // Reveal as many letters as appropriate
-        let letter;
         while (true) {
-            this.cursor++;
-            letter = this.letter_elements[this.cursor];
-            if (! letter) {
+            if (this.cursor + 1 >= this.letter_elements.length) {
                 this.scroll_state = 'done';
                 return;
             }
 
+            let letter = this.letter_elements[this.cursor + 1];
+
             // TODO this doesn't work if we're still in the middle of loading oops
             // TODO i don't remember what the above comment was referring to
             // If we ran out of room, stop here and wait for an advance
-            if (letter.offsetTop + letter.offsetHeight >= this.container_bottom) {
+            // XXX wait a second, shouldn't this use client bounding rect since it's a purely visual thing anyway
+            if (letter.offsetTop + letter.offsetHeight > this.phrase_bottom) {
                 this.scroll_state = 'waiting';
-                this.cursor--;
                 return;
             }
 
             letter.classList.remove('--hidden');
+            this.cursor++;
 
             if (this.scroll_state !== 'fill') {
                 if (letter.textContent === "\f") {
@@ -1039,6 +1062,10 @@ class Script {
             let actor = this.actors[json_step.actor];
             let actor_type = actor.constructor;
             let [step_key, ...arg_keys] = actor_type.LEGACY_JSON_ACTIONS[json_step.action];
+            let step_type = actor_type.STEP_TYPES[step_key];
+            if (! step_type) {
+                throw new Error(`No such action '${json_step.action}' for actor '${json_step.actor}'`);
+            }
             steps.push(new Step(actor, actor_type.STEP_TYPES[step_key], arg_keys.map(key => json_step[key])));
         }
 
@@ -2033,7 +2060,7 @@ class Editor {
 // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
 window.addEventListener('load', e => {
     // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
-    let root = 'res/brokentoy-part1';
+    let root = 'res/prompt2-itchyitchy-final';
     xxx_global_root = root;
     let xhr = new XMLHttpRequest;
     xhr.addEventListener('load', ev => {

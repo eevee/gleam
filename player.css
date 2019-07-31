@@ -3,19 +3,43 @@
     width: 800px;
     height: 600px;
     border: 1px solid black;
+
+    --transition-time: 0.2s;
 }
 
 .gleam-actor-pictureframe {
     position: absolute;
+    /* Create a stacking context so the z-index on visible images doesn't
+     * interfere with the actor ordering */
+    z-index: 0;
 }
 .gleam-actor-pictureframe img {
     position: absolute;
-    visibility: hidden;
+    /* TODO strongly consider transitioning visibility, too, although it's a bit more complicated with delays and all */
+    /* visibility: hidden; */
+    opacity: 0;
     pointer-events: none;
+
+    transition-property: opacity;
+    transition-duration: var(--transition-time);
 }
 .gleam-actor-pictureframe img.--visible {
     visibility: visible;
+    opacity: 1;
     pointer-events: initial;
+
+    /* Visible image should be above any that are still fading out */
+    z-index: 1;
+}
+/* A true cross-fade will end up with both images at 0.5 opacity halfway
+ * through, for a combined opacity of 0.75, which is no good -- especially for
+ * the backdrop!  As a workaround, fade in the new one first, then fade out the
+ * old one. */
+.gleam-actor-pictureframe img {
+    transition-delay: var(--transition-time);
+}
+.gleam-actor-pictureframe img.--visible {
+    transition-delay: 0s;
 }
 
 .gleam-actor-dialoguebox {
@@ -27,16 +51,20 @@
     right: 0;
     bottom: 0;
     /* Three lines tall */
+    font-size: 20px;
     line-height: 1.33;
     height: 4em;
+    padding: 0.75em;
 
-    background-color: #00000080;
+    border-top: 2px solid #0006;
+    background-color: #000c;
     color: white;
 }
 .gleam-actor-dialoguebox.--hidden {
     display: none;
 }
 .gleam-actor-dialoguebox .-phrase {
+    position: relative;
     white-space: pre-wrap;
 }
 .gleam-actor-dialoguebox .--hidden {
