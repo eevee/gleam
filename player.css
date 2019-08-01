@@ -7,6 +7,86 @@
     --transition-time: 0.2s;
 }
 
+.gleam-progress {
+    position: absolute;
+    z-index: 9999;  /* above everything, but below the pause UI */
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    --progress: 0%;
+    width: var(--progress);
+    background-color: #fff4;
+    border-right: 1px solid #fff9;
+    transition: width var(--transition-time) ease-out;
+}
+
+.gleam-pause-button {
+    position: absolute;
+    display: block;
+    /* above the pause screen, so it can still be clicked */
+    z-index: 10001;
+    top: 0;
+    right: 0;
+    width: 1em;
+    height: 1em;
+    padding: 0.5em;
+    background: black;
+    text-align: center;
+    line-height: 1;
+    border-bottom-left-radius: 0.5em;
+    cursor: pointer;
+    opacity: 0.25;
+    transition: opacity var(--transition-time);
+}
+.gleam-pause-button:hover,
+.gleam-player.--paused .gleam-pause-button {
+    opacity: 1;
+}
+.gleam-pause {
+    position: absolute;
+    z-index: 10000;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 2em;
+    background: #000c;
+    color: white;
+    visibility: hidden;
+}
+.gleam-player.--paused .gleam-pause {
+    visibility: visible;
+}
+.gleam-pause h2 {
+    text-align: center;
+}
+/* Beats jumplist */
+.gleam-pause .gleam-pause-beats {
+
+}
+.gleam-pause .gleam-pause-beats li {
+    /* TODO hmm, grid? */
+    display: inline-block;
+    min-width: 0.33em;
+    min-height: 0.33em;
+    line-height: 1;
+    margin: 0.33em;
+    padding: 0.33em;
+    vertical-align: middle;
+    border: 1px solid #999;
+    cursor: pointer;
+}
+.gleam-pause .gleam-pause-beats li.--current {
+    background: #fff4;
+    border-color: #ccc;
+}
+.gleam-pause .gleam-pause-beats li:hover {
+    border-color: white;
+}
+
+
+/* Actors */
+
 .gleam-actor-curtain {
     position: absolute;
     top: 0;
@@ -49,8 +129,7 @@
     opacity: 0;
     pointer-events: none;
 
-    transition-property: opacity;
-    transition-duration: var(--transition-time);
+    transition: opacity var(--transition-time) linear;
 }
 .gleam-actor-pictureframe img.--visible {
     visibility: visible;

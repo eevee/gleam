@@ -1356,7 +1356,6 @@ class Director {
     constructor(script) {
         this.script = script;
 
-        this.cursor = 0;
         this.busy = false;
 
         this.actors = {};
@@ -1367,6 +1366,9 @@ class Director {
             this.actors[name] = actor;
             this.role_to_actor.set(role, actor);
         }
+
+        this.cursor = 0;
+        this.jump(0);
     }
 
     jump(beat_index) {
@@ -1443,14 +1445,51 @@ class Director {
     }
 }
 
-// FIXME should the script be static and the player contains all the mutable state??  and, same question about actors i suppose?
 class Player {
     constructor(script, container) {
         this.script = script;
         this.director = new Director(script);
         // TODO this assumes we're already passed a gleam-player div, which seems odd
         this.container = container;
+        this.paused = false;
 
+        // Create some player UI
+        // Progress marker
+        this.progress_element = make_element('div', 'gleam-progress');
+        // FIXME it is not entirely clear how this should be updated
+        this.container.appendChild(this.progress_element);
+        // Pause screen
+        this.pause_element = make_element('div', 'gleam-pause');
+        this.pause_element.innerHTML = this.PAUSE_SCREEN_HTML;
+        // TODO options (persist!!): volume, hide UI entirely (pause button + progress bar), take screenshot?, low power mode (disable text shadows and the like) or disable transitions entirely (good for motion botherment)
+        // TODO links to currently active assets?  sorta defeats bandcamp i guess
+        // TODO debug stuff, mostly current state of actors
+        this.pause_element.addEventListener('click', ev => {
+            // Block counting this as an advancement click
+            // TODO could avoid this if we had a child element holding all the actors, but then we'd have to deal with focus nonsense.  but we might anyway since the pause screen has focus targets on it
+            ev.stopPropagation();
+        });
+        // Normally I'd love for something like this to be a button, but I explicitly DO NOT want it to receive focus -- if the audience clicks it to unpause and then presses spacebar to advance, it'll just activate the pause button again!
+        this.pause_button = make_element('div', 'gleam-pause-button', '⏸️');
+        this.pause_button.addEventListener('click', ev => {
+            // Block counting this as an advancement click
+            ev.stopPropagation();
+
+            this.toggle_paused();
+        });
+        this.container.appendChild(this.pause_element);
+        this.container.appendChild(this.pause_button);
+        let beats_list = this.pause_element.querySelector('.gleam-pause-beats');
+        for (let [i, beat] of this.script.beats.entries()) {
+            let li = make_element('li');
+            let b = i + 1;
+            if (b % 10 === 0 || b === 1 || b === this.script.beats.length) {
+                li.textContent = String(b);
+            }
+            beats_list.appendChild(li);
+        }
+
+        // Add the actors to the DOM
         for (let [name, actor] of Object.entries(this.director.actors)) {
             // FIXME whoopsie doodle, where do promises go here if the actors
             // construct elements themselves?  standard property on Actor
@@ -1460,8 +1499,6 @@ class Player {
                 this.container.appendChild(actor.element);
             }
         }
-
-        this.director.advance();
 
         // Bind some useful event handlers
         // TODO should make our own sub-container so when we go away (and delete the dom), the events go away too
@@ -1474,6 +1511,8 @@ class Player {
 
     update(dt) {
         this.director.update(dt);
+        // FIXME Oh this is very bad
+        this.progress_element.style.setProperty('--progress', this.director.cursor / this.script.beats.length * 100 + '%');
     }
 
     play() {
@@ -1482,6 +1521,38 @@ class Player {
 
         this.on_frame_bound = this.on_frame.bind(this);
         window.requestAnimationFrame(this.on_frame_bound);
+    }
+
+    toggle_paused() {
+        if (this.paused) {
+            this.unpause();
+        }
+        else {
+            this.pause();
+        }
+    }
+
+    pause() {
+        if (this.paused)
+            return;
+        this.paused = true;
+
+        this.container.classList.add('--paused');
+
+        // Update selected beat
+        let beats_list = this.pause_element.querySelector('.gleam-pause-beats');
+        for (let li of beats_list.querySelectorAll('.--current')) {
+            li.classList.remove('--current');
+        }
+        beats_list.children[this.director.cursor].classList.add('--current');
+    }
+
+    unpause() {
+        if (!this.paused)
+            return;
+        this.paused = false;
+
+        this.container.classList.remove('--paused');
     }
 
     on_frame(timestamp) {
@@ -1496,6 +1567,10 @@ class Player {
         window.requestAnimationFrame(this.on_frame_bound);
     }
 }
+Player.prototype.PAUSE_SCREEN_HTML = `
+    <h2>PAUSED</h2>
+    <ol class="gleam-pause-beats"></ol>
+`;
 
 function make_element(tag, cls, text) {
     let element = document.createElement(tag);
