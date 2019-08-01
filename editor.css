@@ -174,8 +174,13 @@ ol.gleam-editor-beats-list > li::before {
 }
 /* Step currently showing on stage */
 ol.gleam-editor-beats-list > li.--current {
-    outline: 2px solid gold;
+    outline: 2px solid hsl(45, 100%, 50%);
 }
+ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
+    background-color: hsl(45, 100%, 90%);
+}
+
+/* TODO ditch this...?  is there any other use for it? */
 .gleam-editor-beat-toolbar {
     position: absolute;
     /* needs to be above the items */

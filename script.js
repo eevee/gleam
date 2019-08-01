@@ -2150,13 +2150,14 @@ class ScriptPanel extends Panel {
         if (index === this.selected_beat_index)
             return;
 
-        console.log(index);
         if (this.selected_beat_index !== null) {
             this.beats_list.children[this.selected_beat_index].classList.remove('--current');
         }
         this.selected_beat_index = index;
         if (this.selected_beat_index !== null) {
-            this.beats_list.children[this.selected_beat_index].classList.add('--current');
+            let li = this.beats_list.children[this.selected_beat_index]
+            li.classList.add('--current');
+            li.scrollIntoView({ block: 'nearest' });
         }
     }
 
