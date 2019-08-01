@@ -70,7 +70,6 @@ class Actor {
 
     make_initial_state() {
         let state = {};
-        console.log(this);
         for (let [key, twiddle] of Object.entries(this.TWIDDLES)) {
             state[key] = twiddle.initial;
         }
@@ -101,7 +100,6 @@ class Step {
     }
 
     update_state(builder) {
-        let debug = [];
         for (let twiddle_change of this.type.twiddles) {
             let actor = this.actor;
             if (twiddle_change.delegate) {
@@ -112,11 +110,13 @@ class Step {
             if (twiddle_change.arg !== undefined) {
                 value = this.args[twiddle_change.arg];
             }
+            else if (twiddle_change.prop !== undefined) {
+                console.log("using prop...", actor, twiddle_change, actor[twiddle_change.prop]);
+                value = this.actor[twiddle_change.prop];
+            }
 
             builder.set_twiddle(actor, twiddle_change.key, value);
-            debug.push(`${twiddle_change.key} => ${value}`);
         }
-        console.log("updating state for", this.actor.constructor.name, debug.join(", "));
     }
 }
 
@@ -430,8 +430,9 @@ class Character extends PictureFrame {
     static from_legacy_json(json) {
         json.views = json.poses || {};
         let actor = super.from_legacy_json(json);
-        actor.name = json.name;
-        actor.color = json.color;
+        actor.name = json.name || null;
+        actor.color = json.color || null;
+        actor.position = json.position || null;
         return actor;
     }
 }
@@ -454,6 +455,18 @@ Character.STEP_TYPES = {
             delegate: 'dialogue_box',
             key: 'phrase',
             arg: 0,
+        }, {
+            delegate: 'dialogue_box',
+            key: 'color',
+            prop: 'color',
+        }, {
+            delegate: 'dialogue_box',
+            key: 'name',
+            prop: 'name',
+        }, {
+            delegate: 'dialogue_box',
+            key: 'position',
+            prop: 'position',
         }],
     },
 };
@@ -469,11 +482,11 @@ class DialogueBox extends Actor {
 
         this.scroll_timeout = null;
         this.element = null;
+        this.speaker_element = null;
         this.letter_elements = [];
         // One of:
         // done -- there is no text left to display
         // waiting -- there was too much text to fit in the box and we are now waiting on a call to advance() to show more
-        // fill -- this is dumb actually
         // scrolling -- we are actively showing text
         this.scroll_state = 'done';
         // Amount of (extra) time to wait until resuming scrolling
@@ -481,64 +494,89 @@ class DialogueBox extends Actor {
     }
 
     build_into(container) {
-        // XXX what happens if you try to build twice?
+        // XXX what happens if you try to build twice?  ah, that would be solved if this also returned a new actor instead
         this.element = make_element('div', 'gleam-actor-dialoguebox');
         container.appendChild(this.element);
+
+        // Toss in a background element
+        this.element.appendChild(make_element('div', '-background'));
     }
 
     apply_state(state) {
-        if (state.phrase) {
-            this.say(state.phrase);
-        }
-        else {
-            this.hide();
-        }
-    }
+        let old_state = this.current_state || this.make_initial_state();
+        console.log(old_state, "=>", state);
+        this.current_state = state;
 
-    say(text) {
-        // TODO
-        let speaker;
-
-        if (text === "") {
-            // TODO all the speaker handling is hacky ugh.  this is just to
-            // allow setting the class before actually showing any text, to fix
-            // the transition on the terminal in scrapgoats
-            if (speaker && speaker.position) {
-                this.element.setAttribute('data-position', speaker.position);
-            }
+        if (state.phrase === null) {
+            // Hide and return
+            // TODO what should this do to speaker tags?
             this.hide();
             return;
         }
+
+        // Update the dialogue "position" -- this is usually something simple
+        // like "left" or "right" to match the side the speaker is on, but it
+        // might also restyle the entire dialogue
+        // TODO maybe that's a sign that this is a bad name
+        if (state.position === null) {
+            this.element.removeAttribute('data-position');
+        }
+        else {
+            this.element.setAttribute('data-position', state.position);
+        }
+
+        // Deal with the speaker tag.  If there's an old tag, and it doesn't
+        // match the new name (which might be null), remove it
+        if (old_state.name !== null && old_state.name !== state.name) {
+            // Don't just remove it directly; give it a chance to transition
+            let old_speaker_element = this.speaker_element;
+            this.speaker_element = null;
+            old_speaker_element.classList.add('--hidden');
+            promise_transition(old_speaker_element).then(() => {
+                this.element.removeChild(old_speaker_element);
+            });
+        }
+
+        // If there's meant to be a speaker now, add a tag
+        if (state.name !== null && ! this.speaker_element) {
+            this.speaker_element = make_element('div', '-speaker --hidden', state.name);
+            this.element.appendChild(this.speaker_element);
+
+            // Force layout recomputation, then remove the class so the
+            // "appear" transition happens
+            this.speaker_element.offsetTop;
+            this.speaker_element.classList.remove('--hidden');
+        }
+
+        // And update the color
+        if (state.color === null) {
+            this.element.style.removeProperty('--color');
+        }
+        else {
+            this.element.style.setProperty('--color', state.color);
+        }
+
+        // Finally, say the line
+        this.say(state.phrase);
+    }
+
+    say(text) {
         this.element.classList.remove('--hidden');
 
         // Create the dialogue DOM
-        if (this.phrase_element) {
-            this.element.removeChild(this.phrase_element);
+        if (this.phrase_wrapper_element) {
+            this.element.removeChild(this.phrase_wrapper_element);
         }
         this._build_phrase_dom(text);
-
-        // Purge old speaker tags
-        // TODO man this code all sucks; stick in separate method plz
-        // TODO this isn't gonna fly anyway really
-        let keep_speaker = (speaker === this.speaker);
-
-        if (! keep_speaker && this.speaker_element) {
-            let old_speaker_element = this.speaker_element;
-            this.speaker_element = null;
-            old_speaker_element.classList.remove('-active');
-            promise_transition(old_speaker_element).then(() => {
-                old_speaker_element.parentNode.removeChild(old_speaker_element);
-            });
-        }
 
         // TODO super weird bug: set the transition time to something huge like
         // 10s and mash arrow keys mid-transition and sometimes you end up with
         // dialogue attributed to the wrong speaker!
+            /* TODO make all this stuff work
         if (keep_speaker) {
             // do nothing
         }
         else if (speaker && speaker.name) {
-            /* TODO make all this stuff work
             rgb_color = normalize_color speaker.color
             background_color = rgb_color.replace /^rgb([(].+)[)]$/, "rgba$1, 0.8)"
 
@@ -558,7 +596,6 @@ class DialogueBox extends Actor {
             // Force recompute or this won't actually transition anything
             $speaker[0].offsetTop
             $speaker.addClass '-active'
-            */
         }
         else {
             this.element.style.backgroundColor = '';
@@ -568,6 +605,8 @@ class DialogueBox extends Actor {
         if (speaker && speaker.position) {
             this.element.setAttribute('data-position', speaker.position);
         }
+        this.element.appendChild(make_element('div', '-speaker', 'speaker'));
+            */
 
         this.scroll_state = 'scrolling';
         this._start_scrolling();
@@ -649,19 +688,139 @@ class DialogueBox extends Actor {
 
         // Start out with all letters hidden
         for (let letter of letters) {
+            letter.classList.add('-letter');
             letter.classList.add('--hidden');
         }
 
+        // And finally add it all to the DOM
         // TODO do something with old one...?  caller does atm, but
         this.phrase_element = make_element('div', '-phrase');
         this.phrase_element.appendChild(target);
-        this.element.appendChild(this.phrase_element);
+        this.phrase_viewport_element = make_element('div', '-phrase-viewport');
+        this.phrase_viewport_element.appendChild(this.phrase_element);
+        this.phrase_wrapper_element = make_element('div', '-phrase-wrapper');
+        this.phrase_wrapper_element.appendChild(this.phrase_viewport_element);
+        this.element.appendChild(this.phrase_wrapper_element);
         this.letter_elements = letters;
         this.cursor = -1;
+        this.chunk_cursor = -1;
+
+        this.find_page_breaks();
+    }
+
+    find_page_breaks() {
+        // Force a reflow and figure out how the text breaks into chunks
+        // TODO maybe don't force a reflow?
+        // TODO it would be cool if folks could scroll BACK through text if they missed something in the scroll
+        // TODO it would also be cool if the text actually scrolled or something.  that would be pretty easy come to think of it
+        // TODO this could be done somewhat more efficiently (???) by guessing
+        // the length of a line and looking for a break, or just binary
+        // searching for breaks
+        // TODO should this be totally empty if there's no text at all?
+        // FIXME if the font becomes bigger partway through the first line of a
+        // chunk, i THINK the y here will be wrong and the top of that line
+        // will be cut off.  i could use the bottom of the previous line, but
+        // in perverse cases that might be wrong too.  i may just have to scan
+        // the whole line and use the min top value?
+        this.chunks = [];
+        if (this.letter_elements.length === 0) {
+            // Nothing to do; no letters means no chunks!
+            return;
+        }
+
+        // TODO explicitly clear transform first?
+
+        // This rectangle describes the space available for filling with text
+        let viewport = this.phrase_viewport_element.getBoundingClientRect();
+
+        // TODO apply some word-break to this too, just in case?
+        // TODO attempt to prevent orphans?
+
+        // Chunks are really composed of lines, not characters.  It's
+        // impossible to know for sure if a letter should go in a new chunk
+        // without checking every letter in the same line, because various CSS
+        // shenanigans might push some later letters lower.  Thus, the first
+        // step is to find line divisions.
+        let lines = [];
+        let current_line = null;
+        for (let [i, letter] of this.letter_elements.entries()) {
+            let rect = letter.getBoundingClientRect();
+
+            // This is harder than it really ought to be.  Line wraps aren't
+            // actually exposed in the DOM, and every possible avenue involves
+            // some amount of heuristic handwaving.  Here's the best I can do:
+            // if the top of this letter is below every letter seen so far in
+            // the line, it's probably a new line.  This doesn't work in
+            // pathological cases where a word is placed significantly below
+            // the baseline, so don't do that.  (And if you must, add some
+            // padding so the top of the letter's box is a bit higher.)
+            if (current_line === null || rect.top > current_line.y1) {
+                current_line = {
+                    i0: i,
+                    i1: i,
+                    y0: rect.top,
+                    y1: rect.bottom,
+                };
+                lines.push(current_line);
+            }
+            else {
+                current_line.i1 = i;
+
+                if (rect.top < current_line.y0) {
+                    current_line.y0 = rect.top;
+                }
+                if (rect.bottom > current_line.y1) {
+                    current_line.y1 = rect.bottom;
+                }
+            }
+        }
+
+        // Now split those lines into chunks.  (This separate pass also has the
+        // advantage that if a single line is taller than the viewport, it'll
+        // become a single chunk, rather than pathological behavior like every
+        // /letter/ becoming a chunk.)
+        let current_chunk = null;
+        for (let line of lines) {
+            if (current_chunk === null || line.y1 > current_chunk.y0 + viewport.height) {
+                // Avoid putting blank lines as the first thing in a chunk; it
+                // looks super bad!
+                if (line.i0 === line.i1 && this.letter_elements[line.i0].textContent === '\n') {
+                    current_chunk = null;
+                }
+                else {
+                    current_chunk = {
+                        first_letter_index: line.i0,
+                        last_letter_index: line.i1,
+                        // Everything so far has been in client coordinates,
+                        // but more useful is the position relative to the
+                        // container
+                        y0: line.y0,
+                        y1: line.y1,
+                    };
+                    this.chunks.push(current_chunk);
+                }
+            }
+            else {
+                current_chunk.last_letter_index = line.i1;
+                current_chunk.y1 = line.y1;
+            }
+        }
+
+        // Compute the offset to use to show the start of each chunk,
+        // vertically centering it within the available space
+        for (let chunk of this.chunks) {
+            let text_height = chunk.y1 - chunk.y0;
+            let relative_top = chunk.y0 - viewport.top;
+            // XXX well, i thought this was a good idea, but it looks weird
+            // with a single line left over and it looks REALLY weird with the
+            // TAL panels
+            //chunk.offset = relative_top - (viewport.height - text_height) / 2;
+            chunk.offset = relative_top;
+        }
     }
 
     _start_scrolling() {
-        // Start scrolling the current text into view, if applicable.
+        // Start scrolling the next text chunk into view, if any.
         //
         // Returns true iff there was any text to display.
         if (this.scroll_state === 'done') {
@@ -669,27 +828,24 @@ class DialogueBox extends Actor {
             return false;
         }
 
+        if (this.chunk_cursor + 1 >= this.chunks.length) {
+            this.scroll_state = 'done';
+            return false;
+        }
+
+        this.chunk_cursor++;
+        let chunk = this.chunks[this.chunk_cursor];
+
         // If the scroll is starting midway through the text (presumably, at
         // the start of a line!), slide the text up so the next character is at
         // the top of the text box
         // TODO hm, actually, what if it's /not/ at the start of a line?
-        // TODO should there be better text scrolling behavior?
-        // TODO should we be a little clever and vertically center the text
-        // within the box?  it's supposed to be exactly 3 lines but alternate
-        // fonts and whatnot might affect that...  er, but, they would also
-        // defeat anything i could do with line-height, hrm.  i do have the
-        // full layout set in stone ahead of time, so i could calculate ALL the
-        // chunks upfront, and skip some of this janky math as well?
-        // TODO what if the audience does a text zoom at some point?
-        let first_letter_y = this.letter_elements[0].offsetTop;
-        let next_letter_y = this.letter_elements[this.cursor + 1].offsetTop;
-        let dy = next_letter_y - first_letter_y;
-        this.phrase_element.style.transform = `translateY(-${dy}px)`;
-
-        // Grab the available height for the phrase box; if it fills up, the
-        // audience needs to advance to see more
-        let phrase_height = parseInt(window.getComputedStyle(this.element).height, 10);
-        this.phrase_bottom = phrase_height + dy;
+        // TODO should there be better text scrolling behavior?  like should
+        // this scroll up by a line at a time after the first chunk, or scroll
+        // up by a line at a time as it fills in the new chunk, or?  configurable??
+        // TODO what if the audience does a text zoom at some point?  is there an event for that?  does resize fire?
+        // FIXME this does a transition if the first chunk's offset isn't 0, looks bad.  dunno why, happens with tal panels but not regular dialogue
+        this.phrase_element.style.transform = `translateY(-${chunk.offset}px)`;
 
         this.scroll_state = 'scrolling';
     }
@@ -706,33 +862,28 @@ class DialogueBox extends Actor {
         }
 
         // Reveal as many letters as appropriate
+        let chunk = this.chunks[this.chunk_cursor];
         while (true) {
             if (this.cursor + 1 >= this.letter_elements.length) {
                 this.scroll_state = 'done';
                 return;
             }
 
-            let letter = this.letter_elements[this.cursor + 1];
-
-            // TODO this doesn't work if we're still in the middle of loading oops
-            // TODO i don't remember what the above comment was referring to
-            // If we ran out of room, stop here and wait for an advance
-            // XXX wait a second, shouldn't this use client bounding rect since it's a purely visual thing anyway
-            if (letter.offsetTop + letter.offsetHeight > this.phrase_bottom) {
+            // If we hit the end of the chunk, stop here and wait for an advance
+            if (this.cursor + 1 > chunk.last_letter_index) {
                 this.scroll_state = 'waiting';
                 return;
             }
 
-            letter.classList.remove('--hidden');
             this.cursor++;
+            let letter = this.letter_elements[this.cursor];
+            letter.classList.remove('--hidden');
 
-            if (this.scroll_state !== 'fill') {
-                if (letter.textContent === "\f") {
-                    this.delay = 0.5;
-                }
-
-                break;
+            if (letter.textContent === "\f") {
+                this.delay = 0.5;
             }
+
+            break;
         }
     }
 
@@ -744,15 +895,38 @@ class DialogueBox extends Actor {
         // clear it and continue scrolling.
         // In either case, the advancement is stopped.
 
-        // TODO if there's only one character left, maybe don't count this as a fill?
-        // TODO i don't remember what that meant either  :(
-
         if (this.scroll_state === 'scrolling') {
-            // Case 1: Still running -- update state so the next update knows
-            // to fill
+            // Case 1: The phrase is still scrolling, so advancement means to
+            // fill it as much as possible
             this.paused = false;
-            this.scroll_state = 'fill';
-            // TODO just fill it here dumbass
+
+            let last_letter_index;
+            if (this.chunk_cursor + 1 < this.chunks.length) {
+                // There are more chunks
+                last_letter_index = this.chunks[this.chunk_cursor + 1].first_letter_index - 1;
+                this.scroll_state = 'waiting';
+            }
+            else {
+                // This is the last chunk
+                last_letter_index = this.letter_elements.length - 1;
+                this.scroll_state = 'done';
+            }
+
+            for (let i = this.cursor; i <= last_letter_index; i++) {
+                this.letter_elements[i].classList.remove('--hidden');
+            }
+
+            let num_letters_shown = last_letter_index - this.cursor + 1;
+            this.cursor = last_letter_index;
+
+            // Special case: if the only thing left to show was the last letter
+            // in the last chunk, let the advance go through; otherwise, an
+            // impatient audience might feel like clicking did nothing
+            if (num_letters_shown <= 1) {
+                return true;
+            }
+
+            // But most of the time, block the advance
             return false;
         }
         else if (this.scroll_state === 'waiting') {
@@ -932,6 +1106,16 @@ DialogueBox.prototype.TWIDDLES = {
     phrase: {
         initial: null,
         propagate: null,
+    },
+    // Speaker properties
+    name: {
+        initial: null,
+    },
+    color: {
+        initial: null,
+    },
+    position: {
+        initial: null,
     },
 };
 DialogueBox.STEP_TYPES = {};
@@ -1115,12 +1299,10 @@ class Script {
         this.beats.push(builder.end_beat());
 
         for (let [name, actor] of Object.entries(this.actors)) {
-            console.log("---", name, actor.constructor.name, "---");
             let prev = null;
             for (let [i, beat] of this.beats.entries()) {
                 let state = beat.get(actor);
                 if (state !== prev) {
-                    console.log(i, state);
                     prev = state;
                 }
             }
@@ -1134,7 +1316,6 @@ class Script {
         // TODO ahh can the action "methods" return whether they pause?
 
         for (let [actor, state] of beat) {
-            console.log(actor.constructor.name, actor, state);
             actor.apply_state(state);
         }
 
@@ -1144,8 +1325,6 @@ class Script {
     }
 
     advance() {
-        console.log("ADVANCING");
-
         // Some actors (namely, dialogue box) can do their own waiting for an
         // advance, so consult them all first, and eject if any of them say
         // they're still busy
@@ -1153,7 +1332,6 @@ class Script {
             let busy = false;
             for (let actor of Object.values(this.actors)) {
                 if (actor.advance() === false) {
-                console.log("AH, BUSY", actor);
                     busy = true;
                 }
             }
@@ -1534,7 +1712,6 @@ class AssetLibrary {
     }
 
     refresh_dom() {
-        console.log(this.assets);
         this.list.textContent = '';
         let paths = Object.keys(this.assets);
         paths.sort((a, b) => {
@@ -1593,7 +1770,6 @@ class ScriptPanel extends Panel {
         button = make_element('button', null, 'jump');
         let hovered_beat_position = null;
         button.addEventListener('click', ev => {
-            console.log(hovered_beat_position);
             this.editor.script.jump(hovered_beat_position);
         });
         this.beat_toolbar.appendChild(button);
@@ -1990,7 +2166,7 @@ class Editor {
                 this.add_actor_editor(actor_editor);
             }
             else {
-                console.log("oops, not yet supported", actor.constructor, actor);
+                console.warn("oops, not yet supported", actor.constructor, actor);
             }
         }
 
@@ -2064,7 +2240,6 @@ window.addEventListener('load', e => {
     xxx_global_root = root;
     let xhr = new XMLHttpRequest;
     xhr.addEventListener('load', ev => {
-        console.log(ev);
         // FIXME handle errors yadda yadda
         let script = Script.from_legacy_json(JSON.parse(xhr.responseText));
         //let script = new Script();

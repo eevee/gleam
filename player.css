@@ -42,6 +42,10 @@
     transition-delay: 0s;
 }
 
+/* The dialogue box has the following hierarchy:
+ *  actor
+ *    speaker-container
+ */
 .gleam-actor-dialoguebox {
     position: absolute;
     /* In front of pictures...  and so the z nightmare begins */
@@ -56,17 +60,273 @@
     height: 4em;
     padding: 0.75em;
 
-    border-top: 2px solid #0006;
-    background-color: #000c;
+    --color: black;  /* may be changed by js */
+    border-top: 2px solid var(--color);
     color: white;
+
+    transition-duration: var(--transition-time);
+    transition-property: background-color;
 }
 .gleam-actor-dialoguebox.--hidden {
     display: none;
 }
+.gleam-actor-dialoguebox .-background {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+
+    background-color: var(--color);
+    opacity: 0.75;
+}
+.gleam-actor-dialoguebox .-speaker {
+    position: absolute;
+    left: 0;
+    /* Stick out above the top of the box, i.e. be the full height from the top */
+    bottom: 100%;
+    /* Use border-box sizing for the sake of the slide-down transition */
+    box-sizing: border-box;
+    line-height: 1.33;
+    padding: 0.33em 1em;
+    height: 2em;
+    overflow: hidden;
+
+    background-color: var(--color);
+    color: white;
+    text-shadow: 0 2px 1px #0004;
+
+    transition: height var(--transition-time);
+}
+.gleam-actor-dialoguebox .-speaker.--hidden {
+    height: 0;
+}
+/* The dialogue container has several layers of nesting:
+ * "wrapper" is basically just for overflow: hidden without fucking up the speaker tag
+ * "viewport" is for easily calculating the space available for text
+ * "phrase" holds the text proper
+ */
+.gleam-actor-dialoguebox .-phrase-wrapper {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    /* FIXME hey it sucks to have to repeat the padding here though */
+    padding: 0.75em;
+    overflow: hidden;
+    /* This adds a pretty cool fade to the edges, but it causes some wonky reflow bugs for me in Firefox */
+    /* mask-image: linear-gradient(to bottom, transparent 0px, black 0.75em, black 3.45em, transparent 100%); */
+}
+.gleam-actor-dialoguebox .-phrase-viewport {
+    position: relative;
+    height: 100%;
+}
+/* This holds the actual text */
 .gleam-actor-dialoguebox .-phrase {
     position: relative;
     white-space: pre-wrap;
+    text-shadow: 0 2px 1px #0004;
+
+    /* Animating the transform is cool, I guess, but looks kinda bad without a fade on the letters, which is annoying... */
+    transition: transform 0.2s;
 }
-.gleam-actor-dialoguebox .--hidden {
-    visibility: hidden;
+/* Hidden letters */
+.gleam-actor-dialoguebox .-letter {
+
+}
+.gleam-actor-dialoguebox .-letter.--hidden {
+    xvisibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+
+
+
+/******************************************************************************/
+/* Styling for particular VNs */
+/* TODO move this elsewhere, or maybe into the editor itself */
+/* FIXME still some sass cruft in here */
+
+/* One-off spans used inline */
+.gleam-actor-dialoguebox .-tal {
+    color: hsl(0, 90%, 75%);
+}
+.gleam-actor-dialoguebox .-panel {
+    color: hsl(215, 90%, 75%);
+}
+.gleam-actor-dialoguebox .-term {
+    color: hsl(15, 90%, 50%);
+    font-weight: bold;
+}
+.gleam-actor-dialoguebox .-redacted {
+    color: hsl(0, 80%, 60%);
+    text-shadow: none;
+}
+
+/* TODO ah, "next" caret */
+/*
+        &::after {
+            content: '▼';
+            display: block;
+            position: absolute;
+            bottom: 0.5em;
+            right: 0.5em;
+            color: white;
+            animation: next-arrow-bounce 0.5s ease-in infinite paused;
+            visibility: hidden;
+        }
+        &[data-state="done"]::after,
+        &[data-state="waiting"]::after {
+            visibility: visible;
+            animation-play-state: running;
+        }
+*/
+
+.gleam-actor-dialoguebox[data-position="data"],
+.gleam-actor-dialoguebox[data-position="data2"],
+.gleam-actor-dialoguebox[data-position="interaction"],
+.gleam-actor-dialoguebox[data-position="interaction2"] {
+    top: 1em;
+    left: 1em;
+    bottom: 1em;
+    right: 1em;
+    width: auto;
+    height: auto;
+    padding: 0.5em 0.75em;
+    font-family: "Source Code Pro", Inconsolata, monospace;
+    --tech-color: hsl(215, 67%, 33%);
+    --border-color: hsl(215, 100%, 50%);
+    border: none;
+    /*
+    border: 2px solid var(--border-color);
+    box-shadow: 0 0 3px 2px var(--border-color);
+    */
+
+/*
+    &.-hidden {
+        bottom: 1em;
+        opacity: 0;
+        // Using a transform for the zoom effect (rather than margins)
+        // avoids breaking detection of the speech box's height
+        transform: scale(0.75);
+    }
+*/
+}
+.gleam-actor-dialoguebox[data-position="data"] .-phrase,
+.gleam-actor-dialoguebox[data-position="data2"] .-phrase,
+.gleam-actor-dialoguebox[data-position="interaction"] .-phrase,
+.gleam-actor-dialoguebox[data-position="interaction2"] .-phrase {
+    text-shadow: 0 0 4px black;
+}
+.gleam-actor-dialoguebox[data-position="data"] .-background,
+.gleam-actor-dialoguebox[data-position="data2"] .-background,
+.gleam-actor-dialoguebox[data-position="interaction"] .-background,
+.gleam-actor-dialoguebox[data-position="interaction2"] .-background {
+    border-radius: 0.25em;
+    background-image:
+        repeating-linear-gradient(to bottom, hsl(215, 67%, 33%) 0, hsl(215, 67%, 33%) 0.1em, hsl(215, 67%, 25%) 0.2em, hsl(215, 67%, 25%) 0.3em),
+        radial-gradient(circle farthest-corner, #0006, var(--tech-color));
+    background-color: transparent;
+    /* Use two box-shadows to create a fake border (though note it's not very
+     * bright since we're affected by opacity), and add a little edge
+     * underneath */
+    box-shadow: 0 0 3px 2px var(--border-color), inset 0 0 3px 2px var(--border-color), inset 0 0 3px 3px black;
+}
+
+.gleam-actor-dialoguebox[data-position="data2"],
+.gleam-actor-dialoguebox[data-position="interaction2"] {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 0;
+    box-shadow: inset 0 0 0.5em var(--tech-color);
+}
+/* XXX why does this have a different background...? */
+.gleam-actor-dialoguebox[data-position="data2"] .-background,
+.gleam-actor-dialoguebox[data-position="interaction2"] .-background {
+    opacity: 0.92;
+    background-image:
+        radial-gradient(circle farthest-corner, #0009 50%, hsla(215, 67%, 25%, 0.5)),
+        repeating-linear-gradient(to bottom, hsl(215, 67%, 33%) 0, hsl(215, 67%, 25%) 4px, hsl(215, 67%, 33%) 8px);
+}
+.gleam-actor-dialoguebox[data-position="data"] {
+    right: 60%;
+}
+.gleam-actor-dialoguebox[data-position="data2"],
+.gleam-actor-dialoguebox[data-position="data2"] .-phrase-wrapper {
+    padding-right: 60%;
+}
+
+.gleam-actor-dialoguebox[data-position="journal"] {
+    top: 1em;
+    left: 1em;
+    bottom: 1em;
+    right: 1em;
+    width: auto;
+    height: auto;
+    color: #606060;
+    border: 2px solid hsl(45, 50%, 50%);
+    box-shadow: inset 0 0 4em hsla(45, 50%, 50%, 0.5);
+    /* Note that 1em is where the text starts and 1.5em is the line height */
+    background-image:
+        repeating-linear-gradient(
+            to bottom,
+            transparent 0px, transparent calc(1em - 1px),
+            rgba(black, 0.1) calc(1em - 1px), rgba(black, 0.1) 1em,
+            transparent 1em, transparent 1.5em
+        ),
+        linear-gradient(to bottom, transparent, hsla(45, 50%, 50%, 0.5));
+    background-color: hsl(45, 50%, 95%);
+
+    .cutscene--dialogue {
+        color: inherit;
+        text-shadow: none;
+    }
+
+    &.-hidden {
+        top: 7em;
+        bottom: -5em;
+        opacity: 0;
+    }
+}
+
+.gleam-actor-dialoguebox[data-position="tablet-data"],
+.gleam-actor-dialoguebox[data-position="tablet-interaction"] {
+    top: 2.5em;
+    bottom: 2.5em;
+    left: 2.5em;
+    right: 2.5em;
+    width: auto;
+    height: auto;
+    padding: 0.5em 1em;
+
+    font-family: "Source Code Pro";
+    border: none;
+    box-shadow: none;
+    background: none;
+}
+.gleam-actor-dialoguebox[data-position="tablet-data"] {
+    right: 60%;
+}
+
+.gleam-actor-dialoguebox[data-position="alice-tigers"] {
+    top: 1em;
+    left: auto;
+    bottom: 1em;
+    right: 1em;
+    width: 40%;
+    height: auto;
+    color: #606060;
+    border: 1px solid black;
+    border-radius: 1em;
+    box-shadow: inset 0 0 2em rgba(black, 0.5);
+    background-color: #202020;
+
+    &.-hidden {
+        right: -50%;
+        opacity: 0;
+    }
 }
