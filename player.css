@@ -7,6 +7,35 @@
     --transition-time: 0.2s;
 }
 
+.gleam-actor-curtain {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    /* Position above everything else */
+    /* TODO dunno if this is right, maybe should just rely on the normal ordering */
+    z-index: 999;
+
+    background: black;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-time);
+
+    /* Everything in a beat happens simultaneously, so wait for a moment for
+     * any behind-the-scenes shuffling to finish before fading back in.  This
+     * is overridden when lowering the curtain */
+    transition-delay: var(--transition-time);
+}
+.gleam-actor-curtain.--lowered {
+    opacity: 1;
+    pointer-events: initial;
+
+    /* Do a slow fade /out/ */
+    transition-duration: 2s;
+    transition-delay: 0s;
+}
+
 .gleam-actor-pictureframe {
     position: absolute;
     /* Create a stacking context so the z-index on visible images doesn't

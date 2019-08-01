@@ -136,6 +136,25 @@ Stage.STEP_TYPES = {
 
 
 class Curtain extends Actor {
+    constructor() {
+        super();
+        // TODO color?
+    }
+
+    build_into(container) {
+        this.element = make_element('div', 'gleam-actor-curtain');
+        container.appendChild(this.element);
+    }
+
+    apply_state(state) {
+        // FIXME really need to make current_state just work right
+        let was_lowered = this.element.classList.contains('--lowered');
+        this.element.classList.toggle('--lowered', state.lowered);
+
+        if (was_lowered !== state.lowered) {
+            return promise_transition(this.element);
+        }
+    }
 }
 Curtain.prototype.TWIDDLES = {
     lowered: {
@@ -147,6 +166,7 @@ Curtain.prototype.TWIDDLES = {
 Curtain.STEP_TYPES = {
     lower: {
         display_name: 'lower',
+        pause: 'wait',
         args: [],
         twiddles: [{
             key: 'lowered',
@@ -510,6 +530,10 @@ class DialogueBox extends Actor {
         if (state.phrase === null) {
             // Hide and return
             // TODO what should this do to speaker tags?
+            // FIXME this means disappearing during a curtain lower, which
+            // seems goofy?  maybe need a special indicator for "do nothing no
+            // matter what the textbox looks like atm"?  er but how would that
+            // be conveyed here.
             this.hide();
             return;
         }
@@ -527,6 +551,9 @@ class DialogueBox extends Actor {
 
         // Deal with the speaker tag.  If there's an old tag, and it doesn't
         // match the new name (which might be null), remove it
+        // TODO super weird bug in old code: set the transition time to
+        // something huge like 10s and mash arrow keys mid-transition and
+        // sometimes you end up with dialogue attributed to the wrong speaker!
         if (old_state.name !== null && old_state.name !== state.name) {
             // Don't just remove it directly; give it a chance to transition
             let old_speaker_element = this.speaker_element;
@@ -568,45 +595,6 @@ class DialogueBox extends Actor {
             this.element.removeChild(this.phrase_wrapper_element);
         }
         this._build_phrase_dom(text);
-
-        // TODO super weird bug: set the transition time to something huge like
-        // 10s and mash arrow keys mid-transition and sometimes you end up with
-        // dialogue attributed to the wrong speaker!
-            /* TODO make all this stuff work
-        if (keep_speaker) {
-            // do nothing
-        }
-        else if (speaker && speaker.name) {
-            rgb_color = normalize_color speaker.color
-            background_color = rgb_color.replace /^rgb([(].+)[)]$/, "rgba$1, 0.8)"
-
-            // TODO need to reset this when anything else happens ugh
-            this.element.css
-                backgroundColor: background_color
-                color: speaker.color
-
-            $speaker = $('<div>',
-                class: 'cutscene--speaker'
-                text: speaker.name
-                css: backgroundColor: speaker.color
-                data: speaker: speaker
-            )
-            $speaker.attr 'data-position', speaker.position
-            this.element.append $speaker
-            // Force recompute or this won't actually transition anything
-            $speaker[0].offsetTop
-            $speaker.addClass '-active'
-        }
-        else {
-            this.element.style.backgroundColor = '';
-            this.element.style.color = '';
-            this.element.removeAttribute('data-position');
-        }
-        if (speaker && speaker.position) {
-            this.element.setAttribute('data-position', speaker.position);
-        }
-        this.element.appendChild(make_element('div', '-speaker', 'speaker'));
-            */
 
         this.scroll_state = 'scrolling';
         this._start_scrolling();
@@ -1171,8 +1159,27 @@ class BeatBuilder {
     end_beat() {
         // End the current beat, returning it, and start a new one
         let beat = this.states;
-        this.states = new Map(this.states);
+        this.states = new Map();
         this.dirty.clear();
+
+        // Eagerly-clone, in case of propagation
+        // TODO could skip this and re-introduce the dirty thing
+        for (let [actor, old_state] of beat) {
+            let new_state = {};
+            for (let [key, twiddle] of Object.entries(actor.TWIDDLES)) {
+                if (twiddle.propagate === undefined) {
+                    // Keep using the current value
+                    new_state[key] = old_state[key];
+                }
+                else {
+                    // Revert to the given propagate value
+                    new_state[key] = twiddle.propagate;
+                }
+            }
+            this.states.set(actor, new_state);
+            this.dirty.add(actor);
+        }
+
         return beat;
     }
 }
@@ -1197,6 +1204,8 @@ class Script {
         ];
 
         this.cursor = 0;
+
+        this.busy = false;
 
         this.set_steps([]);
     }
@@ -1292,6 +1301,11 @@ class Script {
 
             if (step.type.pause) {
                 this.beats.push(builder.end_beat());
+
+                // XXX there must be a better way to do this.  is a beat an object?
+                if (step.type.pause === 'wait') {
+                    this.beats[this.beats.length - 1].pause = 'wait';
+                }
             }
         }
 
@@ -1310,14 +1324,38 @@ class Script {
     }
 
     jump(beat_index) {
+        // FIXME what if we're 'busy' at this point?
+
         this.cursor = beat_index;
         let beat = this.beats[this.cursor];
 
         // TODO ahh can the action "methods" return whether they pause?
 
+        let promises = [];
         for (let [actor, state] of beat) {
-            actor.apply_state(state);
+            // Actors can return promises, and the scene won't advance until
+            // they've been resolved
+            let promise = actor.apply_state(state);
+            if (promise) {
+                promises.push(promise);
+            }
         }
+
+        if (promises.length > 0) {
+            this.busy = true;
+            let promise = Promise.all(promises);
+            promise.then(() => {
+                console.log(" -- promises fulfilled --", beat.pause);
+                this.busy = false;
+                // If the step that ended the beat was a "wait" step, then
+                // auto-advance as soon as all the promises are done
+                // TODO hm shouldn't this also happen if we didn't get any promises
+                if (beat.pause === 'wait') {
+                    this.advance();
+                }
+            });
+        }
+
 
         if (this.xxx_hook) {
             this.xxx_hook.on_beat();
@@ -1325,6 +1363,11 @@ class Script {
     }
 
     advance() {
+        // FIXME this seems pretty annoying in the editor, and also when scrolling through
+        if (this.busy) {
+            return;
+        }
+
         // Some actors (namely, dialogue box) can do their own waiting for an
         // advance, so consult them all first, and eject if any of them say
         // they're still busy
