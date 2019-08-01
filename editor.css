@@ -12,7 +12,7 @@ body {
     display: grid;
     grid-template:
         "assets steps player" 1fr
-        "assets steps components" 1fr
+        "assets steps roles" 1fr
     ;
     height: 100%;
     margin: 0;
@@ -55,8 +55,8 @@ section.gleam-editor-panel > .gleam-editor-panel-body {
 #gleam-editor-player {
     grid-area: player;
 }
-#gleam-editor-components {
-    grid-area: components;
+#gleam-editor-roles {
+    grid-area: roles;
 }
 #gleam-editor-assets {
     grid-area: assets;
@@ -100,34 +100,34 @@ nav button:hover {
     margin: auto;
 }
 
-/* Actors panel */
-ol.gleam-editor-components {
+/* Roles panel */
+ol.gleam-editor-roles {
 }
-ol.gleam-editor-components > li {
+ol.gleam-editor-roles > li {
     margin: 0.5em;
     border: 1px solid #202020;
     background: white;
     color: #202020;
 }
-ol.gleam-editor-components > li h2 {
+ol.gleam-editor-roles > li h2 {
     padding: 0.25em 0.5em;
     margin: 0;
     font-size: 1.25em;
     background: hsl(0, 0%, 75%);
 }
-ol.gleam-editor-components > li h3 {
+ol.gleam-editor-roles > li h3 {
     margin: 0.5em 0 0;
     padding: 0.125em 0.5em;
     border-bottom: 2px solid #404040;
     font-weight: normal;
     font-size: 1.2em;
 }
-ul.gleam-editor-component-pictureframe-poses {
+ul.gleam-editor-roles-pictureframe-poses {
     margin: 0.5em;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
 }
-ul.gleam-editor-component-pictureframe-poses img {
+ul.gleam-editor-roles-pictureframe-poses img {
     display: block;
     max-width: 100px;
     max-height: 100px;
@@ -208,7 +208,7 @@ ol.gleam-editor-beats-list > li.--current {
     margin-top: calc(-0.5em + 2px);
 }
 
-/* Steps, used in components and the script panel */
+/* Steps, used in roles and the script panel */
 .gleam-editor-step {
     display: flex;
     background: #f0f0f0;
@@ -252,55 +252,55 @@ ol.gleam-editor-beats-list > li.--current {
 }
 
 
-/* Special styling for particular actor types; applies to steps and to the
- * headers of their properties in the actor list */
+/* Special styling for particular role types; applies to steps and to the
+ * headers of their properties in the role list */
 /* Stage */
-.gleam-editor-step.gleam-editor-actor-stage > .-who,
-ol.gleam-editor-components > li.gleam-editor-actor-stage h2 {
+.gleam-editor-step.gleam-editor-role-stage > .-who,
+ol.gleam-editor-roles > li.gleam-editor-role-stage h2 {
     background: hsl(0, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-actor-stage > .-who::before,
-ol.gleam-editor-components > li.gleam-editor-actor-stage h2::before {
+.gleam-editor-step.gleam-editor-role-stage > .-who::before,
+ol.gleam-editor-roles > li.gleam-editor-role-stage h2::before {
     content: '📻';
     margin-right: 0.25em;
 }
 /* Jukebox */
-.gleam-editor-step.gleam-editor-actor-jukebox > .-who,
-ol.gleam-editor-components > li.gleam-editor-actor-jukebox h2 {
+.gleam-editor-step.gleam-editor-role-jukebox > .-who,
+ol.gleam-editor-roles > li.gleam-editor-role-jukebox h2 {
     background: hsl(270, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-actor-jukebox > .-who::before,
-ol.gleam-editor-components > li.gleam-editor-actor-jukebox h2::before {
+.gleam-editor-step.gleam-editor-role-jukebox > .-who::before,
+ol.gleam-editor-roles > li.gleam-editor-role-jukebox h2::before {
     content: '📻';
     margin-right: 0.25em;
 }
 /* Picture frame */
-.gleam-editor-step.gleam-editor-actor-pictureframe > .-who,
-ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2 {
+.gleam-editor-step.gleam-editor-role-pictureframe > .-who,
+ol.gleam-editor-roles > li.gleam-editor-role-pictureframe h2 {
     background: hsl(330, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-actor-pictureframe > .-who::before,
-ol.gleam-editor-components > li.gleam-editor-actor-pictureframe h2::before {
+.gleam-editor-step.gleam-editor-role-pictureframe > .-who::before,
+ol.gleam-editor-roles > li.gleam-editor-role-pictureframe h2::before {
     content: '🖼️';
     margin-right: 0.25em;
 }
 /* Dialogue box */
-.gleam-editor-step.gleam-editor-actor-dialoguebox > .-who,
-ol.gleam-editor-components > li.gleam-editor-actor-dialoguebox h2 {
+.gleam-editor-step.gleam-editor-role-dialoguebox > .-who,
+ol.gleam-editor-roles > li.gleam-editor-role-dialoguebox h2 {
     background: hsl(60, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-actor-dialoguebox > .-who::before,
-ol.gleam-editor-components > li.gleam-editor-actor-dialoguebox h2::before {
+.gleam-editor-step.gleam-editor-role-dialoguebox > .-who::before,
+ol.gleam-editor-roles > li.gleam-editor-role-dialoguebox h2::before {
     content: '💬️';
     margin-right: 0.25em;
 }
 /* Character */
-.gleam-editor-step.gleam-editor-actor-character > .-who,
-ol.gleam-editor-components > li.gleam-editor-actor-character h2 {
+.gleam-editor-step.gleam-editor-role-character > .-who,
+ol.gleam-editor-roles > li.gleam-editor-role-character h2 {
     background: hsl(210, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-actor-character > .-who::before,
-ol.gleam-editor-components > li.gleam-editor-actor-character h2::before {
+.gleam-editor-step.gleam-editor-role-character > .-who::before,
+ol.gleam-editor-roles > li.gleam-editor-role-character h2::before {
     content: '🗣️';
     margin-right: 0.25em;
 }

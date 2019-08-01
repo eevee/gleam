@@ -60,12 +60,41 @@ function promise_transition(el) {
     }
 }
 
-class Actor {
-    constructor() {
-    }
+// -----------------------------------------------------------------------------
+// Roles and Actors
+
+// The definition of an actor, independent of the actor itself.  Holds initial
+// configuration.
+class Role {
+    constructor() {}
 
     static from_legacy_json(json) {
         return new this();
+    }
+
+    generate_initial_state() {
+        let state = {};
+        for (let [key, twiddle] of Object.entries(this.TWIDDLES)) {
+            state[key] = twiddle.initial;
+        }
+        return state;
+    }
+
+    // Create an Actor to play out this Role
+    cast() {
+        return new this.constructor.Actor(this);
+    }
+}
+Role.prototype.TWIDDLES = {};
+Role.Actor = null;
+
+
+class Actor {
+    constructor(role) {
+        this.role = role;
+        this.state = role.generate_initial_state();
+
+        this.element = null;
     }
 
     make_initial_state() {
@@ -76,14 +105,22 @@ class Actor {
         return state;
     }
 
-    build_into(container) {}
-
     update(dt) {}
 
     // Return false to interrupt the advance
     advance() {}
 
-    apply_state(state) {}
+    // Update this Actor to the given state, which is a mapping of twiddle
+    // names to values, and return the old state.  The default implementation
+    // just assigns `this.state` to the given value, which means you can start
+    // out overloads with:
+    //   let old_state = super.apply_state(state);
+    // and then compare new and old states.
+    apply_state(state) {
+        let old_state = this.state;
+        this.state = state;
+        return old_state;
+    }
 }
 Actor.prototype.TWIDDLES = {};
 // Must also be defined on subclasses:
@@ -91,19 +128,19 @@ Actor.STEP_TYPES = null;
 Actor.LEGACY_JSON_ACTIONS = null;
 
 
-// Actors are controlled by Steps
+// Roles are choreographed by Steps, which are then applied to Actors
 class Step {
-    constructor(actor, type, args) {
-        this.actor = actor;
+    constructor(role, type, args) {
+        this.role = role;
         this.type = type;
         this.args = args;
     }
 
     update_state(builder) {
         for (let twiddle_change of this.type.twiddles) {
-            let actor = this.actor;
+            let role = this.role;
             if (twiddle_change.delegate) {
-                actor = actor[twiddle_change.delegate];
+                role = role[twiddle_change.delegate];
             }
 
             let value = twiddle_change.value;
@@ -111,16 +148,16 @@ class Step {
                 value = this.args[twiddle_change.arg];
             }
             else if (twiddle_change.prop !== undefined) {
-                value = this.actor[twiddle_change.prop];
+                value = this.role[twiddle_change.prop];
             }
 
-            builder.set_twiddle(actor, twiddle_change.key, value);
+            builder.set_twiddle(role, twiddle_change.key, value);
         }
     }
 }
 
 
-class Stage extends Actor {
+class Stage extends Role {
 }
 Stage.prototype.TWIDDLES = {};
 Stage.STEP_TYPES = {
@@ -133,26 +170,14 @@ Stage.STEP_TYPES = {
 };
 // TODO from legacy json, and target any actorless actions at us?
 
+Stage.Actor = class StageActor extends Actor {
+};
 
-class Curtain extends Actor {
+
+// Full-screen transition actor
+class Curtain extends Role {
     constructor() {
         super();
-        // TODO color?
-    }
-
-    build_into(container) {
-        this.element = make_element('div', 'gleam-actor-curtain');
-        container.appendChild(this.element);
-    }
-
-    apply_state(state) {
-        // FIXME really need to make current_state just work right
-        let was_lowered = this.element.classList.contains('--lowered');
-        this.element.classList.toggle('--lowered', state.lowered);
-
-        if (was_lowered !== state.lowered) {
-            return promise_transition(this.element);
-        }
     }
 }
 Curtain.prototype.TWIDDLES = {
@@ -177,26 +202,26 @@ Curtain.LEGACY_JSON_ACTIONS = {
     lower: ["lower"],
 };
 
-// do i need actortemplate?
-// there's an actor, which defines some static bits like "what tracks are in a jukebox"
-// but it also has html and current state, which are /optional/...
-// but is there any reason to not have those things?  even in the editor?
+Curtain.Actor = class CurtainActor extends Actor {
+    constructor(role) {
+        super(role);
+        // TODO color?
 
-// an actor (in the instantiated sense) has actions, which change its state
-// but they should be able to switch from one completely arbitrary state to another
-// how did i do this before...
-// ok so i just copied events forward across steps, fired them all, and made them no-ops
-// but what if there are multiple states you fool
-// i think what should happen is that an actor should be able to express its current state at a given step in terms of a small json-compatible state table, and THAT gets (shallow) copied forwards until it changes
-// this also avoids the question of what happens at the beginning: actors can just expose a starting state
-// this reduces "actions" to state twiddles under the hood!
-// EXCEPT for pausing, which is specifically a property of the action and affects the stage itself rather than the actor
-// also propagation
-
-class Jukebox extends Actor {
-    play(track_name) {
-        // TODO
+        this.element = make_element('div', 'gleam-actor-curtain');
     }
+
+    apply_state(state) {
+        let old_state = super.apply_state(state);
+        this.element.classList.toggle('--lowered', state.lowered);
+
+        if (old_state.lowered !== state.lowered) {
+            return promise_transition(this.element);
+        }
+    }
+};
+
+
+class Jukebox extends Role {
 }
 Jukebox.prototype.TWIDDLES = {
     track: {
@@ -230,12 +255,17 @@ Jukebox.LEGACY_JSON_ACTIONS = {
     play: ["play", 'track'],
     stop: ["stop"],
 };
+Jukebox.Actor = class JukeboxActor extends Actor {
+    play(track_name) {
+        // TODO
+    }
+};
 
-class PictureFrame extends Actor {
+
+class PictureFrame extends Role {
     constructor(position) {
         super();
         this.poses = {};
-        this.active_pose_name = null;
     }
 
     static from_legacy_json(json) {
@@ -250,148 +280,6 @@ class PictureFrame extends Actor {
     add_pose(name, tmp_image_url) {
         this.poses[name] = [{ url: tmp_image_url }];
     }
-
-    build_into(container) {
-        let element = make_element('div', 'gleam-actor-pictureframe');
-        // FIXME add position class
-        this.element = element;
-        container.appendChild(element);
-
-        let pose_elements = {};
-        let img_promises = [];
-        for (let [pose_name, frames] of Object.entries(this.poses)) {
-            let frame_elements = pose_elements[pose_name] = [];
-            for (let frame of frames) {
-                let image = make_element('img');
-                // Bind the event handler FIRST -- if the image is cached, it
-                // might load instantly!
-                img_promises.push(promise_event(image, 'load', 'error'));
-                // FIXME who controls urls, eh?  seems like it should go through the script, which we don't have access to
-                image.setAttribute('src', xxx_global_root + '/' + frame.url);
-                image.setAttribute('data-pose-name', pose_name);
-                // FIXME animation stuff $img.data 'delay', frame.delay or 0
-                element.appendChild(image);
-                frame.element = image;
-                // FIXME when animated
-                frames.element = image;
-            }
-        }
-
-        // FIXME why am i using event delegation here i Do Not get it
-        //$element.on 'cutscene:change' + NS, @_change
-        //$element.on 'cutscene:disable' + NS, @_disable
-
-        // TODO i can't figure out how to make this work but i really want to be
-        // able to "skip" a transition while holding down right arrow  >:(
-        /*
-        $parent.on 'stage:next' + NS, (event) =>
-            $x = $element.find('.--visible')
-            #$x.css 'transition-property', 'none'
-            $x.css 'transition-duration', '0s'
-            $x.css 'opacity', '1.0'
-            if $x[0]?
-                $x[0].offsetHeight
-            $x.css 'opacity', ''
-            $x.css 'transition-duration', ''
-            #$x.css 'transition-duration', '0s'
-            #$element[0].style.transitionDuration = undefined
-        */
-
-        // TODO uhh how does progress work with image tags?  how does it work at
-        // all?  i think i'd have to use ajax here and rely on the cache or
-        // whatever ungh
-        return Promise.all(img_promises);
-    }
-
-    //add_animation: (name, frames) ->
-    //    @poses[name] = frames
-
-    apply_state(state) {
-        let current_state = this.current_state || this.make_initial_state();
-
-        if (state.pose !== current_state.pose) {
-            if (state.pose === null) {
-                this.disable();
-            }
-            else {
-                this.show(state.pose);
-            }
-        }
-
-        this.current_state = state;
-    }
-
-    show(pose_name) {
-        let pose = this.poses[pose_name];
-        if (! pose)
-            // FIXME actors should have names
-            throw new Error(`No such pose ${pose_name} for this picture frame`);
-
-        this.element.classList.remove('-immediate')
-        // TODO? $el.css marginLeft: "#{offset or 0}px"
-
-        if (pose_name === this.active_pose_name)
-            return;
-        if (this.active_pose_name) {
-            // FIXME do every frame's element i guess
-            this.poses[this.active_pose_name].element.classList.remove('--visible');
-        }
-        this.active_pose_name = pose_name;
-
-        let child = pose.element;
-        if (child.classList.contains('--visible'))
-            return;
-
-        child.classList.add('--visible');
-        let promise = promise_transition(child);
-
-        /* TODO animation stuff
-        delay = $target_child.data 'delay'
-        if delay
-            setTimeout (=> @_advance $el, pose_name, 0), delay
-        */
-
-        return promise;
-    }
-
-    disable() {
-        // The backdrop has a transition delay so there's no black flicker
-        // during a transition (when both images are 50% opaque), but when
-        // we're hiding the entire backdrop, we don't want that.  This class
-        // disables it.
-        this.element.classList.add('-immediate');
-
-        this.active_pose_name = null;
-
-        let promises = [];
-        for (let child of this.element.childNodes) {
-            if (! child.classList.contains('--visible'))
-                continue;
-
-            promises.push(promise_transition(child));
-            child.classList.remove('--visible');
-        }
-
-        return Promise.all(promises);
-    }
-
-    /* FIXME animation stuff
-    _advance: ($el, pose_name, current_index) =>
-        $pose_elements = $el.data 'pose-elements'
-        $current = $pose_elements[pose_name][current_index]
-        next_index = (current_index + 1) % $pose_elements[pose_name].length
-        $next = $pose_elements[pose_name][next_index]
-
-        if not $current.hasClass '--visible'
-            return
-
-        $current.removeClass '--visible'
-        $next.addClass '--visible'
-
-        delay = $next.data 'delay'
-        if delay
-            setTimeout (=> @_advance $el, pose_name, next_index), delay
-    */
 }
 PictureFrame.prototype.TWIDDLES = {
     pose: {
@@ -433,6 +321,148 @@ PictureFrame.STEP_TYPES = {
 PictureFrame.LEGACY_JSON_ACTIONS = {
     show: ["show", 'view'],
     hide: ["hide"],
+};
+PictureFrame.Actor = class PictureFrameActor extends Actor {
+    constructor(role) {
+        super(role);
+
+        let element = make_element('div', 'gleam-actor-pictureframe');
+        // FIXME add position class
+        this.element = element;
+
+        let pose_elements = {};
+        let img_promises = [];
+        for (let [pose_name, frames] of Object.entries(this.role.poses)) {
+            let frame_elements = pose_elements[pose_name] = [];
+            for (let frame of frames) {
+                let image = make_element('img');
+                // Bind the event handler FIRST -- if the image is cached, it
+                // might load instantly!
+                img_promises.push(promise_event(image, 'load', 'error'));
+                // FIXME who controls urls, eh?  seems like it should go through the script, which we don't have access to
+                image.setAttribute('src', xxx_global_root + '/' + frame.url);
+                image.setAttribute('data-pose-name', pose_name);
+                // FIXME animation stuff $img.data 'delay', frame.delay or 0
+                element.appendChild(image);
+                // FIXME this modifies the role!!!!
+                frame.element = image;
+                // FIXME when animated
+                frames.element = image;
+            }
+        }
+
+        // FIXME why am i using event delegation here i Do Not get it
+        //$element.on 'cutscene:change' + NS, @_change
+        //$element.on 'cutscene:disable' + NS, @_disable
+
+        // TODO i can't figure out how to make this work but i really want to be
+        // able to "skip" a transition while holding down right arrow  >:(
+        // [hint: this should probably be a general player function]
+        /*
+        $parent.on 'stage:next' + NS, (event) =>
+            $x = $element.find('.--visible')
+            #$x.css 'transition-property', 'none'
+            $x.css 'transition-duration', '0s'
+            $x.css 'opacity', '1.0'
+            if $x[0]?
+                $x[0].offsetHeight
+            $x.css 'opacity', ''
+            $x.css 'transition-duration', ''
+            #$x.css 'transition-duration', '0s'
+            #$element[0].style.transitionDuration = undefined
+        */
+
+        // TODO uhh how does progress work with image tags?  how does it work at
+        // all?  i think i'd have to use ajax here and rely on the cache or
+        // whatever ungh
+        //return Promise.all(img_promises);
+    }
+
+    //add_animation: (name, frames) ->
+    //    @poses[name] = frames
+
+    apply_state(state) {
+        let old_state = super.apply_state(state);
+
+        if (state.pose !== old_state.pose) {
+            if (state.pose === null) {
+                this.disable();
+            }
+            else {
+                this.show(state.pose, old_state.pose);
+            }
+        }
+    }
+
+    // FIXME old_pose_name is a goober hack, but i wanted to get rid of this.active_pose_name and by the time we call this the current state has already been updated
+    show(pose_name, old_pose_name) {
+        let pose = this.role.poses[pose_name];
+        if (! pose)
+            // FIXME actors should have names
+            throw new Error(`No such pose ${pose_name} for this picture frame`);
+
+        this.element.classList.remove('-immediate')
+        // TODO? $el.css marginLeft: "#{offset or 0}px"
+
+        if (pose_name === old_pose_name)
+            return;
+        if (old_pose_name) {
+            // FIXME do every frame's element i guess
+            this.role.poses[old_pose_name].element.classList.remove('--visible');
+        }
+
+        let child = pose.element;
+        if (child.classList.contains('--visible'))
+            return;
+
+        child.classList.add('--visible');
+        let promise = promise_transition(child);
+
+        /* TODO animation stuff
+        delay = $target_child.data 'delay'
+        if delay
+            setTimeout (=> @_advance $el, pose_name, 0), delay
+        */
+
+        return promise;
+    }
+
+    disable() {
+        // The backdrop has a transition delay so there's no black flicker
+        // during a transition (when both images are 50% opaque), but when
+        // we're hiding the entire backdrop, we don't want that.  This class
+        // disables it.
+        this.element.classList.add('-immediate');
+
+        let promises = [];
+        for (let child of this.element.childNodes) {
+            if (! child.classList.contains('--visible'))
+                continue;
+
+            promises.push(promise_transition(child));
+            child.classList.remove('--visible');
+        }
+
+        return Promise.all(promises);
+    }
+
+    /* FIXME animation stuff
+    _advance: ($el, pose_name, current_index) =>
+        $pose_elements = $el.data 'pose-elements'
+        $current = $pose_elements[pose_name][current_index]
+        next_index = (current_index + 1) % $pose_elements[pose_name].length
+        $next = $pose_elements[pose_name][next_index]
+
+        if not $current.hasClass '--visible'
+            return
+
+        $current.removeClass '--visible'
+        $next.addClass '--visible'
+
+        delay = $next.data 'delay'
+        if delay
+            setTimeout (=> @_advance $el, pose_name, next_index), delay
+    */
 };
 
 
@@ -494,13 +524,43 @@ Character.LEGACY_JSON_ACTIONS = {
     pose: ["pose", 'view'],
     leave: ["leave"],
 };
+// TODO? Character.Actor = ...
 
-class DialogueBox extends Actor {
+
+class DialogueBox extends Role {
     constructor() {
         super();
+    }
+}
+DialogueBox.prototype.TWIDDLES = {
+    phrase: {
+        initial: null,
+        propagate: null,
+    },
+    // Speaker properties
+    name: {
+        initial: null,
+    },
+    color: {
+        initial: null,
+    },
+    position: {
+        initial: null,
+    },
+};
+DialogueBox.STEP_TYPES = {};
+DialogueBox.LEGACY_JSON_ACTIONS = {};
+DialogueBox.Actor = class DialogueBoxActor extends Actor {
+    constructor(role) {
+        super(role);
+
+        // XXX what happens if you try to build twice?  ah, that would be solved if this also returned a new actor instead
+        this.element = make_element('div', 'gleam-actor-dialoguebox');
+
+        // Toss in a background element
+        this.element.appendChild(make_element('div', '-background'));
 
         this.scroll_timeout = null;
-        this.element = null;
         this.speaker_element = null;
         this.letter_elements = [];
         // One of:
@@ -512,18 +572,8 @@ class DialogueBox extends Actor {
         this.delay = 0;
     }
 
-    build_into(container) {
-        // XXX what happens if you try to build twice?  ah, that would be solved if this also returned a new actor instead
-        this.element = make_element('div', 'gleam-actor-dialoguebox');
-        container.appendChild(this.element);
-
-        // Toss in a background element
-        this.element.appendChild(make_element('div', '-background'));
-    }
-
     apply_state(state) {
-        let old_state = this.current_state || this.make_initial_state();
-        this.current_state = state;
+        let old_state = super.apply_state(state);
 
         if (state.phrase === null) {
             // Hide and return
@@ -1088,40 +1138,25 @@ class DialogueBox extends Actor {
             return
         @_scroll $dialogue, all_letters, letter_index
 */
-DialogueBox.prototype.TWIDDLES = {
-    phrase: {
-        initial: null,
-        propagate: null,
-    },
-    // Speaker properties
-    name: {
-        initial: null,
-    },
-    color: {
-        initial: null,
-    },
-    position: {
-        initial: null,
-    },
-};
-DialogueBox.STEP_TYPES = {};
-DialogueBox.LEGACY_JSON_ACTIONS = {};
 
+
+////////////////////////////////////////////////////////////////////////////////
+// Script and playback
 
 class BeatBuilder {
     // A beat is the current state of all actors in a script, compiled from a
     // contiguous sequence of steps and generally followed by a pause.  It
     // describes where everyone is on stage while a line of dialogue is being
     // spoken, for example.  This type helps construct beats from steps.
-    constructor(actors) {
-        // Map of actor => states
+    constructor(roles) {
+        // Map of role => states
         this.states = new Map();
-        // Which actors have had steps occur since the previous beat
+        // Which roles have had steps occur since the previous beat
         this.dirty = new Set();
 
         // Populate initial states
-        for (let [name, actor] of Object.entries(actors)) {
-            this.states.set(actor, actor.make_initial_state());
+        for (let [name, role] of Object.entries(roles)) {
+            this.states.set(role, role.generate_initial_state());
         }
     }
 
@@ -1129,14 +1164,14 @@ class BeatBuilder {
         step.update_state(this);
     }
 
-    set_twiddle(actor, key, value) {
-        let state = this.states.get(actor);
+    set_twiddle(role, key, value) {
+        let state = this.states.get(role);
 
-        // If this actor hasn't had a step yet this beat, clone their state
-        if (! this.dirty.has(actor)) {
+        // If this role hasn't had a step yet this beat, clone their state
+        if (! this.dirty.has(role)) {
             let new_state = {};
             for (let [key, value] of Object.entries(state)) {
-                let twiddle = actor.TWIDDLES[key];
+                let twiddle = role.TWIDDLES[key];
                 if (twiddle.propagate === undefined) {
                     // Keep using the current value
                     new_state[key] = value;
@@ -1147,8 +1182,8 @@ class BeatBuilder {
                 }
             }
             state = new_state;
-            this.states.set(actor, state);
-            this.dirty.add(actor);
+            this.states.set(role, state);
+            this.dirty.add(role);
         }
 
         state[key] = value;
@@ -1162,9 +1197,9 @@ class BeatBuilder {
 
         // Eagerly-clone, in case of propagation
         // TODO could skip this and re-introduce the dirty thing
-        for (let [actor, old_state] of beat) {
+        for (let [role, old_state] of beat) {
             let new_state = {};
-            for (let [key, twiddle] of Object.entries(actor.TWIDDLES)) {
+            for (let [key, twiddle] of Object.entries(role.TWIDDLES)) {
                 if (twiddle.propagate === undefined) {
                     // Keep using the current value
                     new_state[key] = old_state[key];
@@ -1174,8 +1209,8 @@ class BeatBuilder {
                     new_state[key] = twiddle.propagate;
                 }
             }
-            this.states.set(actor, new_state);
-            this.dirty.add(actor);
+            this.states.set(role, new_state);
+            this.dirty.add(role);
         }
 
         return beat;
@@ -1192,51 +1227,42 @@ class Script {
     // occasionally for a fixed amount of time or until some task is complete.
 
     constructor() {
-        this.actors = {
+        this.roles = {
             stage: new Stage(),
         };
-
-        this.steps = [
-            [this.actors.__dialogue__, 'say', "The quick brown fox jumps over the lazy dog's back."],
-            [this.actors.__dialogue__, 'say', "Jackdaws love my big sphinx of quartz."],
-        ];
-
-        this.cursor = 0;
-
-        this.busy = false;
 
         this.set_steps([]);
     }
 
     static from_legacy_json(json) {
-        let script = new Script();
+        let script = new this();
         script._load_legacy_json(json);
         return script;
     }
     _load_legacy_json(json) {
         // Legacy JSON has an implicit dialogue box
         let dialogue_box = new DialogueBox();
-        this.actors['__dialogue__'] = dialogue_box;
+        this.roles['__dialogue__'] = dialogue_box;
 
-        // FIXME ???  how do i do registration, hmm
-        let ACTOR_TYPES = {
+        // FIXME ???  how do i do... registration?  hmm
+        let ROLE_TYPES = {
             curtain: Curtain,
             jukebox: Jukebox,
             spot: PictureFrame,
             character: Character,
         };
 
-        for (let [name, actor_def] of Object.entries(json.actors)) {
-            let type = ACTOR_TYPES[actor_def.type];
+        for (let [name, role_def] of Object.entries(json.actors)) {
+            let type = ROLE_TYPES[role_def.type];
             if (! type) {
-                throw new Error(`No such actor type: ${actor_def.type}`);
+                throw new Error(`No such role type: ${role_def.type}`);
             }
 
-            this.actors[name] = type.from_legacy_json(actor_def);
-            if (actor_def.type === 'character') {
+            this.roles[name] = type.from_legacy_json(role_def);
+            if (role_def.type === 'character') {
                 // JSON characters implicitly use the implicit dialogue box
                 // TODO i wonder if this could be in Character.from_legacy_json
-                this.actors[name].dialogue_box = dialogue_box;
+                this.roles[name].dialogue_box = dialogue_box;
             }
         }
 
@@ -1245,7 +1271,7 @@ class Script {
             if (! json_step.actor) {
                 // FIXME special actions like roll_credits
                 if (json_step.action == 'pause') {
-                    steps.push(new Step(this.actors.stage, Stage.STEP_TYPES.pause, []));
+                    steps.push(new Step(this.roles.stage, Stage.STEP_TYPES.pause, []));
                 }
                 else {
                     console.warn("ah, not yet implemented:", json_step);
@@ -1253,14 +1279,14 @@ class Script {
                 continue;
             }
 
-            let actor = this.actors[json_step.actor];
-            let actor_type = actor.constructor;
-            let [step_key, ...arg_keys] = actor_type.LEGACY_JSON_ACTIONS[json_step.action];
-            let step_type = actor_type.STEP_TYPES[step_key];
+            let role = this.roles[json_step.actor];
+            let role_type = role.constructor;
+            let [step_key, ...arg_keys] = role_type.LEGACY_JSON_ACTIONS[json_step.action];
+            let step_type = role_type.STEP_TYPES[step_key];
             if (! step_type) {
-                throw new Error(`No such action '${json_step.action}' for actor '${json_step.actor}'`);
+                throw new Error(`No such action '${json_step.action}' for role '${json_step.actor}'`);
             }
-            steps.push(new Step(actor, actor_type.STEP_TYPES[step_key], arg_keys.map(key => json_step[key])));
+            steps.push(new Step(role, role_type.STEP_TYPES[step_key], arg_keys.map(key => json_step[key])));
         }
 
         this.set_steps(steps);
@@ -1293,9 +1319,9 @@ class Script {
     set_steps(steps) {
         this.steps = steps;
 
-        // Consolidate steps into beats -- maps of actor => state
+        // Consolidate steps into beats -- maps of role => state
         this.beats = [];
-        let builder = new BeatBuilder(this.actors);
+        let builder = new BeatBuilder(this.roles);
 
         for (let step of this.steps) {
             builder.add_step(step);
@@ -1313,14 +1339,33 @@ class Script {
         // TODO only if last step wasn't a pause probably.  or maybe i should push as i go.  but that doesn't work if the last step IS a pause.
         this.beats.push(builder.end_beat());
 
-        for (let [name, actor] of Object.entries(this.actors)) {
+        for (let [name, role] of Object.entries(this.roles)) {
             let prev = null;
             for (let [i, beat] of this.beats.entries()) {
-                let state = beat.get(actor);
+                let state = beat.get(role);
                 if (state !== prev) {
                     prev = state;
                 }
             }
+        }
+    }
+}
+// The Director handles playback of a Script (including, of course, casting an
+// Actor for each Role).
+class Director {
+    constructor(script) {
+        this.script = script;
+
+        this.cursor = 0;
+        this.busy = false;
+
+        this.actors = {};
+        // TODO this seems clumsy...  maybe if roles had names, hmm
+        this.role_to_actor = new Map();
+        for (let [name, role] of Object.entries(this.script.roles)) {
+            let actor = role.cast();
+            this.actors[name] = actor;
+            this.role_to_actor.set(role, actor);
         }
     }
 
@@ -1328,14 +1373,15 @@ class Script {
         // FIXME what if we're 'busy' at this point?
 
         this.cursor = beat_index;
-        let beat = this.beats[this.cursor];
+        let beat = this.script.beats[this.cursor];
 
         // TODO ahh can the action "methods" return whether they pause?
 
         let promises = [];
-        for (let [actor, state] of beat) {
+        for (let [role, state] of beat) {
             // Actors can return promises, and the scene won't advance until
             // they've been resolved
+            let actor = this.role_to_actor.get(role);
             let promise = actor.apply_state(state);
             if (promise) {
                 promises.push(promise);
@@ -1384,7 +1430,7 @@ class Script {
         }
 
         // If we're still here, advance to the next beat
-        if (this.cursor >= this.beats.length)
+        if (this.cursor >= this.script.beats.length)
             return;
 
         this.jump(this.cursor + 1);
@@ -1401,24 +1447,33 @@ class Script {
 class Player {
     constructor(script, container) {
         this.script = script;
+        this.director = new Director(script);
+        // TODO this assumes we're already passed a gleam-player div, which seems odd
         this.container = container;
 
-        for (let [name, actor] of Object.entries(this.script.actors)) {
-            // FIXME do something with returned promises
-            actor.build_into(this.container);
+        for (let [name, actor] of Object.entries(this.director.actors)) {
+            // FIXME whoopsie doodle, where do promises go here if the actors
+            // construct elements themselves?  standard property on Actor
+            // maybe?  worst case, stuff loaded in the background already,
+            // right?
+            if (actor.element) {
+                this.container.appendChild(actor.element);
+            }
         }
 
-        this.script.advance();
+        this.director.advance();
+
+        // Bind some useful event handlers
         // TODO should make our own sub-container so when we go away (and delete the dom), the events go away too
         this.container.addEventListener('click', e => {
-            this.script.advance();
+            this.director.advance();
         });
 
         this.playing = false;
     }
 
     update(dt) {
-        this.script.update(dt);
+        this.director.update(dt);
     }
 
     play() {
@@ -1469,10 +1524,11 @@ const STEP_ARGUMENT_TYPES = {
 };
 
 
-function make_sample_step_element(actor_editor, step_type) {
+// TODO maybe these should be methods on RoleEditor
+function make_sample_step_element(role_editor, step_type) {
     let el = make_element('div', 'gleam-editor-step');
-    el.classList.add(actor_editor.CLASS_NAME);
-    // FIXME how does name update?  does the actor editor keep a list, or do these things like listen for an event on us?
+    el.classList.add(role_editor.CLASS_NAME);
+    // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
     el.appendChild(make_element('div', '-what', step_type.display_name));
     for (let arg_def of step_type.args) {
         el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
@@ -1481,11 +1537,11 @@ function make_sample_step_element(actor_editor, step_type) {
     return el;
 }
 
-function make_step_element(actor_editor, step) {
+function make_step_element(role_editor, step) {
     let el = make_element('div', 'gleam-editor-step');
-    el.classList.add(actor_editor.CLASS_NAME);
-    // FIXME how does name update?  does the actor editor keep a list, or do these things like listen for an event on us?
-    el.appendChild(make_element('div', '-who', actor_editor.name));
+    el.classList.add(role_editor.CLASS_NAME);
+    // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
+    el.appendChild(make_element('div', '-who', role_editor.name));
     el.appendChild(make_element('div', '-what', step.type.display_name));
     for (let [i, arg_def] of step.type.args.entries()) {
         let value = step.args[i];
@@ -1505,12 +1561,12 @@ function make_step_element(actor_editor, step) {
 }
 
 // Wrapper for a step that also keeps ahold of the step element and the
-// associated ActorEditor
+// associated RoleEditor
 class EditorStep {
-    constructor(actor_editor, step, ...args) {
-        this.actor_editor = actor_editor;
+    constructor(role_editor, step, ...args) {
+        this.role_editor = role_editor;
         this.step = step;
-        this.element = make_step_element(actor_editor, this.step);
+        this.element = make_step_element(role_editor, this.step);
         this._position = null;
     }
 
@@ -1525,19 +1581,19 @@ class EditorStep {
 
 
 // -----------------------------------------------------------------------------
-// Editors for individual actor types
+// Editors for individual role types
 
-class ActorEditor {
-    constructor(main_editor, actor = null) {
+class RoleEditor {
+    constructor(main_editor, role = null) {
         this.main_editor = main_editor;
 
         let throwaway = document.createElement('div');
         throwaway.innerHTML = this.HTML;
         this.container = throwaway.firstElementChild;  // FIXME experimental, ugh
         this.container.classList.add(this.CLASS_NAME);
-        this.actor = actor || new this.ACTOR_TYPE;
+        this.role = role || new this.ROLE_TYPE;
 
-        // FIXME name propagation, and also give actors names of their own probably?
+        // FIXME name propagation, and also give roles names of their own probably?
         this.name = 'bogus';
 
         this.initialize_steps();
@@ -1547,7 +1603,7 @@ class ActorEditor {
         // Add step templates
         // FIXME this is for picture frame; please genericify
         this.step_type_map = new Map();  // step element => step type
-        for (let step_type of Object.values(this.ACTOR_TYPE.STEP_TYPES)) {
+        for (let step_type of Object.values(this.ROLE_TYPE.STEP_TYPES)) {
             let step_el = make_sample_step_element(this, step_type);
             this.container.appendChild(step_el);
             this.step_type_map.set(step_el, step_type);
@@ -1566,7 +1622,7 @@ class ActorEditor {
                 // TODO?
                 args.push(null);
             }
-            this.main_editor.script_panel.begin_step_drag(new EditorStep(this, new Step(this.actor, step_type, args)));
+            this.main_editor.script_panel.begin_step_drag(new EditorStep(this, new Step(this.role, step_type, args)));
         });
     }
 
@@ -1583,38 +1639,38 @@ class ActorEditor {
 
 
 // FIXME you should NOT be able to make more of these
-class StageEditor extends ActorEditor {
+class StageEditor extends RoleEditor {
 }
-StageEditor.prototype.ACTOR_TYPE = Stage;
-StageEditor.prototype.CLASS_NAME = 'gleam-editor-actor-stage';
+StageEditor.prototype.ROLE_TYPE = Stage;
+StageEditor.prototype.CLASS_NAME = 'gleam-editor-role-stage';
 StageEditor.prototype.HTML = `
-    <li class="gleam-editor-component-stage">
+    <li class="gleam-editor-role-stage">
         <header>
             <h2>stage</h2>
         </header>
     </li>
 `;
 
-class CurtainEditor extends ActorEditor {
+class CurtainEditor extends RoleEditor {
 }
-CurtainEditor.prototype.ACTOR_TYPE = Curtain;
-CurtainEditor.actor_type_name = 'curtain';
-CurtainEditor.prototype.CLASS_NAME = 'gleam-editor-actor-curtain';
+CurtainEditor.prototype.ROLE_TYPE = Curtain;
+CurtainEditor.role_type_name = 'curtain';
+CurtainEditor.prototype.CLASS_NAME = 'gleam-editor-role-curtain';
 CurtainEditor.prototype.HTML = `
-    <li class="gleam-editor-component-curtain">
+    <li class="gleam-editor-role-curtain">
         <header>
             <h2>curtain</h2>
         </header>
     </li>
 `;
 
-class JukeboxEditor extends ActorEditor {
+class JukeboxEditor extends RoleEditor {
 }
-JukeboxEditor.prototype.ACTOR_TYPE = Jukebox;
-JukeboxEditor.actor_type_name = 'jukebox';
-JukeboxEditor.prototype.CLASS_NAME = 'gleam-editor-actor-jukebox';
+JukeboxEditor.prototype.ROLE_TYPE = Jukebox;
+JukeboxEditor.role_type_name = 'jukebox';
+JukeboxEditor.prototype.CLASS_NAME = 'gleam-editor-role-jukebox';
 JukeboxEditor.prototype.HTML = `
-    <li class="gleam-editor-component-jukebox">
+    <li class="gleam-editor-role-jukebox">
         <header>
             <h2>📻 jukebox</h2>
         </header>
@@ -1622,17 +1678,17 @@ JukeboxEditor.prototype.HTML = `
     </li>
 `;
 
-class PictureFrameEditor extends ActorEditor {
+class PictureFrameEditor extends RoleEditor {
     constructor(...args) {
         super(...args);
 
-        this.pose_list = this.container.querySelector('.gleam-editor-component-pictureframe-poses');
+        this.pose_list = this.container.querySelector('.gleam-editor-role-pictureframe-poses');
         this.populate_pose_list();
     }
 
     populate_pose_list() {
         this.pose_list.textContent = '';
-        for (let [pose_name, pose] of Object.entries(this.actor.poses)) {
+        for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame = pose[0];  // FIXME this format is bonkers
             let li = make_element('li', null, pose_name);
             let image = this.main_editor.assets.expect(frame.url);
@@ -1661,41 +1717,41 @@ class PictureFrameEditor extends ActorEditor {
         this.populate_pose_list();
     }
 }
-PictureFrameEditor.prototype.ACTOR_TYPE = PictureFrame;
-PictureFrameEditor.actor_type_name = 'picture frame';
-PictureFrameEditor.prototype.CLASS_NAME = 'gleam-editor-actor-pictureframe';
+PictureFrameEditor.prototype.ROLE_TYPE = PictureFrame;
+PictureFrameEditor.role_type_name = 'picture frame';
+PictureFrameEditor.prototype.CLASS_NAME = 'gleam-editor-role-pictureframe';
 PictureFrameEditor.prototype.HTML = `
-    <li class="gleam-editor-component-pictureframe">
+    <li class="gleam-editor-role-pictureframe">
         <header>
             <h2>backdrop</h2>
         </header>
         <h3>Poses <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
-        <ul class="gleam-editor-component-pictureframe-poses">
+        <ul class="gleam-editor-role-pictureframe-poses">
         </ul>
         <button>preview</button>
     </li>
 `;
 
-class CharacterEditor extends ActorEditor {
+class CharacterEditor extends RoleEditor {
 }
-CharacterEditor.prototype.ACTOR_TYPE = Character;
-CharacterEditor.actor_type_name = 'character';
-CharacterEditor.prototype.CLASS_NAME = 'gleam-editor-actor-character';
+CharacterEditor.prototype.ROLE_TYPE = Character;
+CharacterEditor.role_type_name = 'character';
+CharacterEditor.prototype.CLASS_NAME = 'gleam-editor-role-character';
 CharacterEditor.prototype.HTML = `
-    <li class="gleam-editor-component-character">
+    <li class="gleam-editor-role-character">
         <header>
             <h2>backdrop</h2>
         </header>
     </li>
 `;
 
-class DialogueBoxEditor extends ActorEditor {
+class DialogueBoxEditor extends RoleEditor {
 }
-DialogueBoxEditor.prototype.ACTOR_TYPE = DialogueBox;
-DialogueBoxEditor.actor_type_name = 'dialogue box';
-DialogueBoxEditor.prototype.CLASS_NAME = 'gleam-editor-actor-dialoguebox';
+DialogueBoxEditor.prototype.ROLE_TYPE = DialogueBox;
+DialogueBoxEditor.role_type_name = 'dialogue box';
+DialogueBoxEditor.prototype.CLASS_NAME = 'gleam-editor-role-dialoguebox';
 DialogueBoxEditor.prototype.HTML = `
-    <li class="gleam-editor-component-dialoguebox">
+    <li class="gleam-editor-role-dialoguebox">
         <header>
             <h2>backdrop</h2>
         </header>
@@ -1703,8 +1759,8 @@ DialogueBoxEditor.prototype.HTML = `
 `;
 
 
-// List of all actor editor types
-const ACTOR_EDITOR_TYPES = [
+// List of all role editor types
+const ROLE_EDITOR_TYPES = [
     //StageEditor,
     CurtainEditor,
     JukeboxEditor,
@@ -1748,8 +1804,8 @@ class AssetLibrary {
                 this.assets[entry.name] = entry;
             }
             this.refresh_dom();
-            for (let actor_editor of this.main_editor.actor_editors) {
-                actor_editor.update_assets();
+            for (let role_editor of this.main_editor.role_editors) {
+                role_editor.update_assets();
             }
         }, console.error)
     }
@@ -1834,7 +1890,8 @@ class ScriptPanel extends Panel {
                 }
                 if (position !== this.selected_beat_index) {
                     // TODO hmm, this assumes the script is working atm
-                    this.editor.script.jump(position);
+                    // TODO this is also quite a lot of dots
+                    this.editor.player.director.jump(position);
                 }
             }
         });
@@ -1856,7 +1913,7 @@ class ScriptPanel extends Panel {
         });
 
         // Set up dropping a step into the script (either from elsewhere in the
-        // script, or from an actor)
+        // script, or from a role)
         // Fires repeatedly on a valid drop target, which FIXME I thought was determined by dragenter???
         this.container.addEventListener('dragover', ev => {
             // Only listen to drags of steps
@@ -2018,6 +2075,7 @@ class ScriptPanel extends Panel {
         if (index === this.selected_beat_index)
             return;
 
+        console.log(index);
         if (this.selected_beat_index !== null) {
             this.beats_list.children[this.selected_beat_index].classList.remove('--current');
         }
@@ -2157,16 +2215,16 @@ class Editor {
             this.assets.read_directory_entry(entry);
         });
 
-        // Actor panel (labeled "components")
-        this.actor_editors = [];
-        this.actors_container = document.getElementById('gleam-editor-components');
-        this.actors_el = this.actors_container.querySelector('.gleam-editor-components');
-        for (let actor_editor_type of ACTOR_EDITOR_TYPES) {
-            let button = make_element('button', null, `new ${actor_editor_type.actor_type_name}`);
+        // Roles panel
+        this.role_editors = [];
+        this.roles_container = document.getElementById('gleam-editor-roles');
+        this.roles_el = this.roles_container.querySelector('.gleam-editor-roles');
+        for (let role_editor_type of ROLE_EDITOR_TYPES) {
+            let button = make_element('button', null, `new ${role_editor_type.role_type_name}`);
             button.addEventListener('click', ev => {
-                this.add_actor_editor(new actor_editor_type(this));
+                this.add_role_editor(new role_editor_type(this));
             });
-            this.actors_container.querySelector('.gleam-editor-panel-body').appendChild(button);
+            this.roles_container.querySelector('.gleam-editor-panel-body').appendChild(button);
         }
 
         this.script_panel = new ScriptPanel(this, document.getElementById('gleam-editor-script'));
@@ -2176,47 +2234,47 @@ class Editor {
         /*
         let stage_editor = new StageEditor(this);
         stage_editor.name = 'stage';
-        this.add_actor_editor(stage_editor);
+        this.add_role_editor(stage_editor);
         */
 
-        // Load actors from the script
-        let actor_editor_index = new Map();
-        for (let [ident, actor] of Object.entries(script.actors)) {
-            let actor_editor_type;
-            if (actor instanceof Stage) {
-                actor_editor_type = StageEditor;
+        // Load roles from the script
+        let role_editor_index = new Map();
+        for (let [ident, role] of Object.entries(script.roles)) {
+            let role_editor_type;
+            if (role instanceof Stage) {
+                role_editor_type = StageEditor;
             }
-            else if (actor instanceof Curtain) {
-                actor_editor_type = CurtainEditor;
+            else if (role instanceof Curtain) {
+                role_editor_type = CurtainEditor;
             }
-            else if (actor instanceof Jukebox) {
-                actor_editor_type = JukeboxEditor;
+            else if (role instanceof Jukebox) {
+                role_editor_type = JukeboxEditor;
             }
-            else if (actor instanceof PictureFrame) {
-                actor_editor_type = PictureFrameEditor;
+            else if (role instanceof PictureFrame) {
+                role_editor_type = PictureFrameEditor;
             }
-            else if (actor instanceof Character) {
-                actor_editor_type = CharacterEditor;
+            else if (role instanceof Character) {
+                role_editor_type = CharacterEditor;
             }
-            else if (actor instanceof DialogueBox) {
-                actor_editor_type = DialogueBoxEditor;
+            else if (role instanceof DialogueBox) {
+                role_editor_type = DialogueBoxEditor;
             }
 
-            if (actor_editor_type) {
-                let actor_editor = new actor_editor_type(this, actor);
-                actor_editor.name = ident;
-                actor_editor_index.set(actor, actor_editor);
-                this.add_actor_editor(actor_editor);
+            if (role_editor_type) {
+                let role_editor = new role_editor_type(this, role);
+                role_editor.name = ident;
+                role_editor_index.set(role, role_editor);
+                this.add_role_editor(role_editor);
             }
             else {
-                console.warn("oops, not yet supported", actor.constructor, actor);
+                console.warn("oops, not yet supported", role.constructor, role);
             }
         }
 
         // Load steps from the script
         let group = make_element('li');
         for (let [i, step] of script.steps.entries()) {
-            let editor_step = new EditorStep(actor_editor_index.get(step.actor), step);
+            let editor_step = new EditorStep(role_editor_index.get(step.role), step);
             editor_step.position = i;
             this.steps.push(editor_step);
 
@@ -2234,18 +2292,18 @@ class Editor {
 
 
         // FIXME this is very bad
-        script.xxx_hook = this;
+        this.player.director.xxx_hook = this;
         this.on_beat();
     }
 
     // FIXME hooks for the script
     on_beat() {
-        this.script_panel.set_beat_index(this.script.cursor);
+        this.script_panel.set_beat_index(this.player.director.cursor);
     }
 
-    add_actor_editor(actor_editor) {
-        this.actor_editors.push(actor_editor);
-        this.actors_el.appendChild(actor_editor.container);
+    add_role_editor(role_editor) {
+        this.role_editors.push(role_editor);
+        this.roles_el.appendChild(role_editor.container);
     }
 
     get_step_for_element(element) {
