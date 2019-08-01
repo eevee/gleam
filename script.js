@@ -111,7 +111,6 @@ class Step {
                 value = this.args[twiddle_change.arg];
             }
             else if (twiddle_change.prop !== undefined) {
-                console.log("using prop...", actor, twiddle_change, actor[twiddle_change.prop]);
                 value = this.actor[twiddle_change.prop];
             }
 
@@ -524,7 +523,6 @@ class DialogueBox extends Actor {
 
     apply_state(state) {
         let old_state = this.current_state || this.make_initial_state();
-        console.log(old_state, "=>", state);
         this.current_state = state;
 
         if (state.phrase === null) {
@@ -1249,6 +1247,9 @@ class Script {
                 if (json_step.action == 'pause') {
                     steps.push(new Step(this.actors.stage, Stage.STEP_TYPES.pause, []));
                 }
+                else {
+                    console.warn("ah, not yet implemented:", json_step);
+                }
                 continue;
             }
 
@@ -1345,7 +1346,6 @@ class Script {
             this.busy = true;
             let promise = Promise.all(promises);
             promise.then(() => {
-                console.log(" -- promises fulfilled --", beat.pause);
                 this.busy = false;
                 // If the step that ended the beat was a "wait" step, then
                 // auto-advance as soon as all the promises are done
