@@ -1409,7 +1409,50 @@ class Script {
         return this.beats[step_meta.beat_index];
     }
 
+    // -------------------------------------------------------------------------
     // Post-load mutation, only used in the editor
+
+    // Call to indicate a Step has been altered
+    update_step(step) {
+        let step_meta = this.step_metadata.get(step);
+        if (step_meta === undefined) {
+            // TODO error on bad step
+            console.error("Step is not a part of this Script", step);
+        }
+
+        let beat = this.beats[step_meta.beat_index];
+        // Recreate the Beat in question
+        let new_beat;
+        if (step_meta.beat_index > 0) {
+            new_beat = this.beats[step_meta.beat_index - 1].create_next();
+        }
+        else {
+            new_beat = Beat.create_first(this.roles);
+        }
+        new_beat.last_step_index = beat.last_step_index;
+        this.beats[step_meta.beat_index] = new_beat;
+
+        for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
+            this.steps[i].update_beat(new_beat);
+        }
+
+        // Keep recreating beats until all twiddle changes from the new step
+        // have been overwritten by later steps
+        // FIXME do that
+
+        // FIXME yeah nope, need to know if later steps in the beat have the twiddle.  could track which twiddles are affected by which steps (!!!!!), or just recreate the whole thing, it's only a handful of steps
+
+        this._check_constraints();
+
+        this.intercom.dispatchEvent(new CustomEvent('gleam-step-updated', {
+            detail: {
+                step: step,
+                index: step_meta.index,
+                beat_index: step_meta.beat_index,
+            },
+        }));
+    }
+
     insert_step(new_step, index) {
         // FIXME bomb if new_step is already in here
         // This step either goes in the middle of an existing beat, splits an
@@ -1514,7 +1557,6 @@ class Script {
 
         this._check_constraints();
 
-        // Finally, fire an event!
         this.intercom.dispatchEvent(new CustomEvent('gleam-step-inserted', {
             detail: {
                 step: new_step,
@@ -1607,12 +1649,15 @@ class Director {
         // TODO hm, could put this in a 'script' setter to make it Just Work when reassigning script, but why not just make a new Director?
         // When a new step is added, if it's part of the beat we're currently
         // on, jump back to it
-        this.script.intercom.addEventListener('gleam-step-inserted', ev => {
+        // TODO it seems sensible to not refresh the text if it hasn't changed?
+        let refresh_handler = ev => {
             let beat_index = ev.detail.beat_index;
-            if (beat_index === self.cursor) {
-                this.jump(self.cursor);
+            if (beat_index === this.cursor) {
+                this.jump(this.cursor);
             }
-        });
+        };
+        this.script.intercom.addEventListener('gleam-step-inserted', refresh_handler);
+        this.script.intercom.addEventListener('gleam-step-updated', refresh_handler);
 
         // And start us off on the first beat
         // TODO what if there are no beats?
@@ -1863,6 +1908,7 @@ function close_overlay(element) {
 // -----------------------------------------------------------------------------
 // Step argument configuration
 
+// TODO strongly considering ditching these (they seem a bit heavy...?) and going back to functions and using dom state and dispatch
 class StepArg {
     constructor(editor_step, arg_index) {
         this.editor_step = editor_step;
@@ -1881,7 +1927,31 @@ class StepArg {
 
 class ProseArg extends StepArg {
     build_view(value) {
-        return make_element('div', 'gleam-editor-arg-prose', value);
+        let el = make_element('div', 'gleam-editor-arg-prose', value);
+        el.addEventListener('click', ev => {
+            // Prevent this click from selecting the step
+            ev.stopPropagation();
+
+            // FIXME this requires clicking away to save, but most of the page is clickable...
+            // also one click to edit sucks when there's already click to jump.  double click?
+            let old_value = this.view_element.textContent;
+            let editor_element = make_element('textarea', 'gleam-editor-arg-prose', old_value);
+            editor_element.addEventListener('blur', ev => {
+                let new_value = editor_element.value;
+                if (new_value !== old_value) {
+                    this.editor_step.set_arg(this.arg_index, new_value);
+                }
+                editor_element.replaceWith(this.view_element);
+            });
+            this.view_element.replaceWith(editor_element);
+            // FIXME doesn't focus at the point where you clicked in the text
+            editor_element.focus();
+        });
+        return el;
+    }
+
+    set(value) {
+        this.view_element.textContent = value;
     }
 }
 
@@ -1902,6 +1972,7 @@ class PoseArg extends StepArg {
 
     build_editor() {
         // TODO hmmmmmmm seems like this could belong to the RoleEditor, since it's the same for every step!
+        // TODO highlight the selected one
         // FIXME ah, what if there are no poses?
         let el = make_element('ol', 'gleam-editor-arg-enum-poses');
         for (let pose of Object.keys(this.editor_step.role_editor.role.poses)) {
@@ -1990,19 +2061,12 @@ class EditorStep {
     }
 
     set_arg(i, value) {
+        // TODO maybe this bit shouldn't even be done here, but from an event handler?
         this.args[i].set(value);
+
         this.step.args[i] = value;
 
-        // FIXME this is a mess, and also just calling update_beat is no bueno
-        let ed = this.role_editor.main_editor;
-        let beat = ed.script.get_beat_for_step(this.step);
-        let state = beat.get(this.role_editor.role);
-        // Clone the state, since the actor might be holding onto it right now whoops
-        state = Object.assign({}, state);
-        beat.set(this.role_editor.role, state);
-        // FIXME yeah nope, need to know if later steps in the beat have the twiddle.  could track which twiddles are affected by which steps (!!!!!), or just recreate the whole thing, it's only a handful of steps
-        this.step.update_beat(beat);
-        ed.player.director.jump(ed.player.director.cursor);
+        this.role_editor.main_editor.script.update_step(this.step);
     }
 }
 
@@ -2521,12 +2585,38 @@ class ScriptPanel extends Panel {
         // Attach to the Director
         // TODO if a new Director is created, we'll need to attach a new listener
         editor.player.director.intercom.addEventListener('gleam-director-beat', ev => {
-            this.set_beat_index(ev.detail);
+            this.select_beat(ev.detail);
         });
         this.selected_beat_index = null;
     }
 
-    set_beat_index(index) {
+    create_twiddle_footer() {
+        // FIXME uggh ScriptPanel is created before the role editors (because those are made when loading a script).  this is dumb
+        // Create the debug twiddle viewer
+        this.footer = this.container.querySelector('section > footer');
+        this.twiddle_debug_elements = new Map();  // Role => { twiddle => <dd> }
+        // TODO need to update this when a role is added too, god christ ass.  or when a script is loaded, though it happens to work here
+        for (let role_editor of this.editor.role_editors) {
+            let box = make_element('div', 'gleam-editor-script-role-state');
+            box.classList.add(role_editor.CLASS_NAME);
+            this.footer.append(box);
+
+            let dl = make_element('dl');
+            box.append(
+                make_element('h2', null, role_editor.name),
+                dl);
+            let dd_map = {};
+            for (let key of Object.keys(role_editor.role.TWIDDLES)) {
+                // TODO display name?  maybe not
+                let dd = make_element('dd');
+                dd_map[key] = dd;
+                dl.append(make_element('dt', null, key), dd);
+            }
+            this.twiddle_debug_elements.set(role_editor.role, dd_map);
+        }
+    }
+
+    select_beat(index) {
         if (index < 0 || index >= this.editor.script.beats.length) {
             index = null;
         }
@@ -2541,6 +2631,15 @@ class ScriptPanel extends Panel {
             let li = this.beats_list.children[this.selected_beat_index]
             li.classList.add('--current');
             li.scrollIntoView({ block: 'nearest' });
+
+            // Update the debug panel
+            let beat = this.editor.script.beats[this.selected_beat_index];
+            for (let [role, state] of beat.states) {
+                let dd_map = this.twiddle_debug_elements.get(role);
+                for (let [key, value] of Object.entries(state)) {
+                    dd_map[key].textContent = value;
+                }
+            }
         }
     }
 
@@ -2554,7 +2653,7 @@ class ScriptPanel extends Panel {
             this.beats_list.appendChild(group);
             // Auto-select the first beat
             // TODO this should really do a script jump, once the script works
-            this.set_beat_index(0);
+            this.select_beat(0);
         }
         else {
             // FIXME adding at position 0 doesn't work, whoops
@@ -2742,8 +2841,9 @@ class Editor {
 
         this.assets.refresh_dom();
 
+        this.script_panel.create_twiddle_footer();
         // XXX hmm, very awkward that the ScriptPanel can't do this itself because we inject the step elements into it; maybe fix that
-        this.script_panel.set_beat_index(this.player.director.cursor);
+        this.script_panel.select_beat(this.player.director.cursor);
     }
 
     add_role_editor(role_editor) {

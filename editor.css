@@ -13,8 +13,14 @@ body {
     grid-template:
         "assets steps player" 1fr
         "assets steps roles" 1fr
+        /* Grid columns seem to default to a minimum width of min-content, so
+         * using minmax(0, ...) will force the script column to shrink if
+         * necessary (which it is, because the twiddle debug panel HAS to
+         * scroll horizontally) */
+        / fit-content(10%) minmax(0, 1fr) min-content
     ;
     height: 100%;
+    width: 100vw;
     margin: 0;
 
     background: #404040;
@@ -79,9 +85,8 @@ section.gleam-editor-panel > .gleam-editor-panel-body {
 }
 section.gleam-editor-panel > footer {
     /* TODO this was a bit of a half-baked idea and isn't done yet */
-    display: none !important;
     position: relative;
-    flex: 0 1 12em;
+    flex: 0 1 auto;
     overflow: auto;
     border-top: 1px solid #101010;
 }
@@ -262,20 +267,41 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
 
 /* Script footer -- shows the state for each actor on a beat */
 #gleam-editor-script > footer {
-    display: grid;
-    grid-template-rows: 1em 1fr;
-    grid-auto-flow: column;
+    display: flex;
+    overflow: auto;
 }
-#gleam-editor-script > footer dl {
+.gleam-editor-script-role-state {
+    flex: 0;
+    margin: 0.5em;
+    background: #ccc;
+    color: #202020;
+}
+.gleam-editor-script-role-state h2 {
+    font-size: 1em;
+    margin: 0;
+    padding: 0.33em;
+    background: #d0d0d0;
+}
+.gleam-editor-script-role-state dl {
+    font-size: 0.83em;
     display: grid;
-    grid-template-columns: 8em 1fr;
+    grid-template-columns: min-content 0.5em 1fr;
+    margin: 0.33em;
+    width: 16rem;
     font-family: "Source Code Pro", Inconsolata, monospace;
 }
-#gleam-editor-script > footer dt {
+.gleam-editor-script-role-state dt {
     grid-column: 1;
+    color: #606060;
+    text-align: right;
 }
-#gleam-editor-script > footer dd {
-    grid-column: 2;
+.gleam-editor-script-role-state dd {
+    grid-column: 3;
+    margin: 0;
+    width: 12em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 /* Steps, used in roles and the script panel */
@@ -317,13 +343,16 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     margin-left: -1em;
 }
 .gleam-editor-step > .-how {
-    margin: 0.25em 0.5em;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
-.gleam-editor-step > .-how p {
-    margin: 0.25em;
+.gleam-editor-step > .-how > * {
+    padding: 0.25em 0.5em;
 }
 
 /* Step arguments */
+/* FIXME consistent hover and "is being edited" effect? */
 .gleam-editor-arg-enum {
     color: #404fff;
     /* FIXME make this a more obvious click area */
@@ -336,13 +365,23 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     margin: 0 1em;
     white-space: pre-wrap;
 }
+/* This becomes a textarea when being edited, so style it like it weren't */
+textarea.gleam-editor-arg-prose {
+    display: block;
+    font-family: inherit;
+    font-size: inherit;
+    border: none;
+    background: none;
+    height: auto;
+}
+/* FIXME oh fuck off, these don't work with a textarea */
 .gleam-editor-arg-prose::before {
     content: '“';
     display: block;
     position: absolute;
     font-size: 2em;
     top: -0.25em;  /* rough alignment for Big Quote */
-    left: -1rem;
+    left: -0.5rem;
 }
 .gleam-editor-arg-prose::after {
     content: '”';
@@ -350,59 +389,70 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     position: absolute;
     font-size: 2em;
     bottom: -0.5em;  /* rough alignment for Big Quote */
-    right: -1rem;
+    right: -0.5rem;
 }
 
 
 /* Special styling for particular role types; applies to steps and to the
  * headers of their properties in the role list */
+/* TODO maybe make these roles generic instead of needing to update this 
 /* Stage */
 .gleam-editor-step.gleam-editor-role-stage > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-stage h2 {
+ol.gleam-editor-roles > li.gleam-editor-role-stage h2,
+.gleam-editor-script-role-state.gleam-editor-role-stage h2 {
     background: hsl(0, 50%, 75%);
 }
 .gleam-editor-step.gleam-editor-role-stage > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-stage h2::before {
+ol.gleam-editor-roles > li.gleam-editor-role-stage h2::before,
+.gleam-editor-script-role-state.gleam-editor-role-stage h2::before {
     content: '📻';
     margin-right: 0.25em;
 }
 /* Jukebox */
 .gleam-editor-step.gleam-editor-role-jukebox > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-jukebox h2 {
+ol.gleam-editor-roles > li.gleam-editor-role-jukebox h2,
+.gleam-editor-script-role-state.gleam-editor-role-jukebox h2 {
     background: hsl(270, 50%, 75%);
 }
 .gleam-editor-step.gleam-editor-role-jukebox > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-jukebox h2::before {
+ol.gleam-editor-roles > li.gleam-editor-role-jukebox h2::before,
+.gleam-editor-script-role-state.gleam-editor-role-jukebox h2::before {
     content: '📻';
     margin-right: 0.25em;
 }
 /* Picture frame */
 .gleam-editor-step.gleam-editor-role-pictureframe > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-pictureframe h2 {
+ol.gleam-editor-roles > li.gleam-editor-role-pictureframe h2,
+.gleam-editor-script-role-state.gleam-editor-role-pictureframe h2 {
     background: hsl(330, 50%, 75%);
 }
 .gleam-editor-step.gleam-editor-role-pictureframe > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-pictureframe h2::before {
+ol.gleam-editor-roles > li.gleam-editor-role-pictureframe h2::before,
+.gleam-editor-script-role-state.gleam-editor-role-pictureframe h2::before {
     content: '🖼️';
     margin-right: 0.25em;
 }
 /* Dialogue box */
 .gleam-editor-step.gleam-editor-role-dialoguebox > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-dialoguebox h2 {
+ol.gleam-editor-roles > li.gleam-editor-role-dialoguebox h2,
+.gleam-editor-script-role-state.gleam-editor-role-dialoguebox h2 {
     background: hsl(60, 50%, 75%);
 }
 .gleam-editor-step.gleam-editor-role-dialoguebox > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-dialoguebox h2::before {
+ol.gleam-editor-roles > li.gleam-editor-role-dialoguebox h2::before,
+.gleam-editor-script-role-state.gleam-editor-role-dialoguebox h2::before {
     content: '💬️';
     margin-right: 0.25em;
 }
 /* Character */
 .gleam-editor-step.gleam-editor-role-character > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-character h2 {
+ol.gleam-editor-roles > li.gleam-editor-role-character h2,
+.gleam-editor-script-role-state.gleam-editor-role-character h2 {
     background: hsl(210, 50%, 75%);
 }
 .gleam-editor-step.gleam-editor-role-character > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-character h2::before {
+ol.gleam-editor-roles > li.gleam-editor-role-character h2::before,
+.gleam-editor-script-role-state.gleam-editor-role-character h2::before {
     content: '🗣️';
     margin-right: 0.25em;
 }
