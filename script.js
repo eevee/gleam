@@ -1813,7 +1813,9 @@ PictureFrameEditor.prototype.HTML = `
     </li>
 `;
 
-class CharacterEditor extends RoleEditor {
+
+// FIXME? blurgh
+class CharacterEditor extends PictureFrameEditor {
 }
 CharacterEditor.prototype.ROLE_TYPE = Character;
 CharacterEditor.role_type_name = 'character';
@@ -1823,6 +1825,9 @@ CharacterEditor.prototype.HTML = `
         <header>
             <h2>backdrop</h2>
         </header>
+        <h3>Poses <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+        <ul class="gleam-editor-role-pictureframe-poses">
+        </ul>
     </li>
 `;
 
@@ -2334,11 +2339,11 @@ class Editor {
             else if (role instanceof Jukebox) {
                 role_editor_type = JukeboxEditor;
             }
-            else if (role instanceof PictureFrame) {
-                role_editor_type = PictureFrameEditor;
-            }
             else if (role instanceof Character) {
                 role_editor_type = CharacterEditor;
+            }
+            else if (role instanceof PictureFrame) {
+                role_editor_type = PictureFrameEditor;
             }
             else if (role instanceof DialogueBox) {
                 role_editor_type = DialogueBoxEditor;
