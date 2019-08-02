@@ -1155,7 +1155,25 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
 // Script and playback
 
 class Beat {
-    // TODO maybe make this a type i guess, since at the very least we need pause
+    constructor(first_step_index) {
+        // The interesting bit: a map of roles to twiddle states
+        this.states = new Map();
+
+        // Pause type for this beat, which should be updated by the caller
+        this.pause = false;
+
+        // This metadata is only really used for editing the steps live
+        this.first_step_index = first_step_index;
+        this.last_step_index = first_step_index;
+    }
+
+    set(role, state) {
+        this.states.set(role, state);
+    }
+
+    get(role) {
+        return this.states.get(role);
+    }
 }
 
 class Script {
@@ -1262,62 +1280,64 @@ class Script {
 
         // Consolidate steps into beats -- maps of role => state
         this.beats = [];
-        this.step_to_beat_index = new Map();
+        this.step_metadata = new Map();  // Step => { index, beat_index }
+        if (steps.length === 0)
+            return;
+
         // Map of role => states
-        let states = new Map();
+        let beat = new Beat(0);
+        this.beats.push(beat);
 
         // Populate initial states
         for (let [name, role] of Object.entries(this.roles)) {
-            states.set(role, role.generate_initial_state());
+            beat.set(role, role.generate_initial_state());
         }
 
         // Iterate through steps and fold them into beats
         for (let [i, step] of this.steps.entries()) {
-            this.step_to_beat_index.set(step, this.beats.length);
-            step.update_beat(states);
+            this.step_metadata.set(step, {
+                index: i,
+                beat_index: this.beats.length - 1,
+            });
+            step.update_beat(beat);
+            beat.last_step_index = i;
 
+            // If this step pauses, the next step goes in a new beat
             if (step.type.pause) {
-                // End the current beat, and start a new one
-                let beat = states;
-                states = new Map();
+                // If this is the last step, a pause is meaningless
+                if (i === this.steps.length - 1)
+                    break;
+
+                beat.pause = step.type.pause;
+
+                let prev_beat = beat;
+                beat = new Beat(i + 1);
                 this.beats.push(beat);
 
                 // Eagerly-clone, in case of propagation
-                // TODO could skip this and re-introduce the dirty thing
-                for (let [role, old_state] of beat) {
-                    let new_state = {};
+                // TODO move this into Beat?
+                for (let [role, prev_state] of prev_beat.states) {
+                    let state = {};
                     for (let [key, twiddle] of Object.entries(role.TWIDDLES)) {
                         if (twiddle.propagate === undefined) {
                             // Keep using the current value
-                            new_state[key] = old_state[key];
+                            state[key] = prev_state[key];
                         }
                         else {
                             // Revert to the given propagate value
-                            new_state[key] = twiddle.propagate;
+                            state[key] = twiddle.propagate;
                         }
                     }
-                    states.set(role, new_state);
-                }
-
-                // XXX there must be a better way to do this.  is a beat an object?
-                if (step.type.pause === 'wait') {
-                    beat.pause = 'wait';
+                    beat.set(role, state);
                 }
             }
         }
+    }
 
-        // TODO only if last step wasn't a pause probably.  or maybe i should push as i go.  but that doesn't work if the last step IS a pause.
-        this.beats.push(states);
-
-        for (let [name, role] of Object.entries(this.roles)) {
-            let prev = null;
-            for (let [i, beat] of this.beats.entries()) {
-                let state = beat.get(role);
-                if (state !== prev) {
-                    prev = state;
-                }
-            }
-        }
+    get_beat_for_step(step) {
+        let step_meta = this.step_metadata.get(step);
+        // TODO error on bad step
+        return this.beats[step_meta.beat_index];
     }
 }
 // The Director handles playback of a Script (including, of course, casting an
@@ -1350,7 +1370,7 @@ class Director {
         // TODO ahh can the action "methods" return whether they pause?
 
         let promises = [];
-        for (let [role, state] of beat) {
+        for (let [role, state] of beat.states) {
             // Actors can return promises, and the scene won't advance until
             // they've been resolved
             let actor = this.role_to_actor.get(role);
@@ -1713,7 +1733,7 @@ class EditorStep {
 
         // FIXME this is a mess, and also just calling update_beat is no bueno
         let ed = this.role_editor.main_editor;
-        let beat = ed.script.beats[ed.script.step_to_beat_index.get(this.step)];
+        let beat = ed.script.get_beat_for_step(this.step);
         let state = beat.get(this.role_editor.role);
         // Clone the state, since the actor might be holding onto it right now whoops
         state = Object.assign({}, state);
@@ -2434,24 +2454,19 @@ class Editor {
         }
 
         // Load steps from the script
-        let group = make_element('li');
-        for (let [i, step] of script.steps.entries()) {
-            let editor_step = new EditorStep(role_editor_index.get(step.role), step);
-            editor_step.position = i;
-            this.steps.push(editor_step);
-
-            group.appendChild(editor_step.element);
-            if (step.type.pause) {
-                this.script_panel.beats_list.appendChild(group);
-                group = make_element('li');
+        for (let [b, beat] of script.beats.entries()) {
+            let group = make_element('li');
+            for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
+                let step = script.steps[i];
+                let editor_step = new EditorStep(role_editor_index.get(step.role), step);
+                editor_step.position = i;
+                this.steps.push(editor_step);
+                group.append(editor_step.element);
             }
-        }
-        if (group.children.length > 0) {
-            this.script_panel.beats_list.appendChild(group);
+            this.script_panel.beats_list.append(group);
         }
 
         this.assets.refresh_dom();
-
 
         // FIXME this is very bad
         this.player.director.xxx_hook = this;
