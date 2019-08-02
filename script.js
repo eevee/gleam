@@ -5,6 +5,10 @@
 // actually does is adjust the states as appropriate.  Even the transitions are
 // all CSS.
 
+// Browser features used include:
+// Element.closest
+// Node.remove
+
 window.Gleam = (function() {
 "use strict";
 let xxx_global_root;
@@ -141,7 +145,7 @@ class Step {
         this.args = args;
     }
 
-    update_state(builder) {
+    update_beat(beat) {
         for (let twiddle_change of this.type.twiddles) {
             let role = this.role;
             if (twiddle_change.delegate) {
@@ -156,7 +160,7 @@ class Step {
                 value = this.role[twiddle_change.prop];
             }
 
-            builder.set_twiddle(role, twiddle_change.key, value);
+            beat.get(role)[twiddle_change.key] = value;
         }
     }
 }
@@ -306,7 +310,9 @@ PictureFrame.STEP_TYPES = {
         display_name: 'show',
         args: [{
             display_name: 'pose',
-            type: 'key',
+            type: 'pose',
+            // TODO am i using this stuff or what
+            //type: 'key',
             type_key_prop: 'poses',
         }],
         twiddles: [{
@@ -1148,78 +1154,8 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
 ////////////////////////////////////////////////////////////////////////////////
 // Script and playback
 
-class BeatBuilder {
-    // A beat is the current state of all actors in a script, compiled from a
-    // contiguous sequence of steps and generally followed by a pause.  It
-    // describes where everyone is on stage while a line of dialogue is being
-    // spoken, for example.  This type helps construct beats from steps.
-    constructor(roles) {
-        // Map of role => states
-        this.states = new Map();
-        // Which roles have had steps occur since the previous beat
-        this.dirty = new Set();
-
-        // Populate initial states
-        for (let [name, role] of Object.entries(roles)) {
-            this.states.set(role, role.generate_initial_state());
-        }
-    }
-
-    add_step(step) {
-        step.update_state(this);
-    }
-
-    set_twiddle(role, key, value) {
-        let state = this.states.get(role);
-
-        // If this role hasn't had a step yet this beat, clone their state
-        if (! this.dirty.has(role)) {
-            let new_state = {};
-            for (let [key, value] of Object.entries(state)) {
-                let twiddle = role.TWIDDLES[key];
-                if (twiddle.propagate === undefined) {
-                    // Keep using the current value
-                    new_state[key] = value;
-                }
-                else {
-                    // Revert to the given propagate value
-                    new_state[key] = twiddle.propagate;
-                }
-            }
-            state = new_state;
-            this.states.set(role, state);
-            this.dirty.add(role);
-        }
-
-        state[key] = value;
-    }
-
-    end_beat() {
-        // End the current beat, returning it, and start a new one
-        let beat = this.states;
-        this.states = new Map();
-        this.dirty.clear();
-
-        // Eagerly-clone, in case of propagation
-        // TODO could skip this and re-introduce the dirty thing
-        for (let [role, old_state] of beat) {
-            let new_state = {};
-            for (let [key, twiddle] of Object.entries(role.TWIDDLES)) {
-                if (twiddle.propagate === undefined) {
-                    // Keep using the current value
-                    new_state[key] = old_state[key];
-                }
-                else {
-                    // Revert to the given propagate value
-                    new_state[key] = twiddle.propagate;
-                }
-            }
-            this.states.set(role, new_state);
-            this.dirty.add(role);
-        }
-
-        return beat;
-    }
+class Beat {
+    // TODO maybe make this a type i guess, since at the very least we need pause
 }
 
 class Script {
@@ -1326,23 +1262,52 @@ class Script {
 
         // Consolidate steps into beats -- maps of role => state
         this.beats = [];
-        let builder = new BeatBuilder(this.roles);
+        this.step_to_beat_index = new Map();
+        // Map of role => states
+        let states = new Map();
 
-        for (let step of this.steps) {
-            builder.add_step(step);
+        // Populate initial states
+        for (let [name, role] of Object.entries(this.roles)) {
+            states.set(role, role.generate_initial_state());
+        }
+
+        // Iterate through steps and fold them into beats
+        for (let [i, step] of this.steps.entries()) {
+            this.step_to_beat_index.set(step, this.beats.length);
+            step.update_beat(states);
 
             if (step.type.pause) {
-                this.beats.push(builder.end_beat());
+                // End the current beat, and start a new one
+                let beat = states;
+                states = new Map();
+                this.beats.push(beat);
+
+                // Eagerly-clone, in case of propagation
+                // TODO could skip this and re-introduce the dirty thing
+                for (let [role, old_state] of beat) {
+                    let new_state = {};
+                    for (let [key, twiddle] of Object.entries(role.TWIDDLES)) {
+                        if (twiddle.propagate === undefined) {
+                            // Keep using the current value
+                            new_state[key] = old_state[key];
+                        }
+                        else {
+                            // Revert to the given propagate value
+                            new_state[key] = twiddle.propagate;
+                        }
+                    }
+                    states.set(role, new_state);
+                }
 
                 // XXX there must be a better way to do this.  is a beat an object?
                 if (step.type.pause === 'wait') {
-                    this.beats[this.beats.length - 1].pause = 'wait';
+                    beat.pause = 'wait';
                 }
             }
         }
 
         // TODO only if last step wasn't a pause probably.  or maybe i should push as i go.  but that doesn't work if the last step IS a pause.
-        this.beats.push(builder.end_beat());
+        this.beats.push(states);
 
         for (let [name, role] of Object.entries(this.roles)) {
             let prev = null;
@@ -1593,15 +1558,91 @@ function make_element(tag, cls, text) {
 ////////////////////////////////////////////////////////////////////////////////
 // EDITOR
 
+function open_overlay(element) {
+    let overlay = make_element('div', 'gleam-editor-overlay');
+    overlay.appendChild(element);
+    document.body.appendChild(overlay);
+
+    // Remove the overlay when clicking outside the element
+    overlay.addEventListener('click', ev => {
+        overlay.parentNode.removeChild(overlay);
+    });
+    // But ignore any click on the element itself
+    element.addEventListener('click', ev => {
+        ev.stopPropagation();
+    });
+}
+
+function close_overlay(element) {
+    let overlay = element.closest('.gleam-editor-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Step argument configuration
 
+class StepArg {
+    constructor(editor_step, arg_index) {
+        this.editor_step = editor_step;
+        this.arg_index = arg_index;
+        this.view_element = this.build_view(editor_step.step.args[arg_index]);
+    }
+
+    get arg_def() {
+        return this.editor_step.step.type.args[this.arg_index];
+    }
+
+    build_view(value) {}
+
+    set(value) {}
+}
+
+class ProseArg extends StepArg {
+    build_view(value) {
+        return make_element('div', 'gleam-editor-arg-prose', value);
+    }
+}
+
+class PoseArg extends StepArg {
+    build_view(value) {
+        let el = make_element('div', 'gleam-editor-arg-enum', value);
+        el.addEventListener('click', ev => {
+            // Prevent this click from selecting the step
+            ev.stopPropagation();
+
+            let editor_element = this.build_editor();
+            editor_element.style.left = `${ev.clientX}px`;
+            editor_element.style.top = `${ev.clientY}px`;
+            open_overlay(editor_element);
+        });
+        return el;
+    }
+
+    build_editor() {
+        // TODO hmmmmmmm seems like this could belong to the RoleEditor, since it's the same for every step!
+        let el = make_element('ol', 'gleam-editor-arg-enum-poses');
+        for (let pose of Object.keys(this.editor_step.role_editor.role.poses)) {
+            let li = make_element('li', null, pose);
+            el.appendChild(li);
+            // TODO delegate
+            li.addEventListener('click', ev => {
+                this.editor_step.set_arg(this.arg_index, pose);
+                close_overlay(ev.target);
+            });
+        }
+        return el;
+    }
+
+    set(value) {
+        this.view_element.textContent = value;
+    }
+}
+
 const STEP_ARGUMENT_TYPES = {
-    prose: {
-        build(arg_def, value) {
-            return make_element('div', 'gleam-editor-arg-prose', value);
-        },
-    },
+    prose: ProseArg,
+    pose: PoseArg,
 };
 
 
@@ -1618,36 +1659,13 @@ function make_sample_step_element(role_editor, step_type) {
     return el;
 }
 
-function make_step_element(role_editor, step) {
-    let el = make_element('div', 'gleam-editor-step');
-    el.classList.add(role_editor.CLASS_NAME);
-    // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
-    el.appendChild(make_element('div', '-who', role_editor.name));
-    el.appendChild(make_element('div', '-what', step.type.display_name));
-    for (let [i, arg_def] of step.type.args.entries()) {
-        let value = step.args[i];
-        // TODO custom editors and display based on types!
-        let arg_element = make_element('div', '-how');
-        let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
-        if (arg_type) {
-            arg_element.appendChild(arg_type.build(arg_def, value));
-        }
-        else {
-            arg_element.textContent = value;
-        }
-        el.appendChild(arg_element);
-    }
-    el.setAttribute('draggable', 'true');
-    return el;
-}
-
 // Wrapper for a step that also keeps ahold of the step element and the
 // associated RoleEditor
 class EditorStep {
     constructor(role_editor, step, ...args) {
         this.role_editor = role_editor;
         this.step = step;
-        this.element = make_step_element(role_editor, this.step);
+        this.element = this.make_step_element();
         this._position = null;
     }
 
@@ -1657,6 +1675,48 @@ class EditorStep {
     set position(position) {
         this._position = position;
         this.element.setAttribute('data-position', String(position));
+    }
+
+    make_step_element(step) {
+        let el = make_element('div', 'gleam-editor-step');
+        el.setAttribute('draggable', 'true');
+        el.classList.add(this.role_editor.CLASS_NAME);
+        // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
+        el.appendChild(make_element('div', '-who', this.role_editor.name));
+        el.appendChild(make_element('div', '-what', this.step.type.display_name));
+
+        this.args = [];
+        for (let [i, arg_def] of this.step.type.args.entries()) {
+            let value = this.step.args[i];
+            // TODO custom editors and display based on types!
+            let arg_element = make_element('div', '-how');
+            let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
+            if (arg_type) {
+                let arg = new arg_type(this, i, arg_def, value);
+                this.args[i] = arg;
+                arg_element.appendChild(arg.view_element);
+            }
+            else {
+                arg_element.textContent = value;
+            }
+            el.appendChild(arg_element);
+        }
+        return el;
+    }
+
+    set_arg(i, value) {
+        this.args[i].set(value);
+        this.step.args[i] = value;
+
+        // FIXME this is a mess, and also just calling update_beat is no bueno
+        let ed = this.role_editor.main_editor;
+        let beat = ed.script.beats[ed.script.step_to_beat_index.get(this.step)];
+        let state = beat.get(this.role_editor.role);
+        // Clone the state, since the actor might be holding onto it right now whoops
+        state = Object.assign({}, state);
+        beat.set(this.role_editor.role, state);
+        this.step.update_beat(beat);
+        ed.player.director.jump(ed.player.director.cursor);
     }
 }
 
@@ -1771,10 +1831,10 @@ class PictureFrameEditor extends RoleEditor {
         this.pose_list.textContent = '';
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame = pose[0];  // FIXME this format is bonkers
-            let li = make_element('li', null, pose_name);
+            let li = make_element('li');
             let image = this.main_editor.assets.expect(frame.url);
             if (image) {
-                let img = make_element('img');
+                let img = make_element('img', '-asset');
                 if (image.toURL) {
                     // WebKit only
                     img.src = image.toURL();
@@ -1788,8 +1848,9 @@ class PictureFrameEditor extends RoleEditor {
                 li.appendChild(img);
             }
             else {
-                li.appendChild(make_element('span', 'gleam-editor-missing-asset', '???'));
+                li.appendChild(make_element('div', '-asset --missing', '???'));
             }
+            li.appendChild(make_element('p', '-caption', pose_name));
             this.pose_list.appendChild(li);
         }
     }

@@ -23,6 +23,29 @@ body {
     font-size: 18px;
 }
 
+.gleam-editor-overlay {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    color: black;
+}
+.gleam-editor-arg-enum-poses {
+    position: absolute;
+    min-width: 8em;
+    border: 1px solid black;
+    box-shadow: 0 0 3px #0009;
+}
+.gleam-editor-arg-enum-poses li {
+    background: white;
+    padding: 0.25em 0.5em;
+    cursor: pointer;
+}
+.gleam-editor-arg-enum-poses li:hover {
+    background: #e8e8e8;
+}
+
 /* Panels, which the entire editor UI is made of */
 section.gleam-editor-panel {
     display: flex;
@@ -127,11 +150,25 @@ ul.gleam-editor-role-pictureframe-poses {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
 }
-ul.gleam-editor-role-pictureframe-poses img {
+ul.gleam-editor-role-pictureframe-poses li {
+}
+ul.gleam-editor-role-pictureframe-poses .-asset {
     display: block;
     max-width: 100px;
     max-height: 100px;
     margin: 0 auto;
+}
+ul.gleam-editor-role-pictureframe-poses .-asset.--missing {
+    line-height: 100px;
+    background-color: #fcc;
+    text-align: center;
+    color: #400;
+}
+ul.gleam-editor-role-pictureframe-poses .-caption {
+    font-size: 0.83em;
+    margin: 0.5rem 0;
+    font-family: "Source Code Pro", Inconsolata, monospace;
+    text-align: center;
 }
 
 /* Asset panel */
@@ -252,8 +289,30 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
 }
 
 /* Step arguments */
+.gleam-editor-arg-enum {
+    color: #4040ff;
+    cursor: pointer;
+}
 .gleam-editor-arg-prose {
+    position: relative;
+    margin: 0 1em;
     white-space: pre-wrap;
+}
+.gleam-editor-arg-prose::before {
+    content: '“';
+    display: block;
+    position: absolute;
+    font-size: 2em;
+    top: -0.25em;  /* rough alignment for Big Quote */
+    left: -1rem;
+}
+.gleam-editor-arg-prose::after {
+    content: '”';
+    display: block;
+    position: absolute;
+    font-size: 2em;
+    bottom: -0.5em;  /* rough alignment for Big Quote */
+    right: -1rem;
 }
 
 
