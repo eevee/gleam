@@ -9,6 +9,11 @@ window.Gleam = (function() {
 "use strict";
 let xxx_global_root;
 
+
+function svg_icon_from_path(d) {
+    return `<svg width="16px" height="16px" viewBox="0 0 16 16"><path d="${d}" stroke-width="2" stroke-linecap="round" stroke="white" fill="none"></svg>`;
+}
+
 // -----------------------------------------------------------------------------
 // Promise/event helpers
 
@@ -1470,7 +1475,8 @@ class Player {
             ev.stopPropagation();
         });
         // Normally I'd love for something like this to be a button, but I explicitly DO NOT want it to receive focus -- if the audience clicks it to unpause and then presses spacebar to advance, it'll just activate the pause button again!
-        this.pause_button = make_element('div', 'gleam-pause-button', '⏸️');
+        this.pause_button = make_element('div', 'gleam-pause-button');
+        this.pause_button.innerHTML = svg_icon_from_path("M 5,1 V 14 M 11,1 V 14");
         this.pause_button.addEventListener('click', ev => {
             // Block counting this as an advancement click
             ev.stopPropagation();
@@ -1511,7 +1517,7 @@ class Player {
 
     update(dt) {
         this.director.update(dt);
-        // FIXME Oh this is very bad
+        // FIXME Oh this is very bad, probably replace the hook thing with events the director fires
         this.progress_element.style.setProperty('--progress', this.director.cursor / this.script.beats.length * 100 + '%');
     }
 
@@ -1925,13 +1931,15 @@ class ScriptPanel extends Panel {
         this.drag = null;
 
         // Add some nav controls
-        let button = make_element('button', null, '←');
+        let button = make_element('button');
+        button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 6,3 L 1,8 L 6,13");
         button.addEventListener('click', ev => {
             // FIXME better api for this
             this.editor.script.jump(this.editor.script.cursor - 1);
         });
         this.nav.appendChild(button);
-        button = make_element('button', null, '→');
+        button = make_element('button');
+        button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 10,3 L 15,8 L 10,13");
         button.addEventListener('click', ev => {
             // FIXME better api for this
             this.editor.script.jump(this.editor.script.cursor + 1);

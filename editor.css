@@ -223,7 +223,7 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     opacity: 0.5;
 }
 .gleam-editor-step + .gleam-editor-step {
-    border-top: 1px solid #aaa;
+    border-top: 1px solid #808080;
 }
 .gleam-editor-step > .-who {
     z-index: 1;
