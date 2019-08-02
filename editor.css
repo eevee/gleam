@@ -20,7 +20,7 @@ body {
     background: #404040;
     color: white;
     font-family: 'Source Sans Pro', Helvetica, sans-serif;
-    font-size: 18px;
+    font-size: 14px;
 }
 
 .gleam-editor-overlay {
@@ -261,6 +261,13 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
 }
 .gleam-editor-step + .gleam-editor-step {
     border-top: 1px solid #808080;
+}
+.gleam-editor-step > .-handle {
+    padding: 0.25em;
+    background: #a0a0a0;
+    color: #c0c0c0;
+    text-shadow: 0 1px 1px #606060;
+    cursor: move;
 }
 .gleam-editor-step > .-who {
     z-index: 1;

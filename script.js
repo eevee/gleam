@@ -1646,19 +1646,6 @@ const STEP_ARGUMENT_TYPES = {
 };
 
 
-// TODO maybe these should be methods on RoleEditor
-function make_sample_step_element(role_editor, step_type) {
-    let el = make_element('div', 'gleam-editor-step');
-    el.classList.add(role_editor.CLASS_NAME);
-    // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
-    el.appendChild(make_element('div', '-what', step_type.display_name));
-    for (let arg_def of step_type.args) {
-        el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
-    }
-    el.setAttribute('draggable', 'true');
-    return el;
-}
-
 // Wrapper for a step that also keeps ahold of the step element and the
 // associated RoleEditor
 class EditorStep {
@@ -1679,8 +1666,24 @@ class EditorStep {
 
     make_step_element(step) {
         let el = make_element('div', 'gleam-editor-step');
-        el.setAttribute('draggable', 'true');
         el.classList.add(this.role_editor.CLASS_NAME);
+
+        let handle = make_element('div', '-handle', '⠿');
+        el.appendChild(handle);
+
+        // A cheaty hack to make an element draggable only by a child handle: add
+        // the 'draggable' attribute (to the whole parent) only on mousedown
+        handle.addEventListener('mousedown', ev => {
+            ev.target.parentNode.setAttribute('draggable', 'true');
+        });
+        handle.addEventListener('mouseup', ev => {
+            ev.target.parentNode.removeAttribute('draggable');
+        });
+        // Also remove it after a successful drag
+        el.addEventListener('dragend', ev => {
+            ev.target.removeAttribute('draggable');
+        });
+
         // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
         el.appendChild(make_element('div', '-who', this.role_editor.name));
         el.appendChild(make_element('div', '-what', this.step.type.display_name));
@@ -1745,15 +1748,12 @@ class RoleEditor {
         // FIXME this is for picture frame; please genericify
         this.step_type_map = new Map();  // step element => step type
         for (let step_type of Object.values(this.ROLE_TYPE.STEP_TYPES)) {
-            let step_el = make_sample_step_element(this, step_type);
+            let step_el = this.make_sample_step_element(step_type);
             this.container.appendChild(step_el);
             this.step_type_map.set(step_el, step_type);
         }
 
         // Enable dragging steps into the script
-        for (let el of this.container.querySelectorAll('.gleam-editor-step')) {
-            el.setAttribute('draggable', 'true');
-        }
         this.container.addEventListener('dragstart', e => {
             e.dataTransfer.dropEffect = 'copy';
             e.dataTransfer.setData('text/plain', null);
@@ -1773,6 +1773,35 @@ class RoleEditor {
     set name(name) {
         this._name = name;
         this.container.querySelector('header > h2').textContent = name;
+    }
+
+    make_sample_step_element(step_type) {
+        let el = make_element('div', 'gleam-editor-step');
+        el.classList.add(this.CLASS_NAME);
+
+        let handle = make_element('div', '-handle', '⠿');
+        el.appendChild(handle);
+
+        // A cheaty hack to make an element draggable only by a child handle: add
+        // the 'draggable' attribute (to the whole parent) only on mousedown
+        handle.addEventListener('mousedown', ev => {
+            ev.target.parentNode.setAttribute('draggable', 'true');
+        });
+        handle.addEventListener('mouseup', ev => {
+            ev.target.parentNode.removeAttribute('draggable');
+        });
+        // Also remove it after a successful drag
+        el.addEventListener('dragend', ev => {
+            ev.target.removeAttribute('draggable');
+        });
+
+        // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
+        el.appendChild(make_element('div', '-what', step_type.display_name));
+        for (let arg_def of step_type.args) {
+            el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
+        }
+        //el.setAttribute('draggable', 'true');
+        return el;
     }
 
     update_assets() {}
