@@ -1565,7 +1565,7 @@ function open_overlay(element) {
 
     // Remove the overlay when clicking outside the element
     overlay.addEventListener('click', ev => {
-        overlay.parentNode.removeChild(overlay);
+        overlay.remove();
     });
     // But ignore any click on the element itself
     element.addEventListener('click', ev => {
@@ -1800,7 +1800,6 @@ class RoleEditor {
         for (let arg_def of step_type.args) {
             el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
         }
-        //el.setAttribute('draggable', 'true');
         return el;
     }
 
@@ -2055,22 +2054,19 @@ class ScriptPanel extends Panel {
         this.selected_beat_index = null;
         this.beats_list.addEventListener('click', ev => {
             // TODO do step selection too
-            let el = ev.target;
-            while (el && el.tagName !== 'LI' && el.parentNode !== this.beats_list) {
-                el = el.parentNode;
+            let beat_li = ev.target.closest('.gleam-editor-beats-list > li');
+            if (! beat_li)
+                return;
+
+            let position = 0;
+            while (beat_li.previousElementSibling) {
+                position++;
+                beat_li = beat_li.previousElementSibling;
             }
-            if (el) {
-                let li = el;
-                let position = 0;
-                while (el.previousElementSibling) {
-                    position++;
-                    el = el.previousElementSibling;
-                }
-                if (position !== this.selected_beat_index) {
-                    // TODO hmm, this assumes the script is working atm
-                    // TODO this is also quite a lot of dots
-                    this.editor.player.director.jump(position);
-                }
+            if (position !== this.selected_beat_index) {
+                // TODO hmm, this assumes the script is working atm
+                // TODO this is also quite a lot of dots
+                this.editor.player.director.jump(position);
             }
         });
 
@@ -2112,14 +2108,7 @@ class ScriptPanel extends Panel {
             else {
                 // If the mouse is already over a step, we're basically done.
                 let cy = ev.clientY;
-                let pointed_step = ev.target;
-                while (pointed_step && ! pointed_step.classList.contains('gleam-editor-step')) {
-                    pointed_step = pointed_step.parentNode;
-                    if (! this.beats_list.contains(pointed_step)) {
-                        pointed_step = null;
-                        break;
-                    }
-                }
+                let pointed_step = ev.target.closest('.gleam-editor-step');
                 if (pointed_step) {
                     let rect = pointed_step.getBoundingClientRect();
                     for (let [i, step] of this.editor.steps.entries()) {
@@ -2164,7 +2153,7 @@ class ScriptPanel extends Panel {
             // FIXME position changes a bit depending on whether the new step pauses or not
             let caret = this.drag.caret;
             if (! caret.parentNode) {
-                this.container.appendChild(caret);
+                this.body.appendChild(caret);
                 caret.style.left = `${this.beats_list.offsetLeft}px`;
                 caret.style.width = `${this.beats_list.offsetWidth}px`;
             }
@@ -2209,10 +2198,7 @@ class ScriptPanel extends Panel {
             // aiming at the step list
             this.drag.position = null;
 
-            let caret = this.drag.caret;
-            if (caret.parentNode) {
-                caret.parentNode.removeChild(caret);
-            }
+            this.drag.caret.remove();
         });
         this.container.addEventListener('drop', e => {
             if (! this.drag) {
@@ -2331,10 +2317,7 @@ class ScriptPanel extends Panel {
     }
 
     end_step_drag() {
-        let caret = this.drag.caret;
-        if (caret.parentNode) {
-            caret.parentNode.removeChild(caret);
-        }
+        this.drag.caret.remove();
 
         if (this.drag.step_el) {
             this.drag.step_el.classList.remove('gleam-editor--dragged-step');
