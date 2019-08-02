@@ -15,7 +15,7 @@ let xxx_global_root;
 
 
 function svg_icon_from_path(d) {
-    return `<svg width="16px" height="16px" viewBox="0 0 16 16"><path d="${d}" stroke-width="2" stroke-linecap="round" stroke="white" fill="none"></svg>`;
+    return `<svg width="1em" height="1em" viewBox="0 0 16 16"><path d="${d}" stroke-width="2" stroke-linecap="round" stroke="white" fill="none"></svg>`;
 }
 
 // -----------------------------------------------------------------------------
@@ -160,7 +160,18 @@ class Step {
                 value = this.role[twiddle_change.prop];
             }
 
-            beat.get(role)[twiddle_change.key] = value;
+            beat.set_twiddle(role, twiddle_change.key, value);
+        }
+    }
+
+    *get_affected_twiddles() {
+        for (let twiddle_change of this.type.twiddles) {
+            let role = this.role;
+            if (twiddle_change.delegate) {
+                role = role[twiddle_change.delegate];
+            }
+
+            yield [role, twiddle_change.key];
         }
     }
 }
@@ -1155,9 +1166,9 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
 // Script and playback
 
 class Beat {
-    constructor(first_step_index) {
-        // The interesting bit: a map of roles to twiddle states
-        this.states = new Map();
+    constructor(states, first_step_index) {
+        // The interesting bit!  Map of Role to a twiddle state
+        this.states = states;
 
         // Pause type for this beat, which should be updated by the caller
         this.pause = false;
@@ -1167,12 +1178,84 @@ class Beat {
         this.last_step_index = first_step_index;
     }
 
+    // Produce the first Beat in a Script, based on its Roles
+    static create_first(roles) {
+        let states = new Map();
+        for (let [name, role] of Object.entries(roles)) {
+            states.set(role, role.generate_initial_state());
+        }
+        return new this(states, 0);
+    }
+
+    // Create the next beat, as a duplicate of this one
+    create_next() {
+        // Eagerly-clone, in case of propagation
+        let states = new Map();
+        for (let [role, prev_state] of this.states) {
+            let state = {};
+            for (let [key, twiddle] of Object.entries(role.TWIDDLES)) {
+                if (twiddle.propagate === undefined) {
+                    // Keep using the current value
+                    state[key] = prev_state[key];
+                }
+                else {
+                    // Revert to the given propagate value
+                    state[key] = twiddle.propagate;
+                }
+            }
+            states.set(role, state);
+        }
+
+        return new Beat(states, this.last_step_index + 1);
+    }
+
     set(role, state) {
         this.states.set(role, state);
     }
 
     get(role) {
         return this.states.get(role);
+    }
+
+    set_twiddle(role, key, value) {
+        this.states.get(role)[key] = value;
+    }
+}
+
+// Given a Step, remembers which twiddles it changes, and tells you when all of
+// those twiddles have been overwritten by later steps.  Used temporarily when
+// altering an existing Script.
+class TwiddleChangeTracker {
+    constructor(initial_step) {
+        this.changes = new Map();  // Role => Set of twiddle keys
+
+        for (let [role, key] of initial_step.get_affected_twiddles()) {
+            let set = this.changes.get(role);
+            if (set === undefined) {
+                set = new Set();
+                this.changes.set(role, set);
+            }
+            set.add(key);
+        }
+    }
+
+    overwrite_with(step) {
+        for (let [role, key] of step.get_affected_twiddles()) {
+            let set = this.changes.get(role);
+            if (set) {
+                set.delete(key);
+                // When a Role's keys are all overwritten, just remove that
+                // Role entirely; then it's easy to tell if this change is
+                // done, because the top-level map will be empty
+                if (set.size === 0) {
+                    this.changes.delete(role);
+                }
+            }
+        }
+    }
+
+    get completely_overwritten() {
+        return this.changes.size === 0;
     }
 }
 
@@ -1191,6 +1274,10 @@ class Script {
         };
 
         this.set_steps([]);
+
+        // This is mostly used for editing, so that objects wrapping us (e.g.
+        // Director, Editor) can know when the step list changes
+        this.intercom = new EventTarget();
     }
 
     static from_legacy_json(json) {
@@ -1284,14 +1371,8 @@ class Script {
         if (steps.length === 0)
             return;
 
-        // Map of role => states
-        let beat = new Beat(0);
+        let beat = Beat.create_first(this.roles);
         this.beats.push(beat);
-
-        // Populate initial states
-        for (let [name, role] of Object.entries(this.roles)) {
-            beat.set(role, role.generate_initial_state());
-        }
 
         // Iterate through steps and fold them into beats
         for (let [i, step] of this.steps.entries()) {
@@ -1311,33 +1392,195 @@ class Script {
                 beat.pause = step.type.pause;
 
                 let prev_beat = beat;
-                beat = new Beat(i + 1);
+                beat = prev_beat.create_next();
                 this.beats.push(beat);
-
-                // Eagerly-clone, in case of propagation
-                // TODO move this into Beat?
-                for (let [role, prev_state] of prev_beat.states) {
-                    let state = {};
-                    for (let [key, twiddle] of Object.entries(role.TWIDDLES)) {
-                        if (twiddle.propagate === undefined) {
-                            // Keep using the current value
-                            state[key] = prev_state[key];
-                        }
-                        else {
-                            // Revert to the given propagate value
-                            state[key] = twiddle.propagate;
-                        }
-                    }
-                    beat.set(role, state);
-                }
             }
         }
+
+        this._check_constraints();
     }
 
     get_beat_for_step(step) {
         let step_meta = this.step_metadata.get(step);
-        // TODO error on bad step
+        if (step_meta === undefined) {
+            // TODO error on bad step
+            console.error("Step is not a part of this Script", step);
+        }
         return this.beats[step_meta.beat_index];
+    }
+
+    // Post-load mutation, only used in the editor
+    insert_step(new_step, index) {
+        // FIXME bomb if new_step is already in here
+        // This step either goes in the middle of an existing beat, splits an
+        // existing beat, or becomes a new beat at the very end of the script
+        let split_beat = false;
+        let new_beat_index;
+        if (index >= this.steps.length) {
+            index = this.steps.length;
+            // New beat at the end
+            // FIXME!!!
+        }
+        else {
+            // The affected beat must be the one that contains the step
+            // currently in the position being inserted into
+            let existing_step_meta = this.step_metadata.get(this.steps[index]);
+            let beat_index = existing_step_meta.beat_index;
+            new_beat_index = beat_index;
+            let next_beat_index = beat_index + 1;
+            let existing_beat = this.beats[beat_index];
+
+            // Recreate this beat from scratch
+            let new_beat;
+            if (beat_index > 0) {
+                new_beat = this.beats[beat_index - 1].create_next();
+            }
+            else {
+                new_beat = Beat.create_first(this.roles);
+            }
+            this.beats[beat_index] = new_beat;
+            // Update with the steps in the beat, up to the new step's index
+            for (let i = new_beat.first_step_index; i < index; i++) {
+                this.steps[i].update_beat(new_beat);
+            }
+            // Update with the new step
+            new_step.update_beat(new_beat);
+
+            if (new_step.type.pause) {
+                // The new step pauses, so it splits this beat in half
+                new_beat.pause = new_step.type.pause;
+                new_beat.last_step_index = index;
+                // TODO mark this in the event, somehow
+                new_beat = new_beat.create_next();
+                this.beats.splice(beat_index + 1, 0, new_beat);
+                next_beat_index++;
+                split_beat = true;
+            }
+
+            // Now that previous stuff is dealt with, actually insert the step
+            this.steps.splice(index, 0, new_step);
+
+            // Update metadata for later steps
+            for (let step_meta of this.step_metadata.values()) {
+                if (step_meta.index >= index) {
+                    step_meta.index++;
+                    if (split_beat) {
+                        step_meta.beat_index++;
+                    }
+                }
+            }
+            // Add metadata for this step
+            this.step_metadata.set(new_step, {
+                index: index,
+                beat_index: beat_index,
+            });
+
+            // Track all the twiddles altered by this new Step, and keep
+            // recreating beats after it until its changes have been erased by
+            // later steps.
+            // Note that a step can affect other roles, or even multiple roles,
+            // so this is a Map of Role => Set of twiddles
+            let twiddle_change = new TwiddleChangeTracker(new_step);
+
+            // Update with the steps through the end of the beat.  (This might
+            // be the same beat as the new step, or if the new step pauses, a
+            // new beat containing everything else split off from the beat.)
+            new_beat.last_step_index = existing_beat.last_step_index + 1;
+            for (let i = index + 1; i <= new_beat.last_step_index; i++) {
+                this.steps[i].update_beat(new_beat);
+                twiddle_change.overwrite_with(this.steps[i]);
+            }
+
+            // Keep recreating future beats until all of this new step's
+            // twiddle changes have been overwritten by later steps.  Inserting
+            // a step will bump the positions of all future steps, too, so
+            // update some beat metadata at the same time
+            for (let b = next_beat_index; b < this.beats.length; b++) {
+                let beat = this.beats[b];
+                beat.first_step_index++;
+                beat.last_step_index++;
+
+                if (! twiddle_change.completely_overwritten) {
+                    let new_beat = this.beats[b - 1].create_next();
+                    new_beat.last_step_index = beat.last_step_index;
+                    for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
+                        this.steps[i].update_beat(new_beat);
+                        twiddle_change.overwrite_with(this.steps[i]);
+                    }
+                    this.beats[b] = new_beat;
+                }
+            }
+        }
+
+        this._check_constraints();
+
+        // Finally, fire an event!
+        this.intercom.dispatchEvent(new CustomEvent('gleam-step-inserted', {
+            detail: {
+                step: new_step,
+                index: index,
+                beat_index: new_beat_index,
+                split_beat: split_beat,
+            },
+        }));
+    }
+
+    delete_step(step) {
+        let step_meta = this.step_metadata.get(step);
+        this.steps.splice(step_meta.index, 1);
+        // FIXME if this step pauses, may need to fuse this beat with next one and adjust numbering
+        // FIXME need to recreate this beat and future ones, twiddle change, etc etc.
+        // FIXME fire event of course
+    }
+
+    // Debugging helper to ensure constraints are still met after messing with
+    // the step or beat lists
+    _check_constraints() {
+        console.log("checking Script constraints...");
+
+        // Every step should be in the step metadata list; they should be the
+        // only steps in the step metadata list; and the meta index should be
+        // correct
+        let expected_meta_count = this.steps.length;
+        for (let [i, step] of this.steps.entries()) {
+            let step_meta = this.step_metadata.get(step);
+            if (step_meta === undefined) {
+                console.warn("Can't find step", i, "in metadata:", step);
+                expected_meta_count--;
+                continue;
+            }
+            if (step_meta.index !== i) {
+                console.warn("Step", i, "has metadata claiming it's at", step_meta.index);
+            }
+        }
+        if (this.step_metadata.size !== expected_meta_count) {
+            let extra_steps = new Set(this.step_metadata.keys());
+            for (let step of this.steps) {
+                extra_steps.delete(step);
+            }
+            console.warn("Step metadata has extra entries:", Array.from(extra_steps));
+        }
+
+        // Beats should not overlap, they should cover exactly the range of
+        // steps, and step metadata should point to the right beat
+        let expected_first_index = 0;
+        for (let [b, beat] of this.beats.entries()) {
+            if (beat.first_step_index !== expected_first_index) {
+                console.warn("Expected beat", b, "to start from step", expected_first_index, "but instead found", beat.first_step_index, ":", beat);
+            }
+            expected_first_index = beat.last_step_index + 1;
+
+            for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
+                let step = this.steps[i];
+                let step_meta = this.step_metadata.get(step);
+                if (step_meta.beat_index !== b) {
+                    console.warn("Expected step", i, "to belong to beat", b, "but instead it claims to belong to beat", step_meta.beat_index);
+                }
+            }
+        }
+        if (expected_first_index !== this.steps.length) {
+            console.warn("Expected last beat to end on step", this.steps.length - 1, "but instead found", expected_first_index - 1);
+        }
     }
 }
 // The Director handles playback of a Script (including, of course, casting an
@@ -1357,12 +1600,29 @@ class Director {
             this.role_to_actor.set(role, actor);
         }
 
+        // Used to announce advancement to wrapper types
+        this.intercom = new EventTarget();
+
+        // Bind some stuff
+        // TODO hm, could put this in a 'script' setter to make it Just Work when reassigning script, but why not just make a new Director?
+        // When a new step is added, if it's part of the beat we're currently
+        // on, jump back to it
+        this.script.intercom.addEventListener('gleam-step-inserted', ev => {
+            let beat_index = ev.detail.beat_index;
+            if (beat_index === self.cursor) {
+                this.jump(self.cursor);
+            }
+        });
+
+        // And start us off on the first beat
+        // TODO what if there are no beats?
         this.cursor = 0;
         this.jump(0);
     }
 
     jump(beat_index) {
-        // FIXME what if we're 'busy' at this point?
+        // FIXME what if we're 'busy' at this point?  some callers (editor, mostly) expect this to be unconditional
+        // FIXME what if there's a promised advance pending, and we do an editor jump?
 
         this.cursor = beat_index;
         let beat = this.script.beats[this.cursor];
@@ -1370,6 +1630,7 @@ class Director {
         // TODO ahh can the action "methods" return whether they pause?
 
         let promises = [];
+        // TODO add a Beat API for this, it's invasive
         for (let [role, state] of beat.states) {
             // Actors can return promises, and the scene won't advance until
             // they've been resolved
@@ -1394,10 +1655,9 @@ class Director {
             });
         }
 
-
-        if (this.xxx_hook) {
-            this.xxx_hook.on_beat();
-        }
+        // Broadcast the jump
+        this.intercom.dispatchEvent(new CustomEvent(
+            'gleam-director-beat', { detail: this.cursor }));
     }
 
     advance() {
@@ -1642,6 +1902,7 @@ class PoseArg extends StepArg {
 
     build_editor() {
         // TODO hmmmmmmm seems like this could belong to the RoleEditor, since it's the same for every step!
+        // FIXME ah, what if there are no poses?
         let el = make_element('ol', 'gleam-editor-arg-enum-poses');
         for (let pose of Object.keys(this.editor_step.role_editor.role.poses)) {
             let li = make_element('li', null, pose);
@@ -1668,6 +1929,7 @@ const STEP_ARGUMENT_TYPES = {
 
 // Wrapper for a step that also keeps ahold of the step element and the
 // associated RoleEditor
+// TODO uhhhh maybe, this should, not exist?  confusing to work with and mucks up inserting a bit...
 class EditorStep {
     constructor(role_editor, step, ...args) {
         this.role_editor = role_editor;
@@ -1684,7 +1946,7 @@ class EditorStep {
         this.element.setAttribute('data-position', String(position));
     }
 
-    make_step_element(step) {
+    make_step_element() {
         let el = make_element('div', 'gleam-editor-step');
         el.classList.add(this.role_editor.CLASS_NAME);
 
@@ -1738,6 +2000,7 @@ class EditorStep {
         // Clone the state, since the actor might be holding onto it right now whoops
         state = Object.assign({}, state);
         beat.set(this.role_editor.role, state);
+        // FIXME yeah nope, need to know if later steps in the beat have the twiddle.  could track which twiddles are affected by which steps (!!!!!), or just recreate the whole thing, it's only a handful of steps
         this.step.update_beat(beat);
         ed.player.director.jump(ed.player.director.cursor);
     }
@@ -2071,7 +2334,6 @@ class ScriptPanel extends Panel {
         this.beat_toolbar.appendChild(button);
         this.body.appendChild(this.beat_toolbar);
 
-        this.selected_beat_index = null;
         this.beats_list.addEventListener('click', ev => {
             // TODO do step selection too
             let beat_li = ev.target.closest('.gleam-editor-beats-list > li');
@@ -2253,9 +2515,21 @@ class ScriptPanel extends Panel {
                 this.end_step_drag();
             }
         });
+
+        // TODO this stuff is hard to find since it's below all the DOM garbage
+
+        // Attach to the Director
+        // TODO if a new Director is created, we'll need to attach a new listener
+        editor.player.director.intercom.addEventListener('gleam-director-beat', ev => {
+            this.set_beat_index(ev.detail);
+        });
+        this.selected_beat_index = null;
     }
 
     set_beat_index(index) {
+        if (index < 0 || index >= this.editor.script.beats.length) {
+            index = null;
+        }
         if (index === this.selected_beat_index)
             return;
 
@@ -2468,13 +2742,7 @@ class Editor {
 
         this.assets.refresh_dom();
 
-        // FIXME this is very bad
-        this.player.director.xxx_hook = this;
-        this.on_beat();
-    }
-
-    // FIXME hooks for the script
-    on_beat() {
+        // XXX hmm, very awkward that the ScriptPanel can't do this itself because we inject the step elements into it; maybe fix that
         this.script_panel.set_beat_index(this.player.director.cursor);
     }
 
@@ -2505,8 +2773,9 @@ class Editor {
         for (let i = position; i < this.steps.length; i++) {
             this.steps[i].position = i;
         }
-        // TODO insert into script and update that
-
+        // FIXME actually /this/ should probably be an event handler...  oh but wait we need the EditorStep still, so i guess not?  but, erm, hang on a second, uh oh
+        this.script.insert_step(step.step, position);
+        // FIXME this should be an event handler on the script panel
         this.script_panel.insert_step_element(step, position);
     }
 }
