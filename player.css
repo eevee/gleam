@@ -1,5 +1,6 @@
 .gleam-player {
     position: relative;
+    z-index: 0;  /* stacking context */
     width: 800px;
     height: 600px;
     border: 1px solid black;

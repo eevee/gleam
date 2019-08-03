@@ -78,6 +78,8 @@ section.gleam-editor-panel > header nav {
 }
 section.gleam-editor-panel > .gleam-editor-panel-body {
     position: relative;
+    /* Establish a stacking context to quarantine any z nonsense within each panel -- otherwise stuff can be above the overlay, oops! */
+    z-index: 0;
     /* Note the flex-basis here has to be zero, or the body's contents will be considered large enough to expand the grid beyond the height of the page viewport! */
     /* FIXME can i hoist this up a level and make it the grid cell's problem? */
     flex: 1 0 0;
