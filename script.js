@@ -580,12 +580,22 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
         this.speaker_element = null;
         this.letter_elements = [];
         // One of:
-        // done -- there is no text left to display
+        // idle -- there is no text left to display
         // waiting -- there was too much text to fit in the box and we are now waiting on a call to advance() to show more
         // scrolling -- we are actively showing text
-        this.scroll_state = 'done';
+        // Automatically sync'd with the data-state attribute on the main
+        // element.
+        this.scroll_state = 'idle';
         // Amount of (extra) time to wait until resuming scrolling
         this.delay = 0;
+    }
+
+    get scroll_state() {
+        return this._scroll_state;
+    }
+    set scroll_state(state) {
+        this._scroll_state = state;
+        this.element.setAttribute('data-state', state);
     }
 
     apply_state(state) {
@@ -765,7 +775,7 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
         // TODO maybe don't force a reflow?
         // TODO it would be cool if folks could scroll BACK through text if they missed something in the scroll
         // TODO it would also be cool if the text actually scrolled or something.  that would be pretty easy come to think of it
-        // TODO this could be done somewhat more efficiently (???) by guessing
+        // TODO this could be idle somewhat more efficiently (???) by guessing
         // the length of a line and looking for a break, or just binary
         // searching for breaks
         // TODO should this be totally empty if there's no text at all?
@@ -875,13 +885,13 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
         // Start scrolling the next text chunk into view, if any.
         //
         // Returns true iff there was any text to display.
-        if (this.scroll_state === 'done') {
+        if (this.scroll_state === 'idle') {
             // Nothing left to do!
             return false;
         }
 
         if (this.chunk_cursor + 1 >= this.chunks.length) {
-            this.scroll_state = 'done';
+            this.scroll_state = 'idle';
             return false;
         }
 
@@ -903,7 +913,7 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
     }
 
     update(dt) {
-        if (this.scroll_state === 'done') {
+        if (this.scroll_state === 'idle') {
             return;
         }
 
@@ -917,7 +927,7 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
         let chunk = this.chunks[this.chunk_cursor];
         while (true) {
             if (this.cursor + 1 >= this.letter_elements.length) {
-                this.scroll_state = 'done';
+                this.scroll_state = 'idle';
                 return;
             }
 
@@ -961,7 +971,7 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
             else {
                 // This is the last chunk
                 last_letter_index = this.letter_elements.length - 1;
-                this.scroll_state = 'done';
+                this.scroll_state = 'idle';
             }
 
             for (let i = this.cursor; i <= last_letter_index; i++) {
@@ -2676,6 +2686,7 @@ class ScriptPanel extends Panel {
         this.beat_toolbar.appendChild(button);
         this.body.appendChild(this.beat_toolbar);
 
+        // FIXME this is a bit ugly still
         this.step_toolbar = make_element('nav', 'gleam-editor-step-toolbar');
         let hovered_step_el = null;
         button = make_element('button');

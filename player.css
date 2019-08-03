@@ -153,6 +153,7 @@
 /* The dialogue box has the following hierarchy:
  *  actor
  *    speaker-container
+ * TODO i guess finish this explanation.
  */
 .gleam-actor-dialoguebox {
     position: absolute;
@@ -168,6 +169,7 @@
     height: 4em;
     padding: 0.75em;
 
+    /* FIXME should have separate bg and fg color? */
     --color: black;  /* may be changed by js */
     border-top: 2px solid var(--color);
     color: white;
@@ -178,6 +180,48 @@
 .gleam-actor-dialoguebox.--hidden {
     display: none;
 }
+/* "Hey there's more stuff" and "continue" chevrons */
+@keyframes gleam-dialoguebox-more {
+    0% {
+        transform: translateY(0em);
+    }
+    100% {
+        transform: translateY(0.25em);
+    }
+}
+@keyframes gleam-dialoguebox-next {
+    0% {
+        transform: translateX(0em);
+    }
+    100% {
+        transform: translateX(0.25em);
+    }
+}
+.gleam-actor-dialoguebox::after {
+    content: '';
+    display: block;
+    position: absolute;
+    bottom: 0.5em;
+    right: 0.5em;
+    /* Use border shenanigans to make arrows */
+    border: 0.33em solid transparent;
+    /* Can't use box-shadow on border shenanigans, so use a filter */
+    filter: drop-shadow(0 1px 1px black);
+}
+.gleam-actor-dialoguebox[data-state=scrolling]::after {
+    visibility: hidden;
+}
+.gleam-actor-dialoguebox[data-state=waiting]::after {
+    border-top-color: white;
+    border-bottom: none;
+    animation: gleam-dialoguebox-more var(--transition-time) ease-in alternate infinite;
+}
+.gleam-actor-dialoguebox[data-state=idle]::after {
+    border-left-color: white;
+    border-right: none;
+    animation: gleam-dialoguebox-next var(--transition-time) ease-in alternate infinite;
+}
+/* Background container, separate so that it can be colored with a var */
 .gleam-actor-dialoguebox .-background {
     position: absolute;
     top: 0;
