@@ -236,6 +236,16 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     background-color: hsl(45, 100%, 90%);
 }
 
+.gleam-editor-step-toolbar {
+    position: absolute;
+    /* needs to be above the items */
+    z-index: 1;
+    font-size: 0.5em;
+    padding: 0.33em;
+    top: 0;
+    /* must match the right margin on the beat list */
+    right: 1em;
+}
 /* TODO ditch this...?  is there any other use for it? */
 .gleam-editor-beat-toolbar {
     position: absolute;
@@ -314,7 +324,7 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     background: #f0f0f0;
     color: #202020;
 }
-.gleam-editor-step.gleam-editor--dragged-step {
+.gleam-editor-step.--dragged {
     opacity: 0.5;
 }
 .gleam-editor-step + .gleam-editor-step {

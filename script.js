@@ -1560,6 +1560,15 @@ class Script {
     // -------------------------------------------------------------------------
     // Post-load mutation, only used in the editor
 
+    _make_fresh_beat(beat_index) {
+        if (beat_index > 0) {
+            return this.beats[beat_index - 1].create_next();
+        }
+        else {
+            return Beat.create_first(this.roles);
+        }
+    }
+
     // Call to indicate a Step has been altered
     update_step(step) {
         let step_meta = this.step_metadata.get(step);
@@ -1570,15 +1579,8 @@ class Script {
 
         let beat = this.beats[step_meta.beat_index];
         // Recreate the Beat in question
-        let new_beat;
-        if (step_meta.beat_index > 0) {
-            new_beat = this.beats[step_meta.beat_index - 1].create_next();
-        }
-        else {
-            new_beat = Beat.create_first(this.roles);
-        }
+        let new_beat = this.beats[step_meta.beat_index] = this._make_fresh_beat(step_meta.beat_index);
         new_beat.last_step_index = beat.last_step_index;
-        this.beats[step_meta.beat_index] = new_beat;
 
         for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
             this.steps[i].update_beat(new_beat);
@@ -1622,14 +1624,7 @@ class Script {
             let existing_beat = this.beats[beat_index];
 
             // Recreate this beat from scratch
-            let new_beat;
-            if (beat_index > 0) {
-                new_beat = this.beats[beat_index - 1].create_next();
-            }
-            else {
-                new_beat = Beat.create_first(this.roles);
-            }
-            this.beats[beat_index] = new_beat;
+            let new_beat = this.beats[beat_index] = this._make_fresh_beat(beat_index);
             // Update with the steps in the beat, up to the new step's index
             for (let i = new_beat.first_step_index; i < index; i++) {
                 this.steps[i].update_beat(new_beat);
@@ -1716,11 +1711,99 @@ class Script {
     }
 
     delete_step(step) {
-        let step_meta = this.step_metadata.get(step);
-        this.steps.splice(step_meta.index, 1);
         // FIXME if this step pauses, may need to fuse this beat with next one and adjust numbering
         // FIXME need to recreate this beat and future ones, twiddle change, etc etc.
         // FIXME fire event of course
+
+        // This step may be in the middle of a beat, may be the pause at the
+        // end of a beat, or may be the ONLY step in a beat (in which case the
+        // beat is also deleted)
+        let merged_beat = false;
+        let deleted_beat = false;
+        let step_meta = this.step_metadata.get(step);
+        let index = step_meta.index;
+        let beat_index = step_meta.beat_index;
+        {
+            let next_beat_index = beat_index + 1;
+            let beat = this.beats[beat_index];
+
+            // Recreate this beat from scratch
+            let new_beat = this.beats[beat_index] = this._make_fresh_beat(beat_index);
+            // Update with the steps in the beat, up to the new step's index
+            for (let i = new_beat.first_step_index; i < index; i++) {
+                this.steps[i].update_beat(new_beat);
+            }
+
+            if (step.type.pause && beat_index < this.beats.length - 1) {
+                // The step pauses, so we need to merge with the next beat --
+                // or, if it's the only step, just delete the beat
+                // FIXME not done
+                beat = this.beats[beat_index + 1];
+                new_beat.pause = beat.pause;
+                this.beats.splice(beat_index + 1, 1);
+                merged_beat = true;
+            }
+
+            // Now that previous stuff is dealt with, actually delete the step
+            this.steps.splice(step_meta.index, 1);
+
+            // Update metadata for later steps
+            for (let step_meta of this.step_metadata.values()) {
+                if (step_meta.index >= index) {
+                    step_meta.index--;
+                    if (merged_beat) {
+                        step_meta.beat_index--;
+                    }
+                }
+            }
+            // Delete metadata for this step
+            this.step_metadata.delete(step);
+
+            // Track all the twiddles altered by the deleted Step, and keep
+            // recreating beats after it until its changes have been erased by
+            // later steps.
+            let twiddle_change = new TwiddleChangeTracker(step);
+
+            // Update with the steps through the end of the beat.  (This might
+            // be the same beat as the new step, or if the new step pauses, a
+            // new beat containing everything else split off from the beat.)
+            new_beat.last_step_index = beat.last_step_index - 1;
+            for (let i = index; i <= new_beat.last_step_index; i++) {
+                this.steps[i].update_beat(new_beat);
+                twiddle_change.overwrite_with(this.steps[i]);
+            }
+
+            // Keep recreating future beats until all of this new step's
+            // twiddle changes have been overwritten by later steps.  Inserting
+            // a step will bump the positions of all future steps, too, so
+            // update some beat metadata at the same time
+            for (let b = next_beat_index; b < this.beats.length; b++) {
+                let beat = this.beats[b];
+                beat.first_step_index--;
+                beat.last_step_index--;
+
+                if (! twiddle_change.completely_overwritten) {
+                    let new_beat = this.beats[b - 1].create_next();
+                    new_beat.last_step_index = beat.last_step_index;
+                    for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
+                        this.steps[i].update_beat(new_beat);
+                        twiddle_change.overwrite_with(this.steps[i]);
+                    }
+                    this.beats[b] = new_beat;
+                }
+            }
+        }
+
+        this._check_constraints();
+
+        this.intercom.dispatchEvent(new CustomEvent('gleam-step-deleted', {
+            detail: {
+                step: step,
+                index: index,
+                beat_index: beat_index,
+                merged_beat: merged_beat,
+            },
+        }));
     }
 
     // Debugging helper to ensure constraints are still met after messing with
@@ -1802,12 +1885,22 @@ class Director {
         // TODO it seems sensible to not refresh the text if it hasn't changed?
         let refresh_handler = ev => {
             let beat_index = ev.detail.beat_index;
-            if (beat_index === this.cursor) {
+            // If a beat was added or removed, adjust the cursor
+            if (this.cursor > beat_index) {
+                if (ev.detail.split_beat) {
+                    this.jump(this.cursor + 1);
+                }
+                else if (ev.detail.merged_beat) {
+                    this.jump(this.cursor - 1);
+                }
+            }
+            else if (beat_index === this.cursor) {
                 this.jump(this.cursor);
             }
         };
-        this.script.intercom.addEventListener('gleam-step-inserted', refresh_handler);
         this.script.intercom.addEventListener('gleam-step-updated', refresh_handler);
+        this.script.intercom.addEventListener('gleam-step-inserted', refresh_handler);
+        this.script.intercom.addEventListener('gleam-step-deleted', refresh_handler);
 
         // And start us off on the first beat
         // TODO what if there are no beats?
@@ -2583,6 +2676,31 @@ class ScriptPanel extends Panel {
         this.beat_toolbar.appendChild(button);
         this.body.appendChild(this.beat_toolbar);
 
+        this.step_toolbar = make_element('nav', 'gleam-editor-step-toolbar');
+        let hovered_step_el = null;
+        button = make_element('button');
+        button.innerHTML = svg_icon_from_path("M 2,2 L 14,2 L 12,14 L 4,14 L 2,2 M 6,2 L 7,14 M 10,2 L 9,14");
+        button.addEventListener('click', ev => {
+            if (hovered_step_el) {
+                this.editor.remove_step(this.editor.get_step_for_element(hovered_step_el));
+                hovered_step_el = null;
+            }
+        });
+        this.step_toolbar.append(button);
+        this.body.append(this.step_toolbar);
+
+        this.beats_list.addEventListener('mouseover', ev => {
+            let step_el = ev.target.closest('.gleam-editor-step');
+            if (step_el) {
+                this.step_toolbar.style.transform = `translateY(${step_el.offsetTop}px)`;
+                hovered_step_el = step_el;
+            }
+            else {
+                // TODO and hide toolbar
+                hovered_step_el = null;
+            }
+        });
+
         this.beats_list.addEventListener('click', ev => {
             // TODO do step selection too
             let beat_li = ev.target.closest('.gleam-editor-beats-list > li');
@@ -2601,16 +2719,17 @@ class ScriptPanel extends Panel {
             }
         });
 
-        /*
-         * FIXME restore
-         * FIXME drag handle?  how?
-        this.beats_list.addEventListener('dragstart', e => {
-            e.dataTransfer.dropEffect = 'move';  // FIXME?  should be set in enter/over?
-            e.dataTransfer.setData('text/plain', null);
-            dragged_step = e.target;
-            dragged_step.classList.add('gleam-editor--dragged-step');
+        // Allow dragging steps to rearrange them
+        this.beats_list.addEventListener('dragstart', ev => {
+            ev.dataTransfer.dropEffect = 'move';  // FIXME?  should be set in enter/over?
+            ev.dataTransfer.setData('text/plain', null);
+            let step_el = ev.target.closest('.gleam-editor-step');
+            if (step_el) {
+                let step = this.editor.get_step_for_element(step_el);
+                this.begin_step_drag(step);
+                step_el.classList.add('--dragged');
+            }
         });
-        */
         // Note that this fires on the original target, and NOT if the original node is moved???
         this.beats_list.addEventListener('dragend', e => {
             // FIXME return dragged step to where it was, if it was dragged from the step list in the first place
@@ -2753,6 +2872,16 @@ class ScriptPanel extends Panel {
             // up element traversal
             this.end_step_drag();
 
+            // If this step was already in the list, remove it first!
+            if (step.position !== null) {
+                // This also shifts the position one back, if its new position
+                // is later
+                if (position > step.position) {
+                    position--;
+                }
+                this.editor.remove_step(step);
+            }
+
             this.editor.insert_step(step, position);
         });
         // Cancel the default behavior of any step drag that makes its way to
@@ -2773,6 +2902,20 @@ class ScriptPanel extends Panel {
             this.select_beat(ev.detail);
         });
         this.selected_beat_index = null;
+
+        editor.script.intercom.addEventListener('gleam-step-deleted', ev => {
+            // TODO need to ensure, somehow, that this one happens /before/ the editor one (which doesn't exist yet)
+            let step = this.editor.steps[ev.detail.index];
+            step.element.remove();
+            if (ev.detail.merged_beat) {
+                let beat0 = this.beats_list.children[ev.detail.beat_index];
+                let beat1 = this.beats_list.children[ev.detail.beat_index + 1];
+                while (beat1.firstChild) {
+                    beat0.appendChild(beat1.firstChild);
+                }
+                beat1.remove();
+            }
+        });
     }
 
     create_twiddle_footer() {
@@ -2895,11 +3038,11 @@ class ScriptPanel extends Panel {
     }
 
     end_step_drag() {
-        this.drag.caret.remove();
+        if (! this.drag)
+            return;
 
-        if (this.drag.step_el) {
-            this.drag.step_el.classList.remove('gleam-editor--dragged-step');
-        }
+        this.drag.caret.remove();
+        this.drag.step.element.classList.remove('--dragged');
 
         this.drag = null;
     }
@@ -3020,6 +3163,7 @@ class Editor {
         this.roles_el.appendChild(role_editor.container);
     }
 
+    // FIXME shouldn't this be on ScriptPanel
     get_step_for_element(element) {
         if (element.dataset.position === undefined) {
             return null;
@@ -3029,6 +3173,15 @@ class Editor {
     }
 
     remove_step(step) {
+        if (step.position === null)
+            return;
+
+        this.script.delete_step(step.step);
+
+        for (let i = step.position + 1; i < this.steps.length; i++) {
+            this.steps[i].position--;
+        }
+        this.steps.splice(step.position, 1);
     }
 
     // Insert an EditorStep at the given position
