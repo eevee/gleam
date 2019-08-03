@@ -190,8 +190,12 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
 .gleam-editor-assets li {
     padding: 0.25em 0.5em;
 }
-.gleam-editor-assets li.-missing {
+.gleam-editor-assets li.--missing {
     background: #803838;
+}
+.gleam-editor-assets li.--unused {
+    color: #c0c0c0;
+    font-style: italic;
 }
 
 /* Script panel */

@@ -11,7 +11,6 @@
 
 window.Gleam = (function() {
 "use strict";
-let xxx_global_root;
 
 
 function svg_icon_from_path(d) {
@@ -90,8 +89,8 @@ class Role {
     }
 
     // Create an Actor to play out this Role
-    cast() {
-        return new this.constructor.Actor(this);
+    cast(director) {
+        return new this.constructor.Actor(this, director);
     }
 }
 Role.prototype.TWIDDLES = {};
@@ -345,7 +344,7 @@ PictureFrame.LEGACY_JSON_ACTIONS = {
     hide: ["hide"],
 };
 PictureFrame.Actor = class PictureFrameActor extends Actor {
-    constructor(role) {
+    constructor(role, director) {
         super(role);
 
         let element = make_element('div', 'gleam-actor-pictureframe');
@@ -357,12 +356,7 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         for (let [pose_name, frames] of Object.entries(this.role.poses)) {
             let frame_elements = pose_elements[pose_name] = [];
             for (let frame of frames) {
-                let image = make_element('img');
-                // Bind the event handler FIRST -- if the image is cached, it
-                // might load instantly!
-                img_promises.push(promise_event(image, 'load', 'error'));
-                // FIXME who controls urls, eh?  seems like it should go through the script, which we don't have access to
-                image.setAttribute('src', xxx_global_root + '/' + frame.url);
+                let image = director.library.load_image(frame.url);
                 image.setAttribute('data-pose-name', pose_name);
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
                 element.appendChild(image);
@@ -1222,6 +1216,160 @@ class Beat {
     }
 }
 
+// Given a filename, gets a relevant file.  Mainly exists to abstract over the
+// difference between loading a live script from a Web source and pulling from
+// the user's hard drive.
+// TODO should wire this into player's initial 'loading' screen
+// TODO need to SOMEHOW let asset panel know when a thing happens here?  except, wait, it's the asset panel that makes things happen.  maybe a little kerjiggering can fix that then.
+// FIXME this just, needs a lot of work.
+class AssetLibrary {
+    constructor() {
+        this.assets = {};
+    }
+
+    asset(path) {
+        let asset = this.assets[path];
+        if (asset) {
+            return asset;
+        }
+        else {
+            asset = this.assets[path] = {};
+            return asset;
+        }
+    }
+
+    inherit_uses(library) {
+        for (let [path, asset] of Object.entries(library.assets)) {
+            if (asset.used) {
+                this.asset(path).used = asset.used;
+            }
+        }
+    }
+}
+// Entry-based implementation, for local files using the Chrome API
+class EntryAssetLibrary extends AssetLibrary {
+    constructor(directory_entry) {
+        super();
+        this.directory_entry = directory_entry;
+
+        // TODO technically should be calling this repeatedly.  also it's asynchronous, not super sure if that's a problem.
+        directory_entry.createReader().readEntries(entries => {
+            // TODO hmm, should mark by whether they're present and whether they're used i guess?
+            console.log("got some entries", entries);
+            for (let entry of entries) {
+                let asset = this.asset(entry.name);
+                asset.exists = true;
+                asset.entry = entry;
+            }
+            console.log(this.assets);
+        }, console.error)
+    }
+
+    // FIXME surely this should be more generic?  can ANY of it be split out, shared with Remote or with <audio>?
+    load_image(filename) {
+        let element = make_element('img');
+        let asset = this.assets[filename];
+        if (!asset || !asset.entry) {
+            // If there's no asset, this isn't a directory entry, so it can't possibly work
+            if (! asset) {
+                this.assets[filename] = {
+                    used: true,
+                    exists: false,
+                };
+            }
+            return element;
+        }
+
+        asset.used = true;
+
+        if (asset.url) {
+            asset.used = true;
+            element.src = url;
+            return element;
+        }
+
+        // OK!  There's an asset, it has an Entry, we just need a URL for it
+        let promise;
+        if (asset.entry.toURL) {
+            // WebKit only
+            promise = Promise.resolve(asset.entry.toURL());
+        }
+        else {
+            // TODO is this a bad idea?  it's already async so am i doing a thousand reads at once??
+            promise = new Promise((resolve, reject) => {
+                asset.entry.file(file => {
+                    resolve(URL.createObjectURL(file));
+                });
+            });
+        }
+
+        promise.then(url => {
+            element.src = url;
+        });
+
+        // TODO fire an event here, or what?
+        return element;
+    }
+}
+// Regular HTTP fetch
+class RemoteAssetLibrary extends AssetLibrary {
+    // Should be given a URL object as a root
+    constructor(root) {
+        super();
+        this.root = root;
+    }
+
+    load_image(filename) {
+        let element = make_element('img');
+        let asset = this.assets[filename];
+        if (asset) {
+            // After trying to load this once, there's no point in doing all
+            // the mechanical checking again; it'd be cached regardless
+            element.src = asset.url;
+            return element;
+        }
+
+        // Bind the event handler FIRST -- if the image is cached, it might
+        // load instantly!
+        let promise = promise_event(element, 'load', 'error');
+        // TODO what about progress, that seems nice, even if 0/1.  also like something that an asset library should handle
+
+        let url = new URL(filename, this.root);
+        asset = this.assets[filename] = {
+            url: url,
+            used: true,
+            exists: null,
+            progress: 0,
+        };
+
+        let progress_handler = ev => {
+            if (ev.lengthComputable) {
+                asset.progress = ev.loaded / ev.total;
+            }
+        };
+        element.addEventListener('progress', progress_handler);
+
+        promise = promise.then(
+            () => {
+                asset.exists = true;
+                asset.progress = 1;
+            },
+            () => {
+                asset.exists = false;
+            }
+        )
+        .finally(() => {
+            asset.promise = null;
+            element.addEventListener('progress', progress_handler);
+        });
+        asset.promise = promise;
+
+        // TODO fire an event here, or what?
+        element.src = url;
+        return element;
+    }
+}
+
 // Given a Step, remembers which twiddles it changes, and tells you when all of
 // those twiddles have been overwritten by later steps.  Used temporarily when
 // altering an existing Script.
@@ -1628,8 +1776,10 @@ class Script {
 // The Director handles playback of a Script (including, of course, casting an
 // Actor for each Role).
 class Director {
-    constructor(script) {
+    constructor(script, library = null) {
         this.script = script;
+        // TODO what is a reasonable default for this?
+        this.library = library;
 
         this.busy = false;
 
@@ -1637,7 +1787,7 @@ class Director {
         // TODO this seems clumsy...  maybe if roles had names, hmm
         this.role_to_actor = new Map();
         for (let [name, role] of Object.entries(this.script.roles)) {
-            let actor = role.cast();
+            let actor = role.cast(this);
             this.actors[name] = actor;
             this.role_to_actor.set(role, actor);
         }
@@ -1741,9 +1891,10 @@ class Director {
 }
 
 class Player {
-    constructor(script, container) {
+    constructor(script, container, library = null) {
         this.script = script;
-        this.director = new Director(script);
+        // TODO what's a reasonable default for a library?  remote based on location of the script (or the calling file), of course, but...?
+        this.director = new Director(script, library);
         // TODO this assumes we're already passed a gleam-player div, which seems odd
         this.container = container;
         this.paused = false;
@@ -2207,7 +2358,10 @@ class PictureFrameEditor extends RoleEditor {
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame = pose[0];  // FIXME this format is bonkers
             let li = make_element('li');
-            let image = this.main_editor.assets.expect(frame.url);
+            let img = this.main_editor.library.load_image(frame.url);
+            img.classList.add('-asset');
+            li.append(img);
+            /* FIXME howww does this bit work
             if (image) {
                 let img = make_element('img', '-asset');
                 if (image.toURL) {
@@ -2225,6 +2379,7 @@ class PictureFrameEditor extends RoleEditor {
             else {
                 li.appendChild(make_element('div', '-asset --missing', '???'));
             }
+                */
             li.appendChild(make_element('p', '-caption', pose_name));
             this.pose_list.appendChild(li);
         }
@@ -2295,63 +2450,6 @@ const ROLE_EDITOR_TYPES = [
 // -----------------------------------------------------------------------------
 // Main editor
 
-class AssetLibrary {
-    constructor(main_editor, container) {
-        this.main_editor = main_editor;
-        this.container = container;
-        this.list = this.container.querySelector('.gleam-editor-assets');
-
-        this.assets = {};
-        this.dirty = false;
-    }
-
-    // TODO add an entry from a file drag and drop thing
-    add_entry(entry) {
-    }
-
-    // FIXME hmm so how do you un-expect an asset then?
-    expect(path) {
-        if (!this.assets[path]) {
-            this.assets[path] = null;
-        }
-        return this.assets[path];
-    }
-
-    read_directory_entry(directory_entry) {
-        this.directory_entry = directory_entry;
-        // TODO technically should be calling this repeatedly.  also it's asynchronous.
-        directory_entry.createReader().readEntries(entries => {
-            // TODO hmm, should mark by whether they're present and whether they're used i guess?
-            for (let entry of entries) {
-                this.assets[entry.name] = entry;
-            }
-            this.refresh_dom();
-            for (let role_editor of this.main_editor.role_editors) {
-                role_editor.update_assets();
-            }
-        }, console.error)
-    }
-
-    refresh_dom() {
-        this.list.textContent = '';
-        let paths = Object.keys(this.assets);
-        paths.sort((a, b) => {
-            // By some fucking miracle, JavaScript can do
-            // human-friendly number sorting already, hallelujah
-            return a.localeCompare(b, undefined, { numeric: true });
-        });
-
-        for (let path of paths) {
-            let asset = this.assets[path];
-            let li = make_element('li', null, path);
-            if (asset === null) {
-                li.classList.add('-missing');
-            }
-            this.list.appendChild(li);
-        }
-    }
-}
-
 class Panel {
     constructor(editor, container) {
         this.editor = editor;
@@ -2360,6 +2458,93 @@ class Panel {
         this.body = container.querySelector('.gleam-editor-panel > .gleam-editor-panel-body');
     }
 }
+
+// Panel containing the list of assets
+class AssetsPanel extends Panel {
+    constructor(editor, container) {
+        super(editor, container);
+        this.list = this.body.querySelector('.gleam-editor-assets');
+        this.item_index = {};  // filename => <li>
+
+        // DOM stuff: allow dragging a local directory onto us, via the WebKit
+        // file entry interface
+        // FIXME? this always takes a moment to register, not sure why...
+        // FIXME this should only accept an actual directory drag
+        // FIXME should have some other way to get a directory.  file upload control?
+        this.container.addEventListener('dragenter', e => {
+            if (e.target !== this.container) {
+                return;
+            }
+
+            e.stopPropagation();
+            e.preventDefault();
+            console.log(e);
+
+            this.container.classList.add('gleam-editor-drag-hover');
+        });
+        this.container.addEventListener('dragover', e => {
+            e.stopPropagation();
+            e.preventDefault();
+            console.log(e);
+        });
+        this.container.addEventListener('dragleave', e => {
+            this.container.classList.remove('gleam-editor-drag-hover');
+            console.log(e);
+        });
+        this.container.addEventListener('drop', e => {
+            e.stopPropagation();
+            e.preventDefault();
+            console.log(e);
+
+            this.container.classList.remove('gleam-editor-drag-hover');
+            console.log(e.dataTransfer);
+            let item = e.dataTransfer.items[0];
+            let entry = item.webkitGetAsEntry();
+            // FIXME should this...  change the library entirely?  or what?  needs to update //everything//
+            this.editor.set_library(new EntryAssetLibrary(entry));
+        });
+
+        // FIXME this is bad, but given that the Library might have a bunch of stuff happen at once, maybe it's not /that/ bad.
+        let cb = () => {
+            for (let [path, asset] of Object.entries(this.editor.library.assets)) {
+                let li = this.item_index[path];
+                if (li) {
+                    li.classList.toggle('--missing', ! asset.exists);
+                    li.classList.toggle('--unused', ! asset.used);
+                }
+            }
+            setTimeout(cb, 2000);
+        };
+        cb();
+    }
+
+    refresh_dom() {
+        this.list.textContent = '';
+        this.item_index = {};
+
+        let paths = Object.keys(this.editor.library.assets);
+        paths.sort((a, b) => {
+            // By some fucking miracle, JavaScript can do
+            // human-friendly number sorting already, hallelujah
+            return a.localeCompare(b, undefined, { numeric: true });
+        });
+        console.log("refreshing dom with paths", paths);
+
+        for (let path of paths) {
+            let asset = this.editor.library.assets[path];
+            let li = make_element('li', null, path);
+            if (! asset.exists) {
+                li.classList.add('--missing');
+            }
+            if (! asset.used) {
+                li.classList.add('--unused');
+            }
+            this.list.appendChild(li);
+            this.item_index[path] = li;
+        }
+    }
+}
+
 
 // Panel containing the script, which is a list of steps grouped into beats
 class ScriptPanel extends Panel {
@@ -2722,53 +2907,19 @@ class ScriptPanel extends Panel {
 }
 
 class Editor {
-    constructor(script, container, player_container) {
+    constructor(script, container, player_container, library = null) {
         // FIXME inject_into method or something?  separate view?
         this.script = script;
         this.container = container;
-        this.player = new Player(script, player_container);
+        // FIXME i don't think library should necessarily be passed in like this, since we need to be able to load a script?  actually, script shouldn't be an argument at all; that should come from a method!
+        this.library = library;
+        this.player = new Player(script, player_container, library);
 
         // TODO be able to load existing steps from a script
         this.steps = [];  // list of EditorSteps
 
         // Assets panel
-        this.assets_container = document.getElementById('gleam-editor-assets');
-        this.assets = new AssetLibrary(this, this.assets_container);
-
-        // FIXME? this always takes a moment to register, not sure why...
-        // FIXME this should only accept an actual directory drag
-        // FIXME should have some other way to get a directory.  file upload control?
-        this.assets_container.addEventListener('dragenter', e => {
-            if (e.target !== this.assets_container) {
-                return;
-            }
-
-            e.stopPropagation();
-            e.preventDefault();
-            console.log(e);
-
-            this.assets_container.classList.add('gleam-editor-drag-hover');
-        });
-        this.assets_container.addEventListener('dragover', e => {
-            e.stopPropagation();
-            e.preventDefault();
-            console.log(e);
-        });
-        this.assets_container.addEventListener('dragleave', e => {
-            this.assets_container.classList.remove('gleam-editor-drag-hover');
-            console.log(e);
-        });
-        this.assets_container.addEventListener('drop', e => {
-            e.stopPropagation();
-            e.preventDefault();
-            console.log(e);
-
-            this.assets_container.classList.remove('gleam-editor-drag-hover');
-            console.log(e.dataTransfer);
-            let item = e.dataTransfer.items[0];
-            let entry = item.webkitGetAsEntry();
-            this.assets.read_directory_entry(entry);
-        });
+        this.assets_panel = new AssetsPanel(this, document.getElementById('gleam-editor-assets'));
 
         // Roles panel
         this.role_editors = [];
@@ -2839,11 +2990,29 @@ class Editor {
             this.script_panel.beats_list.append(group);
         }
 
-        this.assets.refresh_dom();
+        this.assets_panel.refresh_dom();
 
         this.script_panel.create_twiddle_footer();
         // XXX hmm, very awkward that the ScriptPanel can't do this itself because we inject the step elements into it; maybe fix that
         this.script_panel.select_beat(this.player.director.cursor);
+    }
+
+    set_library(library) {
+        let old_library = this.library;
+        this.library = library;
+        library.inherit_uses(old_library);
+
+        // FIXME ahahaha, the Entry library has an async constructor, fuck!!
+        setTimeout(() => {
+            this.assets_panel.refresh_dom();
+        }, 500);
+
+        // Tell role editors to re-fetch assets
+        for (let role_editor of this.role_editors) {
+            role_editor.update_assets();
+        }
+
+        // FIXME tell actors to re-fetch assets (aaa)
     }
 
     add_role_editor(role_editor) {
@@ -2883,19 +3052,20 @@ class Editor {
 // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
 window.addEventListener('load', e => {
     // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
-    let root = 'res/prompt2-itchyitchy-final';
-    xxx_global_root = root;
+    let root = 'res/prompt2-itchyitchy-final/';
+    let root_url = new URL(root, document.location);
+    let library = new RemoteAssetLibrary(root_url);
     let xhr = new XMLHttpRequest;
     xhr.addEventListener('load', ev => {
         // FIXME handle errors yadda yadda
         let script = Script.from_legacy_json(JSON.parse(xhr.responseText));
         //let script = new Script();
-        let editor = new Editor(script, document.querySelector('.gleam-editor'), document.querySelector('.gleam-player'));
+        let editor = new Editor(script, document.querySelector('.gleam-editor'), document.querySelector('.gleam-player'), library);
         // TODO this seems, counterintuitive?  editor should do it, surely.  but there's no way to pause it atm?  but updates don't happen without it.
         editor.player.play();
     });
     // XXX lol
-    xhr.open('GET', location.toString().replace(/\/[^\/]+$/, '/') + root + '/script.json');
+    xhr.open('GET', new URL('script.json', root_url));
     xhr.send();
 });
 
