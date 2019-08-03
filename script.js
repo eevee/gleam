@@ -546,6 +546,8 @@ Character.LEGACY_JSON_ACTIONS = {
 class DialogueBox extends Role {
     constructor() {
         super();
+
+        this.speed = 60;
     }
 }
 DialogueBox.prototype.TWIDDLES = {
@@ -586,8 +588,10 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
         // Automatically sync'd with the data-state attribute on the main
         // element.
         this.scroll_state = 'idle';
-        // Amount of (extra) time to wait until resuming scrolling
-        this.delay = 0;
+        // How much spare time has passed; characters will appear until this
+        // runs out.  Is usually zero or negative, to indicate a time debt; no
+        // characters will appear until the debt has been paid.
+        this.time = 0;
     }
 
     get scroll_state() {
@@ -909,6 +913,7 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
         // FIXME this does a transition if the first chunk's offset isn't 0, looks bad.  dunno why, happens with tal panels but not regular dialogue
         this.phrase_element.style.transform = `translateY(-${chunk.offset}px)`;
 
+        this.time = 0;
         this.scroll_state = 'scrolling';
     }
 
@@ -917,15 +922,11 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
             return;
         }
 
-        // Handle delays
-        if (this.delay > 0) {
-            this.delay = Math.max(0, this.delay - dt);
-            return;
-        }
+        this.time += dt;
 
         // Reveal as many letters as appropriate
         let chunk = this.chunks[this.chunk_cursor];
-        while (true) {
+        while (this.time > 0) {
             if (this.cursor + 1 >= this.letter_elements.length) {
                 this.scroll_state = 'idle';
                 return;
@@ -940,9 +941,10 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
             this.cursor++;
             let letter = this.letter_elements[this.cursor];
             letter.classList.remove('--hidden');
+            this.time -= 1 / this.role.speed;
 
             if (letter.textContent === "\f") {
-                this.delay = 0.5;
+                this.time -= 0.5;
             }
 
             break;
