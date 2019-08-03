@@ -2662,18 +2662,17 @@ class ScriptPanel extends Panel {
         this.drag = null;
 
         // Add some nav controls
+        // FIXME disable these when on first/last step, and make sure they don't trigger even if clicked somehow
         let button = make_element('button');
         button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 6,3 L 1,8 L 6,13");
         button.addEventListener('click', ev => {
-            // FIXME better api for this
-            this.editor.script.jump(this.editor.script.cursor - 1);
+            this.editor.player.director.jump(this.editor.player.director.cursor - 1);
         });
         this.nav.appendChild(button);
         button = make_element('button');
         button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 10,3 L 15,8 L 10,13");
         button.addEventListener('click', ev => {
-            // FIXME better api for this
-            this.editor.script.jump(this.editor.script.cursor + 1);
+            this.editor.player.director.jump(this.editor.player.director.cursor + 1);
         });
         this.nav.appendChild(button);
 
@@ -2702,10 +2701,13 @@ class ScriptPanel extends Panel {
         this.step_toolbar.append(button);
         this.body.append(this.step_toolbar);
 
+        // FIXME hide on mouseout too (but that's goofy)
         this.beats_list.addEventListener('mouseover', ev => {
             let step_el = ev.target.closest('.gleam-editor-step');
             if (step_el) {
-                this.step_toolbar.style.transform = `translateY(${step_el.offsetTop}px)`;
+                // FIXME more awful offset traversal math
+                // FIXME skip this if this is already the step
+                this.step_toolbar.style.transform = `translateY(${step_el.offsetTop + step_el.offsetParent.offsetTop}px)`;
                 hovered_step_el = step_el;
             }
             else {
@@ -3142,6 +3144,11 @@ class Editor {
                 editor_step.position = i;
                 this.steps.push(editor_step);
                 group.append(editor_step.element);
+
+                // FIXME do this live, and probably in the script panel i assume, and only when steps are affected...?
+                if (i === 6) {
+                    editor_step.element.append(make_element('div', '-error', "Has no effect because a later step in the same beat overwrites it!"));
+                }
             }
             this.script_panel.beats_list.append(group);
         }
