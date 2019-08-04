@@ -1258,6 +1258,15 @@ class AssetLibrary {
         }
     }
 }
+// Dummy implementation that can't find any files, used in a fresh editor
+class NullAssetLibrary extends AssetLibrary {
+    load_image(filename) {
+        let asset = this.asset(filename);
+        asset.used = true;
+        asset.exists = false;
+        return make_element('img');
+    }
+}
 // Entry-based implementation, for local files using the Chrome API
 class EntryAssetLibrary extends AssetLibrary {
     constructor(directory_entry) {
@@ -1622,6 +1631,7 @@ class Script {
         if (index >= this.steps.length) {
             index = this.steps.length;
             // New beat at the end
+            // TODO unless the last beat doesn't end with a pause
             // FIXME!!!
         }
         else {
@@ -1747,7 +1757,6 @@ class Script {
             if (step.type.pause && beat_index < this.beats.length - 1) {
                 // The step pauses, so we need to merge with the next beat --
                 // or, if it's the only step, just delete the beat
-                // FIXME not done
                 beat = this.beats[beat_index + 1];
                 new_beat.pause = beat.pause;
                 this.beats.splice(beat_index + 1, 1);
@@ -1959,9 +1968,11 @@ class Director {
         this.script.intercom.addEventListener('gleam-step-deleted', refresh_handler);
 
         // And start us off on the first beat
-        // TODO what if there are no beats?
-        this.cursor = 0;
-        this.jump(0);
+        this.cursor = -1;
+        // TODO what if there are no beats?  this feels hokey
+        if (this.script.beats.length > 0) {
+            this.jump(0);
+        }
     }
 
     jump(beat_index) {
@@ -2040,12 +2051,11 @@ class Director {
 }
 
 class Player {
-    constructor(script, container, library = null) {
+    constructor(script, library) {
         this.script = script;
         // TODO what's a reasonable default for a library?  remote based on location of the script (or the calling file), of course, but...?
         this.director = new Director(script, library);
-        // TODO this assumes we're already passed a gleam-player div, which seems odd
-        this.container = container;
+        this.container = make_element('div', 'gleam-player');
         this.paused = false;
 
         // Create some player UI
@@ -2103,6 +2113,16 @@ class Player {
         });
 
         this.playing = false;
+    }
+
+    // TODO kind of a weird api maybe?
+    // Insert the player into a parent element
+    inject(parent) {
+        parent.append(this.container);
+    }
+    // Remove the player from the document
+    detach() {
+        this.container.remove();
     }
 
     update(dt) {
@@ -2655,6 +2675,8 @@ class AssetsPanel extends Panel {
 
         // FIXME this is bad, but given that the Library might have a bunch of stuff happen at once, maybe it's not /that/ bad.
         let cb = () => {
+            // FIXME uhh
+            if (this.editor.library)
             for (let [path, asset] of Object.entries(this.editor.library.assets)) {
                 let li = this.item_index[path];
                 if (li) {
@@ -2704,6 +2726,10 @@ class ScriptPanel extends Panel {
         // State of a step drag happening anywhere in the editor; initialized
         // in begin_step_drag
         this.drag = null;
+
+        // TODO when this panel is first created, /nothing/ is loaded, but that
+        // won't be true after a moment...  is that concerning at all?  i am
+        // not even sure
 
         // Add some nav controls
         // FIXME disable these when on first/last step, and make sure they don't trigger even if clicked somehow
@@ -2953,17 +2979,33 @@ class ScriptPanel extends Panel {
                 this.end_step_drag();
             }
         });
+    }
 
-        // TODO this stuff is hard to find since it's below all the DOM garbage
+    load_script(script, director) {
+        // Recreate the step list from scratch
+        this.beats_list.textContent = '';
+        for (let [b, beat] of script.beats.entries()) {
+            let group = make_element('li');
+            for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
+                let editor_step = this.editor.steps[i];
+                group.append(editor_step.element);
+
+                // FIXME do this live, and probably in the script panel i assume, and only when steps are affected...?
+                if (i === 6) {
+                    editor_step.element.append(make_element('div', '-error', "Has no effect because a later step in the same beat overwrites it!"));
+                }
+            }
+            this.beats_list.append(group);
+        }
 
         // Attach to the Director
-        // TODO if a new Director is created, we'll need to attach a new listener
-        editor.player.director.intercom.addEventListener('gleam-director-beat', ev => {
+        // TODO do we need to remove the old listener from the previous director??
+        director.intercom.addEventListener('gleam-director-beat', ev => {
             this.select_beat(ev.detail);
         });
         this.selected_beat_index = null;
 
-        editor.script.intercom.addEventListener('gleam-step-deleted', ev => {
+        script.intercom.addEventListener('gleam-step-deleted', ev => {
             // TODO need to ensure, somehow, that this one happens /before/ the editor one (which doesn't exist yet)
             let step = this.editor.steps[ev.detail.index];
             step.element.remove();
@@ -3110,15 +3152,16 @@ class ScriptPanel extends Panel {
 }
 
 class Editor {
-    constructor(script, container, player_container, library = null) {
+    constructor(container) {
         // FIXME inject_into method or something?  separate view?
-        this.script = script;
+        // FIXME wait we don't even use this, we claim the whole body!
         this.container = container;
-        // FIXME i don't think library should necessarily be passed in like this, since we need to be able to load a script?  actually, script shouldn't be an argument at all; that should come from a method!
-        this.library = library;
-        this.player = new Player(script, player_container, library);
 
-        // TODO be able to load existing steps from a script
+        // Set by load_script, called after all this setup
+        this.script = null;
+        this.library = null;
+        this.player = null;
+
         this.steps = [];  // list of EditorSteps
 
         // Assets panel
@@ -3138,13 +3181,22 @@ class Editor {
 
         this.script_panel = new ScriptPanel(this, document.getElementById('gleam-editor-script'));
 
-        // Initialize with a stage, which the user can't create on their own
-        // because there can only be one
-        /*
-        let stage_editor = new StageEditor(this);
-        stage_editor.name = 'stage';
-        this.add_role_editor(stage_editor);
-        */
+        // Start with an empty script
+        this.load_script(new Script, new NullAssetLibrary);
+    }
+
+    // TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
+    load_script(script, library) {
+        if (this.player) {
+            // TODO explicitly ask it to destroy itself?  dunno what that would do though
+            this.player.detach();
+            this.player = null;
+        }
+
+        this.script = script;
+        this.library = library;
+        this.player = new Player(this.script, library);
+        this.player.inject(document.querySelector('#gleam-editor-player .gleam-editor-panel-body'));
 
         // Load roles from the script
         let role_editor_index = new Map();
@@ -3180,29 +3232,23 @@ class Editor {
             }
         }
 
-        // Load steps from the script
-        for (let [b, beat] of script.beats.entries()) {
-            let group = make_element('li');
-            for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                let step = script.steps[i];
-                let editor_step = new EditorStep(role_editor_index.get(step.role), step);
-                editor_step.position = i;
-                this.steps.push(editor_step);
-                group.append(editor_step.element);
-
-                // FIXME do this live, and probably in the script panel i assume, and only when steps are affected...?
-                if (i === 6) {
-                    editor_step.element.append(make_element('div', '-error', "Has no effect because a later step in the same beat overwrites it!"));
-                }
-            }
-            this.script_panel.beats_list.append(group);
+        // Wrap each step in an EditorStep
+        for (let [i, step] of script.steps.entries()) {
+            let editor_step = new EditorStep(role_editor_index.get(step.role), step);
+            editor_step.position = i;
+            this.steps.push(editor_step);
         }
 
         this.assets_panel.refresh_dom();
 
+        this.script_panel.load_script(script, this.player.director);
         this.script_panel.create_twiddle_footer();
         // XXX hmm, very awkward that the ScriptPanel can't do this itself because we inject the step elements into it; maybe fix that
         this.script_panel.select_beat(this.player.director.cursor);
+
+        // Finally, set the player going
+        // TODO this seems, counterintuitive?  and there's no way to pause it atm?  but updates don't happen without it.
+        this.player.play();
     }
 
     set_library(library) {
@@ -3269,6 +3315,9 @@ class Editor {
 
 // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
 window.addEventListener('load', e => {
+    // FIXME does the editor really take over just from being created?
+    let editor = new Editor(document.querySelector('.gleam-editor'));
+
     // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
     let root = 'res/prompt2-itchyitchy-final/';
     let root_url = new URL(root, document.location);
@@ -3277,10 +3326,7 @@ window.addEventListener('load', e => {
     xhr.addEventListener('load', ev => {
         // FIXME handle errors yadda yadda
         let script = Script.from_legacy_json(JSON.parse(xhr.responseText));
-        //let script = new Script();
-        let editor = new Editor(script, document.querySelector('.gleam-editor'), document.querySelector('.gleam-player'), library);
-        // TODO this seems, counterintuitive?  editor should do it, surely.  but there's no way to pause it atm?  but updates don't happen without it.
-        editor.player.play();
+        editor.load_script(script, library);
     });
     // XXX lol
     xhr.open('GET', new URL('script.json', root_url));
