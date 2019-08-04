@@ -1556,8 +1556,6 @@ class Script {
                 this.beats.push(beat);
             }
         }
-
-        this._check_constraints();
     }
 
     get_beat_for_step(step) {
@@ -1866,6 +1864,52 @@ class Script {
         if (expected_first_index !== this.steps.length) {
             console.warn("Expected last beat to end on step", this.steps.length - 1, "but instead found", expected_first_index - 1);
         }
+
+        // And finally, just fuckin' brute force it: act like we manually
+        // replaced all the steps and ensure the results are the same
+        let steps = this.steps;
+        let beats = this.beats;
+        let step_metadata = this.step_metadata;
+
+        this.set_steps(steps);
+        for (let [i, step] of this.steps.entries()) {
+            let step0 = steps[i];
+            if (step !== step0) {
+                console.warn("Expected step", i, "to be identical", step0, step);
+            }
+            let step_meta = this.step_metadata.get(step);
+            let step_meta0 = step_metadata.get(step0);
+            if (step_meta.index !== step_meta0.index ||
+                step_meta.beat_index !== step_meta0.beat_index)
+            {
+                console.warn("Metadata mismatch for step", i, "--", step_meta0, step_meta);
+            }
+        }
+        for (let [b, beat] of this.beats.entries()) {
+            let beat0 = beats[b];
+            if (beat0.first_step_index !== beat.first_step_index ||
+                beat0.last_step_index !== beat.last_step_index ||
+                beat0.states.size !== beat.states.size)
+            {
+                console.warn("Expected beat", b, "to match", beat0, beat);
+            }
+            for (let [role, state] of beat.states) {
+                if (! beat0.states.has(role)) {
+                    console.warn("Beat is missing role", role);
+                    continue;
+                }
+                let state0 = beat0.states.get(role);
+                for (let [key, value] of Object.entries(state)) {
+                    if (value !== state0[key]) {
+                        console.warn("Role", role, "expected twiddle", key, "to have value", value, "got", state0[key]);
+                    }
+                }
+            }
+        }
+
+        this.steps = steps;
+        this.beats = beats;
+        this.step_metadata = step_metadata;
     }
 }
 // The Director handles playback of a Script (including, of course, casting an
@@ -2694,6 +2738,7 @@ class ScriptPanel extends Panel {
         button.innerHTML = svg_icon_from_path("M 2,2 L 14,2 L 12,14 L 4,14 L 2,2 M 6,2 L 7,14 M 10,2 L 9,14");
         button.addEventListener('click', ev => {
             if (hovered_step_el) {
+                // FIXME clicking this twice doesn't work if you don't move the mouse again, oops
                 this.editor.remove_step(this.editor.get_step_for_element(hovered_step_el));
                 hovered_step_el = null;
             }
