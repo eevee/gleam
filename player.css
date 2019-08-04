@@ -68,17 +68,22 @@
 .gleam-pause .gleam-pause-beats li {
     /* TODO hmm, grid? */
     display: inline-block;
-    min-width: 0.33em;
-    min-height: 0.33em;
+    min-width: 1em;
+    height: 1em;
     line-height: 1;
-    margin: 0.33em;
+    margin: 0.25em;
     padding: 0.33em;
-    vertical-align: middle;
     border: 1px solid #999;
+    vertical-align: middle;
+    text-align: center;
+    background: #222;
     cursor: pointer;
 }
+.gleam-pause .gleam-pause-beats li:empty {
+    border-radius: 1em;
+}
 .gleam-pause .gleam-pause-beats li.--current {
-    background: #fff4;
+    background: #666;
     border-color: #ccc;
 }
 .gleam-pause .gleam-pause-beats li:hover {

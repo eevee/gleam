@@ -213,6 +213,8 @@ Curtain.STEP_TYPES = {
     lower: {
         display_name: 'lower',
         pause: 'wait',
+        // TODO this is very...  heuristic, and there's no way to override it, hm.
+        is_major_transition: true,
         args: [],
         twiddles: [{
             key: 'lowered',
@@ -2093,7 +2095,7 @@ class Player {
         this.pause_element = make_element('div', 'gleam-pause');
         this.pause_element.innerHTML = this.PAUSE_SCREEN_HTML;
         // TODO options (persist!!): volume, hide UI entirely (pause button + progress bar), take screenshot?, low power mode (disable text shadows and the like) or disable transitions entirely (good for motion botherment)
-        // TODO links to currently active assets?  sorta defeats bandcamp i guess
+        // TODO links to currently active assets?  sorta defeats bandcamp i guess, but i always did want a jukebox mode
         // TODO debug stuff, mostly current state of actors
         this.pause_element.addEventListener('click', ev => {
             // Block counting this as an advancement click
@@ -2112,14 +2114,32 @@ class Player {
         this.container.appendChild(this.pause_element);
         this.container.appendChild(this.pause_button);
         let beats_list = this.pause_element.querySelector('.gleam-pause-beats');
+        let number_next_beat = false;
         for (let [i, beat] of this.script.beats.entries()) {
             let li = make_element('li');
             let b = i + 1;
-            if (b % 10 === 0 || b === 1 || b === this.script.beats.length) {
+            if (number_next_beat || b % 10 === 0 || b === 1 || b === this.script.beats.length) {
+                number_next_beat = false;
                 li.textContent = String(b);
             }
+            li.setAttribute('data-beat-index', i);
             beats_list.appendChild(li);
+
+            if (this.script.steps[beat.last_step_index].type.is_major_transition) {
+                // TODO ok this is extremely hokey
+                beats_list.append(make_element('hr'));
+                number_next_beat = true;
+            }
         }
+        beats_list.addEventListener('click', ev => {
+            let li = ev.target.closest('.gleam-pause-beats li');
+            if (! li)
+                return;
+            let b = parseInt(li.getAttribute('data-beat-index'), 10);
+            this.unpause();
+            // TODO hm, instant jump?  curtain?
+            this.director.jump(b);
+        });
 
         // Add the actors to the DOM
         for (let [name, actor] of Object.entries(this.director.actors)) {
