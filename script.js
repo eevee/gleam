@@ -498,10 +498,9 @@ class Character extends PictureFrame {
     static from_legacy_json(name, json) {
         json.views = json.poses || {};
         let role = super.from_legacy_json(name, json);
-        // FIXME ah, clashes with Role.name, fuck
-        //role.name = json.name || null;
-        role.color = json.color || null;
-        role.position = json.position || null;
+        role.dialogue_name = json.name || null;
+        role.dialogue_color = json.color || null;
+        role.dialogue_position = json.position || null;
         return role;
     }
 }
@@ -525,17 +524,18 @@ Character.STEP_TYPES = {
             key: 'phrase',
             arg: 0,
         }, {
+            // TODO these should probably be twiddles themselves?
             delegate: 'dialogue_box',
             key: 'color',
-            prop: 'color',
+            prop: 'dialogue_color',
         }, {
             delegate: 'dialogue_box',
-            key: 'name',
-            prop: 'name',
+            key: 'speaker',
+            prop: 'dialogue_name',
         }, {
             delegate: 'dialogue_box',
             key: 'position',
-            prop: 'position',
+            prop: 'dialogue_position',
         }],
     },
 };
@@ -559,8 +559,7 @@ DialogueBox.prototype.TWIDDLES = {
         initial: null,
         propagate: null,
     },
-    // Speaker properties
-    name: {
+    speaker: {
         initial: null,
     },
     color: {
@@ -636,7 +635,7 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
         // TODO super weird bug in old code: set the transition time to
         // something huge like 10s and mash arrow keys mid-transition and
         // sometimes you end up with dialogue attributed to the wrong speaker!
-        if (old_state.name !== null && old_state.name !== state.name) {
+        if (old_state.speaker !== null && old_state.speaker !== state.speaker) {
             // Don't just remove it directly; give it a chance to transition
             let old_speaker_element = this.speaker_element;
             this.speaker_element = null;
@@ -647,8 +646,8 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
         }
 
         // If there's meant to be a speaker now, add a tag
-        if (state.name !== null && ! this.speaker_element) {
-            this.speaker_element = make_element('div', '-speaker --hidden', state.name);
+        if (state.speaker !== null && ! this.speaker_element) {
+            this.speaker_element = make_element('div', '-speaker --hidden', state.speaker);
             this.element.appendChild(this.speaker_element);
 
             // Force layout recomputation, then remove the class so the
@@ -2340,6 +2339,7 @@ class RoleEditor {
         this.role = role;
 
         let throwaway = document.createElement('div');
+        // FIXME ditch the templates, they're similar and simple enough to just build
         throwaway.innerHTML = this.HTML;
         this.container = throwaway.firstElementChild;  // FIXME experimental, ugh
         this.container.classList.add(this.CLASS_NAME);
