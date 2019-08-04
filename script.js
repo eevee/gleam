@@ -74,10 +74,12 @@ function promise_transition(el) {
 // The definition of an actor, independent of the actor itself.  Holds initial
 // configuration.
 class Role {
-    constructor() {}
+    constructor(name) {
+        this.name = name;
+    }
 
-    static from_legacy_json(json) {
-        return new this();
+    static from_legacy_json(name, json) {
+        return new this(name);
     }
 
     generate_initial_state() {
@@ -142,6 +144,10 @@ class Step {
         this.role = role;
         this.type = type;
         this.args = args;
+
+        // Populated when the Step is added to a Script
+        this.index = null;
+        this.beat_index = null;
     }
 
     update_beat(beat) {
@@ -195,9 +201,6 @@ Stage.Actor = class StageActor extends Actor {
 
 // Full-screen transition actor
 class Curtain extends Role {
-    constructor() {
-        super();
-    }
 }
 Curtain.prototype.TWIDDLES = {
     lowered: {
@@ -282,13 +285,13 @@ Jukebox.Actor = class JukeboxActor extends Actor {
 
 
 class PictureFrame extends Role {
-    constructor(position) {
-        super();
+    constructor(name, position) {
+        super(name);
         this.poses = {};
     }
 
-    static from_legacy_json(json) {
-        let pf = new this(json.position);
+    static from_legacy_json(name, json) {
+        let pf = new this(name, json.position);
         for (let [key, value] of Object.entries(json.views)) {
             pf.add_pose(key, value);
         }
@@ -484,21 +487,22 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
 
 // FIXME do not love this hierarchy, the picture frame should very be its own thing
 class Character extends PictureFrame {
-    constructor(position) {
-        super(position);
+    constructor(name, position) {
+        super(name, position);
 
         // Character delegates to a dialogue box, which must be assigned here, ASAP
         // TODO need editor ui for this!
         this.dialogue_box = null;
     }
 
-    static from_legacy_json(json) {
+    static from_legacy_json(name, json) {
         json.views = json.poses || {};
-        let actor = super.from_legacy_json(json);
-        actor.name = json.name || null;
-        actor.color = json.color || null;
-        actor.position = json.position || null;
-        return actor;
+        let role = super.from_legacy_json(name, json);
+        // FIXME ah, clashes with Role.name, fuck
+        //role.name = json.name || null;
+        role.color = json.color || null;
+        role.position = json.position || null;
+        return role;
     }
 }
 // XXX aha, this could be a problem.  a character is a delegate; it doesn't have any actual twiddles of its own!
@@ -544,8 +548,8 @@ Character.LEGACY_JSON_ACTIONS = {
 
 
 class DialogueBox extends Role {
-    constructor() {
-        super();
+    constructor(name) {
+        super(name);
 
         this.speed = 60;
     }
@@ -1187,7 +1191,7 @@ class Beat {
     // Produce the first Beat in a Script, based on its Roles
     static create_first(roles) {
         let states = new Map();
-        for (let [name, role] of Object.entries(roles)) {
+        for (let role of roles) {
             states.set(role, role.generate_initial_state());
         }
         return new this(states, 0);
@@ -1438,15 +1442,21 @@ class Script {
     // occasionally for a fixed amount of time or until some task is complete.
 
     constructor() {
-        this.roles = {
-            stage: new Stage(),
-        };
+        this.roles = [];
+        this.role_index = {};
+        this._add_role(new Stage('stage'));
 
         this.set_steps([]);
 
         // This is mostly used for editing, so that objects wrapping us (e.g.
         // Director, Editor) can know when the step list changes
         this.intercom = new EventTarget();
+    }
+
+    _add_role(role) {
+        // Internal only!
+        this.roles.push(role);
+        this.role_index[role.name] = role;
     }
 
     static from_legacy_json(json) {
@@ -1456,8 +1466,8 @@ class Script {
     }
     _load_legacy_json(json) {
         // Legacy JSON has an implicit dialogue box
-        let dialogue_box = new DialogueBox();
-        this.roles['__dialogue__'] = dialogue_box;
+        let dialogue_box = new DialogueBox('dialogue');
+        this._add_role(dialogue_box);
 
         // FIXME ???  how do i do... registration?  hmm
         let ROLE_TYPES = {
@@ -1473,20 +1483,23 @@ class Script {
                 throw new Error(`No such role type: ${role_def.type}`);
             }
 
-            this.roles[name] = type.from_legacy_json(role_def);
+            let role = type.from_legacy_json(name, role_def);
             if (role_def.type === 'character') {
                 // JSON characters implicitly use the implicit dialogue box
                 // TODO i wonder if this could be in Character.from_legacy_json
-                this.roles[name].dialogue_box = dialogue_box;
+                role.dialogue_box = dialogue_box;
             }
+
+            this._add_role(role);
         }
 
+        let stage = this.role_index['stage'];
         let steps = [];
         for (let json_step of json.script) {
             if (! json_step.actor) {
                 // FIXME special actions like roll_credits
                 if (json_step.action == 'pause') {
-                    steps.push(new Step(this.roles.stage, Stage.STEP_TYPES.pause, []));
+                    steps.push(new Step(stage, Stage.STEP_TYPES.pause, []));
                 }
                 else {
                     console.warn("ah, not yet implemented:", json_step);
@@ -1494,7 +1507,7 @@ class Script {
                 continue;
             }
 
-            let role = this.roles[json_step.actor];
+            let role = this.role_index[json_step.actor];
             let role_type = role.constructor;
             let [step_key, ...arg_keys] = role_type.LEGACY_JSON_ACTIONS[json_step.action];
             let step_type = role_type.STEP_TYPES[step_key];
@@ -1536,7 +1549,6 @@ class Script {
 
         // Consolidate steps into beats -- maps of role => state
         this.beats = [];
-        this.step_metadata = new Map();  // Step => { index, beat_index }
         if (steps.length === 0)
             return;
 
@@ -1545,10 +1557,8 @@ class Script {
 
         // Iterate through steps and fold them into beats
         for (let [i, step] of this.steps.entries()) {
-            this.step_metadata.set(step, {
-                index: i,
-                beat_index: this.beats.length - 1,
-            });
+            step.index = i;
+            step.beat_index = this.beats.length - 1;
             step.update_beat(beat);
             beat.last_step_index = i;
 
@@ -1567,17 +1577,40 @@ class Script {
         }
     }
 
-    get_beat_for_step(step) {
-        let step_meta = this.step_metadata.get(step);
-        if (step_meta === undefined) {
-            // TODO error on bad step
-            console.error("Step is not a part of this Script", step);
+    _assert_own_step(step) {
+        if (this.steps[step.index] !== step) {
+            console.error(step);
+            throw new Error("Step is not a part of this Script");
         }
-        return this.beats[step_meta.beat_index];
+    }
+
+    get_beat_for_step(step) {
+        this._assert_own_step(step);
+        return this.beats[step.beat_index];
     }
 
     // -------------------------------------------------------------------------
     // Post-load mutation, only used in the editor
+
+    add_role(role) {
+        // FIXME abort if name is already in use
+        this._add_role(role);
+
+        // Update all existing beats to have this role's default state; nothing
+        // fancy is required here, since there are no steps for this role yet
+        let state = role.generate_initial_state();
+        for (let beat of this.beats) {
+            beat.set(role, state);
+        }
+
+        this.intercom.dispatchEvent(new CustomEvent('gleam-role-added', {
+            detail: {
+                role: role,
+            },
+        }));
+    }
+
+    // Editing the step list
 
     _make_fresh_beat(beat_index) {
         if (beat_index > 0) {
@@ -1590,15 +1623,11 @@ class Script {
 
     // Call to indicate a Step has been altered
     update_step(step) {
-        let step_meta = this.step_metadata.get(step);
-        if (step_meta === undefined) {
-            // TODO error on bad step
-            console.error("Step is not a part of this Script", step);
-        }
+        this._assert_own_step(step);
 
-        let beat = this.beats[step_meta.beat_index];
+        let beat = this.beats[step.beat_index];
         // Recreate the Beat in question
-        let new_beat = this.beats[step_meta.beat_index] = this._make_fresh_beat(step_meta.beat_index);
+        let new_beat = this.beats[step.beat_index] = this._make_fresh_beat(step.beat_index);
         new_beat.last_step_index = beat.last_step_index;
 
         for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
@@ -1616,8 +1645,9 @@ class Script {
         this.intercom.dispatchEvent(new CustomEvent('gleam-step-updated', {
             detail: {
                 step: step,
-                index: step_meta.index,
-                beat_index: step_meta.beat_index,
+                // FIXME don't need these any more
+                index: step.index,
+                beat_index: step.beat_index,
             },
         }));
     }
@@ -1630,15 +1660,28 @@ class Script {
         let new_beat_index;
         if (index >= this.steps.length) {
             index = this.steps.length;
-            // New beat at the end
-            // TODO unless the last beat doesn't end with a pause
-            // FIXME!!!
+            this.steps.push(new_step);
+            // Add to the end of the last beat, or create a new beat if that
+            // one ends with a pause
+            new_beat_index = this.beats.length - 1;
+            let beat = this.beats[new_beat_index];
+            if (beat === undefined || beat.pause !== false) {
+                new_beat_index++;
+                beat = this._make_fresh_beat(new_beat_index);
+                this.beats.push(beat);
+            }
+            new_step.update_beat(beat);
+            beat.last_step_index = index;
+            // TODO should update_beat do this?
+            beat.pause = new_step.type.pause;
+
+            new_step.index = index;
+            new_step.beat_index = new_beat_index;
         }
         else {
             // The affected beat must be the one that contains the step
             // currently in the position being inserted into
-            let existing_step_meta = this.step_metadata.get(this.steps[index]);
-            let beat_index = existing_step_meta.beat_index;
+            let beat_index = this.steps[index].beat_index;
             new_beat_index = beat_index;
             let next_beat_index = beat_index + 1;
             let existing_beat = this.beats[beat_index];
@@ -1663,23 +1706,21 @@ class Script {
                 split_beat = true;
             }
 
-            // Now that previous stuff is dealt with, actually insert the step
-            this.steps.splice(index, 0, new_step);
-
             // Update metadata for later steps
-            for (let step_meta of this.step_metadata.values()) {
-                if (step_meta.index >= index) {
-                    step_meta.index++;
+            for (let step of this.steps) {
+                if (step.index >= index) {
+                    step.index++;
                     if (split_beat) {
-                        step_meta.beat_index++;
+                        step.beat_index++;
                     }
                 }
             }
             // Add metadata for this step
-            this.step_metadata.set(new_step, {
-                index: index,
-                beat_index: beat_index,
-            });
+            new_step.index = index;
+            new_step.beat_index = beat_index;
+
+            // Now that previous stuff is dealt with, actually insert the step
+            this.steps.splice(index, 0, new_step);
 
             // Track all the twiddles altered by this new Step, and keep
             // recreating beats after it until its changes have been erased by
@@ -1731,6 +1772,7 @@ class Script {
     }
 
     delete_step(step) {
+        this._assert_own_step(step);
         // FIXME if this step pauses, may need to fuse this beat with next one and adjust numbering
         // FIXME need to recreate this beat and future ones, twiddle change, etc etc.
         // FIXME fire event of course
@@ -1740,9 +1782,8 @@ class Script {
         // beat is also deleted)
         let merged_beat = false;
         let deleted_beat = false;
-        let step_meta = this.step_metadata.get(step);
-        let index = step_meta.index;
-        let beat_index = step_meta.beat_index;
+        let index = step.index;
+        let beat_index = step.beat_index;
         {
             let next_beat_index = beat_index + 1;
             let beat = this.beats[beat_index];
@@ -1764,19 +1805,19 @@ class Script {
             }
 
             // Now that previous stuff is dealt with, actually delete the step
-            this.steps.splice(step_meta.index, 1);
+            this.steps.splice(step.index, 1);
+            step.index = null;
+            step.beat_index = null;
 
             // Update metadata for later steps
-            for (let step_meta of this.step_metadata.values()) {
-                if (step_meta.index >= index) {
-                    step_meta.index--;
+            for (let step of this.steps) {
+                if (step.index >= index) {
+                    step.index--;
                     if (merged_beat) {
-                        step_meta.beat_index--;
+                        step.beat_index--;
                     }
                 }
             }
-            // Delete metadata for this step
-            this.step_metadata.delete(step);
 
             // Track all the twiddles altered by the deleted Step, and keep
             // recreating beats after it until its changes have been erased by
@@ -1835,22 +1876,9 @@ class Script {
         // correct
         let expected_meta_count = this.steps.length;
         for (let [i, step] of this.steps.entries()) {
-            let step_meta = this.step_metadata.get(step);
-            if (step_meta === undefined) {
-                console.warn("Can't find step", i, "in metadata:", step);
-                expected_meta_count--;
-                continue;
+            if (step.index !== i) {
+                console.warn("Step", i, "claims it's at", step.index);
             }
-            if (step_meta.index !== i) {
-                console.warn("Step", i, "has metadata claiming it's at", step_meta.index);
-            }
-        }
-        if (this.step_metadata.size !== expected_meta_count) {
-            let extra_steps = new Set(this.step_metadata.keys());
-            for (let step of this.steps) {
-                extra_steps.delete(step);
-            }
-            console.warn("Step metadata has extra entries:", Array.from(extra_steps));
         }
 
         // Beats should not overlap, they should cover exactly the range of
@@ -1864,9 +1892,8 @@ class Script {
 
             for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
                 let step = this.steps[i];
-                let step_meta = this.step_metadata.get(step);
-                if (step_meta.beat_index !== b) {
-                    console.warn("Expected step", i, "to belong to beat", b, "but instead it claims to belong to beat", step_meta.beat_index);
+                if (step.beat_index !== b) {
+                    console.warn("Expected step", i, "to belong to beat", b, "but instead it claims to belong to beat", step.beat_index);
                 }
             }
         }
@@ -1878,20 +1905,12 @@ class Script {
         // replaced all the steps and ensure the results are the same
         let steps = this.steps;
         let beats = this.beats;
-        let step_metadata = this.step_metadata;
 
         this.set_steps(steps);
         for (let [i, step] of this.steps.entries()) {
             let step0 = steps[i];
             if (step !== step0) {
                 console.warn("Expected step", i, "to be identical", step0, step);
-            }
-            let step_meta = this.step_metadata.get(step);
-            let step_meta0 = step_metadata.get(step0);
-            if (step_meta.index !== step_meta0.index ||
-                step_meta.beat_index !== step_meta0.beat_index)
-            {
-                console.warn("Metadata mismatch for step", i, "--", step_meta0, step_meta);
             }
         }
         for (let [b, beat] of this.beats.entries()) {
@@ -1918,7 +1937,6 @@ class Script {
 
         this.steps = steps;
         this.beats = beats;
-        this.step_metadata = step_metadata;
     }
 }
 // The Director handles playback of a Script (including, of course, casting an
@@ -1934,9 +1952,9 @@ class Director {
         this.actors = {};
         // TODO this seems clumsy...  maybe if roles had names, hmm
         this.role_to_actor = new Map();
-        for (let [name, role] of Object.entries(this.script.roles)) {
+        for (let role of this.script.roles) {
             let actor = role.cast(this);
-            this.actors[name] = actor;
+            this.actors[role.name] = actor;
             this.role_to_actor.set(role, actor);
         }
 
@@ -1945,6 +1963,15 @@ class Director {
 
         // Bind some stuff
         // TODO hm, could put this in a 'script' setter to make it Just Work when reassigning script, but why not just make a new Director?
+        this.script.intercom.addEventListener('gleam-role-added', ev => {
+            let role = ev.detail.role;
+            // FIXME duped from above
+            let actor = role.cast(this);
+            this.actors[role.name] = actor;
+            this.role_to_actor.set(role, actor);
+            // Refresh, in case the role has some default state
+            this.jump(this.cursor);
+        });
         // When a new step is added, if it's part of the beat we're currently
         // on, jump back to it
         // TODO it seems sensible to not refresh the text if it hasn't changed?
@@ -2203,6 +2230,14 @@ function make_element(tag, cls, text) {
 ////////////////////////////////////////////////////////////////////////////////
 // EDITOR
 
+function human_friendly_sort(filenames) {
+    filenames.sort((a, b) => {
+        // By some fucking miracle, JavaScript can do
+        // human-friendly number sorting already, hallelujah
+        return a.localeCompare(b, undefined, { numeric: true });
+    });
+}
+
 function open_overlay(element) {
     let overlay = make_element('div', 'gleam-editor-overlay');
     overlay.appendChild(element);
@@ -2216,179 +2251,84 @@ function open_overlay(element) {
     element.addEventListener('click', ev => {
         ev.stopPropagation();
     });
+
+    return overlay;
 }
 
 function close_overlay(element) {
     let overlay = element.closest('.gleam-editor-overlay');
     if (overlay) {
         overlay.remove();
+        return overlay;
     }
 }
 
 // -----------------------------------------------------------------------------
 // Step argument configuration
 
-// TODO strongly considering ditching these (they seem a bit heavy...?) and going back to functions and using dom state and dispatch
-class StepArg {
-    constructor(editor_step, arg_index) {
-        this.editor_step = editor_step;
-        this.arg_index = arg_index;
-        this.view_element = this.build_view(editor_step.step.args[arg_index]);
-    }
-
-    get arg_def() {
-        return this.editor_step.step.type.args[this.arg_index];
-    }
-
-    build_view(value) {}
-
-    set(value) {}
-}
-
-class ProseArg extends StepArg {
-    build_view(value) {
-        let el = make_element('div', 'gleam-editor-arg-prose', value);
-        el.addEventListener('click', ev => {
-            // Prevent this click from selecting the step
-            ev.stopPropagation();
-
-            // FIXME this requires clicking away to save, but most of the page is clickable...
-            // also one click to edit sucks when there's already click to jump.  double click?
-            let old_value = this.view_element.textContent;
-            let editor_element = make_element('textarea', 'gleam-editor-arg-prose', old_value);
-            editor_element.addEventListener('blur', ev => {
-                let new_value = editor_element.value;
-                if (new_value !== old_value) {
-                    this.editor_step.set_arg(this.arg_index, new_value);
-                }
-                editor_element.replaceWith(this.view_element);
-            });
-            this.view_element.replaceWith(editor_element);
-            // FIXME doesn't focus at the point where you clicked in the text
-            editor_element.focus();
-        });
-        return el;
-    }
-
-    set(value) {
-        this.view_element.textContent = value;
-    }
-}
-
-class PoseArg extends StepArg {
-    build_view(value) {
-        let el = make_element('div', 'gleam-editor-arg-enum', value);
-        el.addEventListener('click', ev => {
-            // Prevent this click from selecting the step
-            ev.stopPropagation();
-
-            let editor_element = this.build_editor();
-            editor_element.style.left = `${ev.clientX}px`;
-            editor_element.style.top = `${ev.clientY}px`;
-            open_overlay(editor_element);
-        });
-        return el;
-    }
-
-    build_editor() {
-        // TODO hmmmmmmm seems like this could belong to the RoleEditor, since it's the same for every step!
-        // TODO highlight the selected one
-        // FIXME ah, what if there are no poses?
-        let el = make_element('ol', 'gleam-editor-arg-enum-poses');
-        for (let pose of Object.keys(this.editor_step.role_editor.role.poses)) {
-            let li = make_element('li', null, pose);
-            el.appendChild(li);
-            // TODO delegate
-            li.addEventListener('click', ev => {
-                this.editor_step.set_arg(this.arg_index, pose);
-                close_overlay(ev.target);
-            });
-        }
-        return el;
-    }
-
-    set(value) {
-        this.view_element.textContent = value;
-    }
-}
-
 const STEP_ARGUMENT_TYPES = {
-    prose: ProseArg,
-    pose: PoseArg,
+    prose: {
+        view(value) {
+            return make_element('div', 'gleam-editor-arg-prose', value);
+        },
+        update(element, value) {
+            element.textContent = value;
+        },
+        edit(element, value) {
+            return new Promise((resolve, reject) => {
+                let editor_element = make_element('textarea', 'gleam-editor-arg-prose', value);
+                // FIXME having to click outside (and thus likely activate something else) kind of sucks
+                // TODO but then, i'd love to have an editor that uses the appropriate styling, anyway
+                editor_element.addEventListener('blur', ev => {
+                    editor_element.replaceWith(element);
+                    resolve(editor_element.value);
+                });
+                element.replaceWith(editor_element);
+                // FIXME doesn't focus at the point where you clicked in the text
+                editor_element.focus();
+            });
+        },
+    },
+
+    pose: {
+        view(value) {
+            return make_element('div', 'gleam-editor-arg-enum', value);
+        },
+        update(element, value) {
+            element.textContent = value;
+        },
+        edit(element, value, step, mouse_event) {
+            return new Promise((resolve, reject) => {
+                // FIXME this very poorly handles a very long list, and doesn't preview or anything
+                let editor_element = make_element('ol', 'gleam-editor-arg-enum-poses');
+                for (let pose of Object.keys(step.role.poses)) {
+                    let li = make_element('li', null, pose);
+                    li.setAttribute('data-pose', pose);
+                    editor_element.appendChild(li);
+                }
+                // Save on clicking a pose
+                editor_element.addEventListener('click', ev => {
+                    let li = ev.target.closest('li');
+                    if (! li)
+                        return;
+
+                    resolve(li.getAttribute('data-pose'));
+                    close_overlay(ev.target);
+                });
+
+                // FIXME better...  aiming?  don't go off the screen etc
+                // FIXME getting this passed in feels hacky but it's the only place to get the cursor position
+                editor_element.style.left = `${mouse_event.clientX}px`;
+                editor_element.style.top = `${mouse_event.clientY}px`;
+                let overlay = open_overlay(editor_element);
+                // Clicking the overlay to close the menu means cancel
+                overlay.addEventListener('click', ev => {
+                    reject();
+                });
+            });
+        },
+    },
 };
-
-
-// Wrapper for a step that also keeps ahold of the step element and the
-// associated RoleEditor
-// TODO uhhhh maybe, this should, not exist?  confusing to work with and mucks up inserting a bit...
-class EditorStep {
-    constructor(role_editor, step, ...args) {
-        this.role_editor = role_editor;
-        this.step = step;
-        this.element = this.make_step_element();
-        this._position = null;
-    }
-
-    get position() {
-        return this._position;
-    }
-    set position(position) {
-        this._position = position;
-        this.element.setAttribute('data-position', String(position));
-    }
-
-    make_step_element() {
-        let el = make_element('div', 'gleam-editor-step');
-        el.classList.add(this.role_editor.CLASS_NAME);
-
-        let handle = make_element('div', '-handle', '⠿');
-        el.appendChild(handle);
-
-        // A cheaty hack to make an element draggable only by a child handle: add
-        // the 'draggable' attribute (to the whole parent) only on mousedown
-        handle.addEventListener('mousedown', ev => {
-            ev.target.parentNode.setAttribute('draggable', 'true');
-        });
-        handle.addEventListener('mouseup', ev => {
-            ev.target.parentNode.removeAttribute('draggable');
-        });
-        // Also remove it after a successful drag
-        el.addEventListener('dragend', ev => {
-            ev.target.removeAttribute('draggable');
-        });
-
-        // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
-        el.appendChild(make_element('div', '-who', this.role_editor.name));
-        el.appendChild(make_element('div', '-what', this.step.type.display_name));
-
-        this.args = [];
-        for (let [i, arg_def] of this.step.type.args.entries()) {
-            let value = this.step.args[i];
-            // TODO custom editors and display based on types!
-            let arg_element = make_element('div', '-how');
-            let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
-            if (arg_type) {
-                let arg = new arg_type(this, i, arg_def, value);
-                this.args[i] = arg;
-                arg_element.appendChild(arg.view_element);
-            }
-            else {
-                arg_element.textContent = value;
-            }
-            el.appendChild(arg_element);
-        }
-        return el;
-    }
-
-    set_arg(i, value) {
-        // TODO maybe this bit shouldn't even be done here, but from an event handler?
-        this.args[i].set(value);
-
-        this.step.args[i] = value;
-
-        this.role_editor.main_editor.script.update_step(this.step);
-    }
-}
 
 
 // -----------------------------------------------------------------------------
@@ -2397,17 +2337,19 @@ class EditorStep {
 class RoleEditor {
     constructor(main_editor, role = null) {
         this.main_editor = main_editor;
+        this.role = role;
 
         let throwaway = document.createElement('div');
         throwaway.innerHTML = this.HTML;
         this.container = throwaway.firstElementChild;  // FIXME experimental, ugh
         this.container.classList.add(this.CLASS_NAME);
-        this.role = role || new this.ROLE_TYPE;
-
-        // FIXME name propagation, and also give roles names of their own probably?
-        this.name = 'bogus';
+        this.container.querySelector('header > h2').textContent = role.name;
 
         this.initialize_steps();
+    }
+
+    static create_role(name) {
+        return new this.prototype.ROLE_TYPE(name);
     }
 
     initialize_steps() {
@@ -2430,16 +2372,8 @@ class RoleEditor {
                 // TODO?
                 args.push(null);
             }
-            this.main_editor.script_panel.begin_step_drag(new EditorStep(this, new Step(this.role, step_type, args)));
+            this.main_editor.script_panel.begin_step_drag(new Step(this.role, step_type, args));
         });
-    }
-
-    get name() {
-        return this._name;
-    }
-    set name(name) {
-        this._name = name;
-        this.container.querySelector('header > h2').textContent = name;
     }
 
     make_sample_step_element(step_type) {
@@ -2466,6 +2400,49 @@ class RoleEditor {
         el.appendChild(make_element('div', '-what', step_type.display_name));
         for (let arg_def of step_type.args) {
             el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
+        }
+        return el;
+    }
+
+    // FIXME i changed my mind and this should go on ScriptPanel.  only trouble is this.CLASS_NAME
+    make_step_element(step) {
+        let el = make_element('div', 'gleam-editor-step');
+        el.classList.add(this.CLASS_NAME);
+
+        let handle = make_element('div', '-handle', '⠿');
+        el.appendChild(handle);
+
+        // A cheaty hack to make an element draggable only by a child handle: add
+        // the 'draggable' attribute (to the whole parent) only on mousedown
+        handle.addEventListener('mousedown', ev => {
+            ev.target.parentNode.setAttribute('draggable', 'true');
+        });
+        handle.addEventListener('mouseup', ev => {
+            ev.target.parentNode.removeAttribute('draggable');
+        });
+        // Also remove it after a successful drag
+        el.addEventListener('dragend', ev => {
+            ev.target.removeAttribute('draggable');
+        });
+
+        // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
+        el.appendChild(make_element('div', '-who', step.role.name));
+        el.appendChild(make_element('div', '-what', step.type.display_name));
+
+        for (let [i, arg_def] of step.type.args.entries()) {
+            let value = step.args[i];
+            let arg_element = make_element('div', '-how');
+            let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
+            if (arg_type) {
+                let viewer = arg_type.view(value);
+                viewer.classList.add('gleam-editor-arg');
+                viewer.setAttribute('data-arg-index', i);
+                arg_element.appendChild(viewer);
+            }
+            else {
+                arg_element.appendChild(make_element('span', null, value));
+            }
+            el.appendChild(arg_element);
         }
         return el;
     }
@@ -2520,6 +2497,56 @@ class PictureFrameEditor extends RoleEditor {
 
         this.pose_list = this.container.querySelector('.gleam-editor-role-pictureframe-poses');
         this.populate_pose_list();
+
+        let button = this.container.querySelector('button');
+        button.addEventListener('click', ev => {
+            let wildcard = 'warmheart*.png';
+            let parts = wildcard.split(/([*?])/);
+            let rx_parts = [];
+            for (let [i, part] of parts.entries()) {
+                if (i % 2 === 0) {
+                    // FIXME regex escape
+                }
+                else if (part === '*') {
+                    part = '.*';
+                }
+                else if (part === '?') {
+                    part = '.';
+                }
+
+                if (i === 1) {
+                    part = '(' + part;
+                }
+                if (i === parts.length - 2) {
+                    part = part + ')';
+                }
+
+                rx_parts.push(part);
+            }
+            console.log(parts);
+            console.log(rx_parts);
+            let rx = new RegExp(rx_parts.join(''));
+            let lib = this.main_editor.library;
+
+            let library_paths = Object.keys(lib.assets);
+            human_friendly_sort(library_paths);
+
+            for (let path of library_paths) {
+                let m = path.match(rx);
+                if (m) {
+                    let name = m[1];
+                    this.role.add_pose(name, path);
+                    // FIXME overt c/p job
+            let li = make_element('li');
+            let img = lib.load_image(path);
+            img.classList.add('-asset');
+            li.append(img);
+            li.appendChild(make_element('p', '-caption', name));
+            this.pose_list.appendChild(li);
+                    // FIXME how do i update the existing actor, then?
+                }
+            }
+        });
     }
 
     populate_pose_list() {
@@ -2530,25 +2557,6 @@ class PictureFrameEditor extends RoleEditor {
             let img = this.main_editor.library.load_image(frame.url);
             img.classList.add('-asset');
             li.append(img);
-            /* FIXME howww does this bit work
-            if (image) {
-                let img = make_element('img', '-asset');
-                if (image.toURL) {
-                    // WebKit only
-                    img.src = image.toURL();
-                }
-                else {
-                    // TODO is this a bad idea?  it's already async so am i doing a thousand reads at once??
-                    image.file(file => {
-                        img.src = URL.createObjectURL(file);
-                    });
-                }
-                li.appendChild(img);
-            }
-            else {
-                li.appendChild(make_element('div', '-asset --missing', '???'));
-            }
-                */
             li.appendChild(make_element('p', '-caption', pose_name));
             this.pose_list.appendChild(li);
         }
@@ -2566,10 +2574,10 @@ PictureFrameEditor.prototype.HTML = `
         <header>
             <h2>backdrop</h2>
         </header>
+        <button>add poses by wildcard</button>
         <h3>Poses <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
         <ul class="gleam-editor-role-pictureframe-poses">
         </ul>
-        <button>preview</button>
     </li>
 `;
 
@@ -2585,6 +2593,7 @@ CharacterEditor.prototype.HTML = `
         <header>
             <h2>backdrop</h2>
         </header>
+        <button>add poses by wildcard</button>
         <h3>Poses <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
         <ul class="gleam-editor-role-pictureframe-poses">
         </ul>
@@ -2607,13 +2616,14 @@ DialogueBoxEditor.prototype.HTML = `
 
 // List of all role editor types
 const ROLE_EDITOR_TYPES = [
-    //StageEditor,
+    StageEditor,  // FIXME uncreatable
     CurtainEditor,
     JukeboxEditor,
     PictureFrameEditor,
     CharacterEditor,
     DialogueBoxEditor,
 ];
+const ROLE_EDITOR_TYPE_MAP = new Map(ROLE_EDITOR_TYPES.map(role_editor_type => [role_editor_type.prototype.ROLE_TYPE, role_editor_type]));
 
 
 // -----------------------------------------------------------------------------
@@ -2641,9 +2651,10 @@ class AssetsPanel extends Panel {
         // FIXME this should only accept an actual directory drag
         // FIXME should have some other way to get a directory.  file upload control?
         this.container.addEventListener('dragenter', e => {
-            if (e.target !== this.container) {
-                return;
-            }
+            // FIXME well this isn't. right. the enter might go directly to a child
+            //if (e.target !== this.container) {
+            //    return;
+            //}
 
             e.stopPropagation();
             e.preventDefault();
@@ -2657,6 +2668,10 @@ class AssetsPanel extends Panel {
             console.log(e);
         });
         this.container.addEventListener('dragleave', e => {
+            // XXX this was fixed in chrome in may 15, 2017; too recent?
+            if (e.relatedTarget && this.container.contains(e.relatedTarget))
+                return;
+
             this.container.classList.remove('gleam-editor-drag-hover');
             console.log(e);
         });
@@ -2694,11 +2709,7 @@ class AssetsPanel extends Panel {
         this.item_index = {};
 
         let paths = Object.keys(this.editor.library.assets);
-        paths.sort((a, b) => {
-            // By some fucking miracle, JavaScript can do
-            // human-friendly number sorting already, hallelujah
-            return a.localeCompare(b, undefined, { numeric: true });
-        });
+        human_friendly_sort(paths);
         console.log("refreshing dom with paths", paths);
 
         for (let path of paths) {
@@ -2717,12 +2728,73 @@ class AssetsPanel extends Panel {
 }
 
 
+class RolesPanel extends Panel {
+    constructor(editor, container) {
+        super(editor, container);
+
+        this.list = this.body.querySelector('.gleam-editor-roles');
+        this.role_editors = [];
+        this.role_to_editor = new Map();
+
+        // Create "add" buttons
+        for (let role_editor_type of ROLE_EDITOR_TYPES) {
+            let button = make_element('button', null, `new ${role_editor_type.role_type_name}`);
+            button.addEventListener('click', ev => {
+                // Generate a name
+                let n = 1;
+                let name;
+                while (true) {
+                    name = `${role_editor_type.role_type_name} ${n}`;
+                    if (this.editor.script.role_index[name] === undefined) {
+                        break;
+                    }
+                    n++;
+                }
+
+                let role = role_editor_type.create_role(name);
+                this.editor.script.add_role(role);
+                // FIXME do in an event handler
+            });
+            this.body.appendChild(button);
+        }
+    }
+
+    add_role(role) {
+        let role_editor_type = ROLE_EDITOR_TYPE_MAP.get(role.constructor);
+        let role_editor = new role_editor_type(this.editor, role);
+        this.role_editors.push(role_editor);
+        this.role_to_editor.set(role, role_editor);
+        this.list.appendChild(role_editor.container);
+    }
+
+    load_script(script, director) {
+        this.role_editors = [];
+        this.role_to_editor.clear();
+        // FIXME naturally this happens AFTER the Editor rudely injects the new roles into us
+        this.list.textContent = '';
+
+        // Load roles from the script
+        for (let role of script.roles) {
+            this.add_role(role);
+        }
+
+        // FIXME do i need to drop the old event handlers?
+        script.intercom.addEventListener('gleam-role-added', ev => {
+            this.add_role(ev.detail.role);
+        });
+    }
+}
+
+
 // Panel containing the script, which is a list of steps grouped into beats
 class ScriptPanel extends Panel {
     constructor(editor, container) {
         super(editor, container);
 
         this.beats_list = this.container.querySelector('.gleam-editor-beats-list');
+        this.step_elements = [];
+        this.step_to_element = new WeakMap();
+        this.element_to_step = new WeakMap();
         // State of a step drag happening anywhere in the editor; initialized
         // in begin_step_drag
         this.drag = null;
@@ -2765,7 +2837,7 @@ class ScriptPanel extends Panel {
         button.addEventListener('click', ev => {
             if (hovered_step_el) {
                 // FIXME clicking this twice doesn't work if you don't move the mouse again, oops
-                this.editor.remove_step(this.editor.get_step_for_element(hovered_step_el));
+                this.editor.script.delete_step(this.element_to_step.get(hovered_step_el));
                 hovered_step_el = null;
             }
         });
@@ -2785,6 +2857,33 @@ class ScriptPanel extends Panel {
                 // TODO and hide toolbar
                 hovered_step_el = null;
             }
+        });
+
+        // Double-click to edit an argument
+        // FIXME this is a bit rude, seeing as double-click is useful for text
+        this.beats_list.addEventListener('contextmenu', ev => {
+            let arg = ev.target.closest('.gleam-editor-arg');
+            if (! arg)
+                return;
+
+            ev.stopPropagation();
+            ev.preventDefault();
+
+            let step_element = arg.closest('.gleam-editor-step');
+            let step = this.element_to_step.get(step_element);
+            let i = parseInt(arg.getAttribute('data-arg-index'), 10);
+            let arg_def = step.type.args[i];
+            let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
+            let promise = arg_type.edit(arg, step.args[i], step, ev);
+            // FIXME ahh you could conceivably double-click on the same element again if it edits inline, like prose does...
+            promise.then(new_value => {
+                step.args[i] = new_value;
+                arg_type.update(arg, new_value);
+                // FIXME above could be a step-updated event handler?
+                this.editor.script.update_step(step);
+            }, () => {
+                // Smother rejection so it doesn't go to the console
+            });
         });
 
         this.beats_list.addEventListener('click', ev => {
@@ -2811,7 +2910,7 @@ class ScriptPanel extends Panel {
             ev.dataTransfer.setData('text/plain', null);
             let step_el = ev.target.closest('.gleam-editor-step');
             if (step_el) {
-                let step = this.editor.get_step_for_element(step_el);
+                let step = this.element_to_step.get(step_el);
                 this.begin_step_drag(step);
                 step_el.classList.add('--dragged');
             }
@@ -2838,37 +2937,33 @@ class ScriptPanel extends Panel {
             // If there are no steps, there's nothing to do: a new step can
             // only be inserted at position 0.
             let position;
-            if (this.editor.steps.length === 0) {
+            if (this.step_elements.length === 0) {
                 position = 0;
             }
             else {
                 // If the mouse is already over a step, we're basically done.
                 let cy = ev.clientY;
-                let pointed_step = ev.target.closest('.gleam-editor-step');
-                if (pointed_step) {
-                    let rect = pointed_step.getBoundingClientRect();
-                    for (let [i, step] of this.editor.steps.entries()) {
-                        if (pointed_step === step.element) {
-                            position = i;
-                            break;
-                        }
-                    }
-                    // XXX position MUST be set here
+                let pointed_step_element = ev.target.closest('.gleam-editor-step');
+                if (pointed_step_element) {
+                    let rect = pointed_step_element.getBoundingClientRect();
+                    let pointed_step = this.element_to_step.get(pointed_step_element);
+                    position = pointed_step.index;
                     if (cy > (rect.top + rect.bottom) / 2) {
                         position++;
                     }
+                    console.log(position, pointed_step, cy > (rect.top + rect.bottom) / 2);
                 }
                 else {
                     // The mouse is outside the list.  Resort to a binary
                     // search of the steps' client bounding rects, which are
                     // relative to the viewport, which is pretty appropriate
                     // for a visual effect like drag and drop.
-                    let l = this.editor.steps.length;
+                    let l = this.step_elements.length;
                     let a = 0;
                     let b = l;
                     while (a < b) {
                         let n = Math.floor((a + b) / 2);
-                        let rect = this.editor.steps[n].element.getBoundingClientRect();
+                        let rect = this.step_elements[n].getBoundingClientRect();
                         // Compare to the vertical midpoint of the step: if
                         // we're just above that, we should go before that step
                         // and take its place; otherwise, we should go after it
@@ -2896,22 +2991,22 @@ class ScriptPanel extends Panel {
 
             let caret_y;
             let caret_mid_beat = false;
-            if (this.editor.steps.length === 0) {
+            if (this.step_elements.length === 0) {
                 caret_y = 0;
             }
-            else if (position >= this.editor.steps.length) {
-                let last_step = this.editor.steps[this.editor.steps.length - 1].element;
-                caret_y = last_step.offsetTop + last_step.offsetHeight;
+            else if (position >= this.step_elements.length) {
+                let last_step_element = this.step_elements[this.step_elements.length - 1];
+                caret_y = last_step_element.offsetTop + last_step_element.offsetHeight;
             }
             else {
                 // Position it at the top of the step it would be replacing
-                caret_y = this.editor.steps[position].element.offsetTop;
+                caret_y = this.step_elements[position].offsetTop;
                 // If this new step would pause, and the step /behind/ it
                 // already pauses, then the caret will be at the end of a beat
                 // gap.  Move it up to appear in the middle of the beat.
                 if (position > 0 &&
-                    this.drag.step.step.type.pause &&
-                    this.editor.steps[position - 1].step.type.pause)
+                    this.drag.step.type.pause &&
+                    this.editor.script.steps[position - 1].type.pause)
                 {
                     caret_mid_beat = true;
                 }
@@ -2933,7 +3028,6 @@ class ScriptPanel extends Panel {
             // Hide the caret and clear out the step position if we're not
             // aiming at the step list
             this.drag.position = null;
-
             this.drag.caret.remove();
         });
         this.container.addEventListener('drop', e => {
@@ -2943,12 +3037,8 @@ class ScriptPanel extends Panel {
 
             let step = this.drag.step;
             let position = this.drag.position;
-            // Dropping onto nothing is a no-op
-            if (position === null) {
-                return;
-            }
-            // Dragging over oneself is a no-op
-            if (step.element === this.drag.target) {
+            // Dropping onto nothing, or into the same spot, is a no-op
+            if (position === null || position === step.index) {
                 return;
             }
 
@@ -2959,16 +3049,16 @@ class ScriptPanel extends Panel {
             this.end_step_drag();
 
             // If this step was already in the list, remove it first!
-            if (step.position !== null) {
+            if (this.step_to_element.has(step)) {
                 // This also shifts the position one back, if its new position
                 // is later
-                if (position > step.position) {
+                if (position > step.index) {
                     position--;
                 }
-                this.editor.remove_step(step);
+                this.editor.script.delete_step(step);
             }
 
-            this.editor.insert_step(step, position);
+            this.editor.script.insert_step(step, position);
         });
         // Cancel the default behavior of any step drag that makes its way to
         // the root; otherwise it'll be interpreted as a navigation or
@@ -2984,15 +3074,23 @@ class ScriptPanel extends Panel {
     load_script(script, director) {
         // Recreate the step list from scratch
         this.beats_list.textContent = '';
+        this.step_elements = [];
+        this.step_to_element = new WeakMap();
+        this.element_to_step = new WeakMap();
         for (let [b, beat] of script.beats.entries()) {
             let group = make_element('li');
             for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                let editor_step = this.editor.steps[i];
-                group.append(editor_step.element);
+                let step = script.steps[i];
+                let role_editor = this.editor.roles_panel.role_to_editor.get(step.role);
+                let element = role_editor.make_step_element(step);
+                this.step_elements.push(element);
+                this.step_to_element.set(step, element);
+                this.element_to_step.set(element, step);
+                group.append(element);
 
                 // FIXME do this live, and probably in the script panel i assume, and only when steps are affected...?
                 if (i === 6) {
-                    editor_step.element.append(make_element('div', '-error', "Has no effect because a later step in the same beat overwrites it!"));
+                    element.append(make_element('div', '-error', "Has no effect because a later step in the same beat overwrites it!"));
                 }
             }
             this.beats_list.append(group);
@@ -3005,11 +3103,24 @@ class ScriptPanel extends Panel {
         });
         this.selected_beat_index = null;
 
+        // Attach to the Script
+        script.intercom.addEventListener('gleam-step-inserted', ev => {
+            this._insert_step_element(ev.detail.step, ev.detail.split_beat);
+        });
         script.intercom.addEventListener('gleam-step-deleted', ev => {
             // TODO need to ensure, somehow, that this one happens /before/ the editor one (which doesn't exist yet)
-            let step = this.editor.steps[ev.detail.index];
-            step.element.remove();
-            if (ev.detail.merged_beat) {
+            let step = ev.detail.step;
+            let element = this.step_to_element.get(step);
+            this.step_to_element.delete(step);
+            this.element_to_step.delete(element);
+            this.step_elements.splice(ev.detail.index, 1);
+
+            let group = element.parentNode;
+            element.remove();
+            if (group.children.length === 0) {
+                group.remove();
+            }
+            else if (ev.detail.merged_beat) {
                 let beat0 = this.beats_list.children[ev.detail.beat_index];
                 let beat1 = this.beats_list.children[ev.detail.beat_index + 1];
                 while (beat1.firstChild) {
@@ -3026,14 +3137,14 @@ class ScriptPanel extends Panel {
         this.footer = this.container.querySelector('section > footer');
         this.twiddle_debug_elements = new Map();  // Role => { twiddle => <dd> }
         // TODO need to update this when a role is added too, god christ ass.  or when a script is loaded, though it happens to work here
-        for (let role_editor of this.editor.role_editors) {
+        for (let role_editor of this.editor.roles_panel.role_editors) {
             let box = make_element('div', 'gleam-editor-script-role-state');
             box.classList.add(role_editor.CLASS_NAME);
             this.footer.append(box);
 
             let dl = make_element('dl');
             box.append(
-                make_element('h2', null, role_editor.name),
+                make_element('h2', null, role_editor.role.name),
                 dl);
             let dd_map = {};
             for (let key of Object.keys(role_editor.role.TWIDDLES)) {
@@ -3073,62 +3184,44 @@ class ScriptPanel extends Panel {
         }
     }
 
-    insert_step_element(step, position) {
-        // Add to the DOM
-        // FIXME there's a case here that leaves an empty <li> at the end
-        if (this.beats_list.children.length === 0) {
-            // It's the only child!  Easy.
-            let group = make_element('li');
-            group.appendChild(step.element);
-            this.beats_list.appendChild(group);
-            // Auto-select the first beat
-            // TODO this should really do a script jump, once the script works
-            this.select_beat(0);
+    _insert_step_element(step, split_beat) {
+        let element = this.step_to_element.get(step);
+        if (! element) {
+            let role_editor = this.editor.roles_panel.role_to_editor.get(step.role);
+            element = role_editor.make_step_element(step);
+            this.step_to_element.set(step, element);
+            this.element_to_step.set(element, step);
+        }
+        this.step_elements.splice(step.index, 0, element);
+
+        // FIXME SIGH the case of the very first step, or adding to the end which is maybe equivalent
+
+        if (step.beat_index >= this.beats_list.children.length) {
+            let new_group = make_element('li');
+            new_group.append(element);
+            this.beats_list.append(new_group);
         }
         else {
-            // FIXME adding at position 0 doesn't work, whoops
-            let previous_step = this.editor.steps[position - 1];
-            let previous_el = previous_step.element;
-            let group = previous_el.parentNode;
-            let next_group = group.nextElementSibling;
-            // Time to handle pauses.
-            if (previous_step.step.type.pause) {
-                // Inserting after a step that pauses means we need to go at
-                // the beginning of the next group.
-                if (! next_group || step.step.type.pause) {
-                    // If there's no next group, or we ALSO pause, then we end
-                    // up in a group by ourselves regardless.
-                    let new_group = make_element('li');
-                    new_group.appendChild(step.element);
-                    this.beats_list.insertBefore(new_group, next_group);
-                }
-                else {
-                    next_group.insertBefore(step.element, next_group.firstElementChild);
-                }
-            }
-            else {
-                // Inserting after a step that DOESN'T pause is easy, unless...
-                if (step.step.type.pause) {
-                    // Ah, we DO pause, so we need to split everything after
-                    // ourselves into a new group.
-                    let new_group = make_element('li');
-                    while (previous_el.nextElementSibling) {
-                        new_group.appendChild(previous_el.nextElementSibling);
-                    }
-                    if (new_group.children) {
-                        this.beats_list.insertBefore(new_group, next_group);
-                    }
-                }
+            let group = this.beats_list.children[step.beat_index];
+            // Note: This needs + 1 because the step is already in the list
+            let bumped_element = this.step_elements[step.index + 1];
+            // If this is the last step in a beat, bumped_element is undefined
+            // and this becomes an append
+            group.insertBefore(element, bumped_element);
 
-                // Either way, we end up tucked in after the previous element.
-                group.insertBefore(step.element, previous_el.nextElementSibling);
+            if (split_beat) {
+                let new_group = make_element('li');
+                this.beats_list.insertBefore(new_group, group.nextSibling);
+                while (element.nextSibling) {
+                    new_group.appendChild(element.nextSibling);
+                }
             }
         }
     }
 
     begin_step_drag(step) {
         this.drag = {
-            // EditorStep being dragged
+            // Step being dragged
             step: step,
             // Element showing where the step will be inserted
             caret: make_element('hr', 'gleam-editor-step-caret'),
@@ -3144,12 +3237,16 @@ class ScriptPanel extends Panel {
             return;
 
         this.drag.caret.remove();
-        this.drag.step.element.classList.remove('--dragged');
+
+        let element = this.step_to_element.get(this.drag.step);
+        if (element) {
+            element.classList.remove('--dragged');
+        }
 
         this.drag = null;
     }
-
 }
+
 
 class Editor {
     constructor(container) {
@@ -3162,22 +3259,11 @@ class Editor {
         this.library = null;
         this.player = null;
 
-        this.steps = [];  // list of EditorSteps
-
         // Assets panel
         this.assets_panel = new AssetsPanel(this, document.getElementById('gleam-editor-assets'));
 
         // Roles panel
-        this.role_editors = [];
-        this.roles_container = document.getElementById('gleam-editor-roles');
-        this.roles_el = this.roles_container.querySelector('.gleam-editor-roles');
-        for (let role_editor_type of ROLE_EDITOR_TYPES) {
-            let button = make_element('button', null, `new ${role_editor_type.role_type_name}`);
-            button.addEventListener('click', ev => {
-                this.add_role_editor(new role_editor_type(this));
-            });
-            this.roles_container.querySelector('.gleam-editor-panel-body').appendChild(button);
-        }
+        this.roles_panel = new RolesPanel(this, document.getElementById('gleam-editor-roles'));
 
         this.script_panel = new ScriptPanel(this, document.getElementById('gleam-editor-script'));
 
@@ -3198,48 +3284,10 @@ class Editor {
         this.player = new Player(this.script, library);
         this.player.inject(document.querySelector('#gleam-editor-player .gleam-editor-panel-body'));
 
-        // Load roles from the script
-        let role_editor_index = new Map();
-        for (let [ident, role] of Object.entries(script.roles)) {
-            let role_editor_type;
-            if (role instanceof Stage) {
-                role_editor_type = StageEditor;
-            }
-            else if (role instanceof Curtain) {
-                role_editor_type = CurtainEditor;
-            }
-            else if (role instanceof Jukebox) {
-                role_editor_type = JukeboxEditor;
-            }
-            else if (role instanceof Character) {
-                role_editor_type = CharacterEditor;
-            }
-            else if (role instanceof PictureFrame) {
-                role_editor_type = PictureFrameEditor;
-            }
-            else if (role instanceof DialogueBox) {
-                role_editor_type = DialogueBoxEditor;
-            }
-
-            if (role_editor_type) {
-                let role_editor = new role_editor_type(this, role);
-                role_editor.name = ident;
-                role_editor_index.set(role, role_editor);
-                this.add_role_editor(role_editor);
-            }
-            else {
-                console.warn("oops, not yet supported", role.constructor, role);
-            }
-        }
-
-        // Wrap each step in an EditorStep
-        for (let [i, step] of script.steps.entries()) {
-            let editor_step = new EditorStep(role_editor_index.get(step.role), step);
-            editor_step.position = i;
-            this.steps.push(editor_step);
-        }
-
         this.assets_panel.refresh_dom();
+
+        // XXX? Roles must be loaded FIRST, so the script panel can reference them in steps
+        this.roles_panel.load_script(script, this.player.director);
 
         this.script_panel.load_script(script, this.player.director);
         this.script_panel.create_twiddle_footer();
@@ -3262,54 +3310,12 @@ class Editor {
         }, 500);
 
         // Tell role editors to re-fetch assets
-        for (let role_editor of this.role_editors) {
+        // FIXME this should be on the roles panel, but also, i need a way to inform it of single asset changes too
+        for (let role_editor of this.roles_panel.role_editors) {
             role_editor.update_assets();
         }
 
         // FIXME tell actors to re-fetch assets (aaa)
-    }
-
-    add_role_editor(role_editor) {
-        this.role_editors.push(role_editor);
-        this.roles_el.appendChild(role_editor.container);
-    }
-
-    // FIXME shouldn't this be on ScriptPanel
-    get_step_for_element(element) {
-        if (element.dataset.position === undefined) {
-            return null;
-        }
-
-        return this.steps[parseInt(element.dataset.position, 10)];
-    }
-
-    remove_step(step) {
-        if (step.position === null)
-            return;
-
-        this.script.delete_step(step.step);
-
-        for (let i = step.position + 1; i < this.steps.length; i++) {
-            this.steps[i].position--;
-        }
-        this.steps.splice(step.position, 1);
-    }
-
-    // Insert an EditorStep at the given position
-    insert_step(step, position) {
-        if (position > this.steps.length) {
-            position = this.steps.length;
-        }
-
-        // Add to our own step list
-        this.steps.splice(position, 0, step);
-        for (let i = position; i < this.steps.length; i++) {
-            this.steps[i].position = i;
-        }
-        // FIXME actually /this/ should probably be an event handler...  oh but wait we need the EditorStep still, so i guess not?  but, erm, hang on a second, uh oh
-        this.script.insert_step(step.step, position);
-        // FIXME this should be an event handler on the script panel
-        this.script_panel.insert_step_element(step, position);
     }
 }
 
@@ -3317,6 +3323,7 @@ class Editor {
 window.addEventListener('load', e => {
     // FIXME does the editor really take over just from being created?
     let editor = new Editor(document.querySelector('.gleam-editor'));
+    //return;
 
     // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
     let root = 'res/prompt2-itchyitchy-final/';
