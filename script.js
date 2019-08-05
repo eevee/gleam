@@ -356,19 +356,14 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         // FIXME add position class
         this.element = element;
 
-        let pose_elements = {};
-        let img_promises = [];
+        this.pose_elements = {};
         for (let [pose_name, frames] of Object.entries(this.role.poses)) {
-            let frame_elements = pose_elements[pose_name] = [];
+            let frame_elements = this.pose_elements[pose_name] = [];
             for (let frame of frames) {
                 let image = director.library.load_image(frame.url);
-                image.setAttribute('data-pose-name', pose_name);
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
                 element.appendChild(image);
-                // FIXME this modifies the role!!!!
-                frame.element = image;
-                // FIXME when animated
-                frames.element = image;
+                frame_elements.push(image);
             }
         }
 
@@ -392,11 +387,27 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
             #$x.css 'transition-duration', '0s'
             #$element[0].style.transitionDuration = undefined
         */
+    }
 
-        // TODO uhh how does progress work with image tags?  how does it work at
-        // all?  i think i'd have to use ajax here and rely on the cache or
-        // whatever ungh
-        //return Promise.all(img_promises);
+    // FIXME this isn't an Actor method, and it's unclear if this is even the
+    // right thing or if i should just ditch the actor and create a new one, or
+    // what.  maybe if this were how the constructor worked it'd be ok
+    sync_with_role(director) {
+        for (let [pose_name, frames] of Object.entries(this.role.poses)) {
+            if (this.pose_elements[pose_name])
+                continue;
+            // FIXME ensure order...
+            // FIXME augh, frames need to match too...
+            // FIXME remove any that disappeared...
+            // FIXME maybe i should just create a new actor
+            let frame_elements = this.pose_elements[pose_name] = [];
+            for (let frame of frames) {
+                let image = director.library.load_image(frame.url);
+                // FIXME animation stuff $img.data 'delay', frame.delay or 0
+                this.element.appendChild(image);
+                frame_elements.push(image);
+            }
+        }
     }
 
     //add_animation: (name, frames) ->
@@ -429,10 +440,10 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
             return;
         if (old_pose_name) {
             // FIXME do every frame's element i guess
-            this.role.poses[old_pose_name].element.classList.remove('--visible');
+            this.pose_elements[old_pose_name][0].classList.remove('--visible');
         }
 
-        let child = pose.element;
+        let child = this.pose_elements[pose_name][0];
         if (child.classList.contains('--visible'))
             return;
 
@@ -453,6 +464,7 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         // during a transition (when both images are 50% opaque), but when
         // we're hiding the entire backdrop, we don't want that.  This class
         // disables it.
+        // FIXME actually it doesn't since it's not defined, also should be --
         this.element.classList.add('-immediate');
 
         let promises = [];
@@ -1284,13 +1296,11 @@ class EntryAssetLibrary extends AssetLibrary {
         // TODO technically should be calling this repeatedly.  also it's asynchronous, not super sure if that's a problem.
         directory_entry.createReader().readEntries(entries => {
             // TODO hmm, should mark by whether they're present and whether they're used i guess?
-            console.log("got some entries", entries);
             for (let entry of entries) {
                 let asset = this.asset(entry.name);
                 asset.exists = true;
                 asset.entry = entry;
             }
-            console.log(this.assets);
         }, console.error)
     }
 
@@ -1672,7 +1682,7 @@ class Script {
             // one ends with a pause
             new_beat_index = this.beats.length - 1;
             let beat = this.beats[new_beat_index];
-            if (beat === undefined || beat.pause !== false) {
+            if (! beat || beat.pause) {
                 new_beat_index++;
                 beat = this._make_fresh_beat(new_beat_index);
                 this.beats.push(beat);
@@ -1977,7 +1987,9 @@ class Director {
             this.actors[role.name] = actor;
             this.role_to_actor.set(role, actor);
             // Refresh, in case the role has some default state
-            this.jump(this.cursor);
+            if (this.cursor >= 0) {
+                this.jump(this.cursor);
+            }
         });
         // When a new step is added, if it's part of the beat we're currently
         // on, jump back to it
@@ -2125,23 +2137,6 @@ class Player {
         this.container.appendChild(this.pause_element);
         this.container.appendChild(this.pause_button);
         let beats_list = this.pause_element.querySelector('.gleam-pause-beats');
-        let number_next_beat = false;
-        for (let [i, beat] of this.script.beats.entries()) {
-            let li = make_element('li');
-            let b = i + 1;
-            if (number_next_beat || b % 10 === 0 || b === 1 || b === this.script.beats.length) {
-                number_next_beat = false;
-                li.textContent = String(b);
-            }
-            li.setAttribute('data-beat-index', i);
-            beats_list.appendChild(li);
-
-            if (this.script.steps[beat.last_step_index].type.is_major_transition) {
-                // TODO ok this is extremely hokey
-                beats_list.append(make_element('hr'));
-                number_next_beat = true;
-            }
-        }
         beats_list.addEventListener('click', ev => {
             let li = ev.target.closest('.gleam-pause-beats li');
             if (! li)
@@ -2162,6 +2157,15 @@ class Player {
                 this.container.appendChild(actor.element);
             }
         }
+
+        this.script.intercom.addEventListener('gleam-role-added', ev => {
+            let role = ev.detail.role;
+            let actor = this.director.role_to_actor.get(role);
+            // FIXME what if roles are reordered?
+            if (actor && actor.element) {
+                this.container.append(actor.element);
+            }
+        });
 
         // Bind some useful event handlers
         // TODO should make our own sub-container so when we go away (and delete the dom), the events go away too
@@ -2184,8 +2188,8 @@ class Player {
 
     update(dt) {
         this.director.update(dt);
-        // FIXME Oh this is very bad, probably replace the hook thing with events the director fires
-        this.progress_element.style.setProperty('--progress', this.director.cursor / this.script.beats.length * 100 + '%');
+        // FIXME Oh this is very bad, probably replace with events the director fires
+        this.progress_element.style.setProperty('--progress', this.director.cursor / (this.script.beats.length - 1) * 100 + '%');
     }
 
     play() {
@@ -2210,14 +2214,31 @@ class Player {
             return;
         this.paused = true;
 
-        this.container.classList.add('--paused');
-
-        // Update selected beat
+        // Populate pause screen
         let beats_list = this.pause_element.querySelector('.gleam-pause-beats');
-        for (let li of beats_list.querySelectorAll('.--current')) {
-            li.classList.remove('--current');
+        beats_list.textContent = '';
+        let number_next_beat = false;
+        for (let [i, beat] of this.script.beats.entries()) {
+            let li = make_element('li');
+            let b = i + 1;
+            if (number_next_beat || b % 10 === 0 || b === 1 || b === this.script.beats.length) {
+                number_next_beat = false;
+                li.textContent = String(b);
+            }
+            li.setAttribute('data-beat-index', i);
+            if (i === this.director.cursor) {
+                li.classList.add('--current');
+            }
+            beats_list.appendChild(li);
+
+            if (this.script.steps[beat.last_step_index].type.is_major_transition) {
+                // TODO ok this is extremely hokey
+                beats_list.append(make_element('hr'));
+                number_next_beat = true;
+            }
         }
-        beats_list.children[this.director.cursor].classList.add('--current');
+
+        this.container.classList.add('--paused');
     }
 
     unpause() {
@@ -2572,8 +2593,6 @@ class PictureFrameEditor extends RoleEditor {
 
                 rx_parts.push(part);
             }
-            console.log(parts);
-            console.log(rx_parts);
             let rx = new RegExp(rx_parts.join(''));
             let lib = this.main_editor.library;
 
@@ -2586,15 +2605,16 @@ class PictureFrameEditor extends RoleEditor {
                     let name = m[1];
                     this.role.add_pose(name, path);
                     // FIXME overt c/p job
-            let li = make_element('li');
-            let img = lib.load_image(path);
-            img.classList.add('-asset');
-            li.append(img);
-            li.appendChild(make_element('p', '-caption', name));
-            this.pose_list.appendChild(li);
-                    // FIXME how do i update the existing actor, then?
+                    let li = make_element('li');
+                    let img = lib.load_image(path);
+                    img.classList.add('-asset');
+                    li.append(img);
+                    li.appendChild(make_element('p', '-caption', name));
+                    this.pose_list.appendChild(li);
                 }
             }
+            // FIXME how do i update the existing actor, then?
+            this.main_editor.player.director.role_to_actor.get(this.role).sync_with_role(this.main_editor.player.director);
         });
     }
 
@@ -2802,7 +2822,6 @@ class AssetsPanel extends Panel {
 
         let paths = Object.keys(this.editor.library.assets);
         human_friendly_sort(paths);
-        console.log("refreshing dom with paths", paths);
 
         for (let path of paths) {
             let asset = this.editor.library.assets[path];
@@ -3043,7 +3062,6 @@ class ScriptPanel extends Panel {
                     if (cy > (rect.top + rect.bottom) / 2) {
                         position++;
                     }
-                    console.log(position, pointed_step, cy > (rect.top + rect.bottom) / 2);
                 }
                 else {
                     // The mouse is outside the list.  Resort to a binary
@@ -3269,6 +3287,8 @@ class ScriptPanel extends Panel {
             let beat = this.editor.script.beats[this.selected_beat_index];
             for (let [role, state] of beat.states) {
                 let dd_map = this.twiddle_debug_elements.get(role);
+                // FIXME oops we don't add a new thing for new roles.
+                if (dd_map)
                 for (let [key, value] of Object.entries(state)) {
                     dd_map[key].textContent = value;
                 }
@@ -3407,6 +3427,7 @@ class Editor {
             role_editor.update_assets();
         }
 
+        this.player.director.library = library;
         // FIXME tell actors to re-fetch assets (aaa)
     }
 }
@@ -3415,7 +3436,7 @@ class Editor {
 window.addEventListener('load', e => {
     // FIXME does the editor really take over just from being created?
     let editor = new Editor(document.querySelector('.gleam-editor'));
-    //return;
+    return;
 
     // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
     let root = 'res/prompt2-itchyitchy-final/';
