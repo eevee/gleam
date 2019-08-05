@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf8">
+    <title>GLEAM</title>
+    <link rel="stylesheet" type="text/css" href="player.css">
+    <script src="gleam-player.js"></script>
+</head>
+<body>
+    <script>
+        // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
+        window.addEventListener('load', ev => {
+            let root_url = new URL('https://apps.veekun.com/flora-cutscenes/res/prompt2-itchyitchy-final/');
+            let library = new Gleam.RemoteAssetLibrary(root_url);
+            let xhr = new XMLHttpRequest;
+            xhr.addEventListener('load', ev => {
+                // FIXME handle errors yadda yadda
+                let script = Gleam.Script.from_legacy_json(JSON.parse(xhr.responseText));
+                let player = new Gleam.Player(script, library);
+                player.inject(document.body);
+                // FIXME without this, the player still WORKS (you can click
+                // it, etc.), but it breaks instantly (DialogueBox has no
+                // letter_elements).  not sure why, though?  play() only causes
+                // updates to fire.  don't really know what the play api should
+                // be in general tbh, and obviously loading screen isn't
+                // implemented yet
+                player.play();
+            });
+            // XXX lol
+            xhr.open('GET', new URL('script.json', root_url));
+            xhr.send();
+        });
+    </script>
+</body>
+</html>

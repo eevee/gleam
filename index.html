@@ -5,7 +5,8 @@
     <title>GLEAM visual novel creator</title>
     <link rel="stylesheet" type="text/css" href="editor.css">
     <link rel="stylesheet" type="text/css" href="player.css">
-    <script src="script.js"></script>
+    <script src="gleam-player.js"></script>
+    <script src="gleam-editor.js"></script>
 </head>
 <body>
     <section class="gleam-editor-panel" id="gleam-editor-player">
@@ -41,5 +42,28 @@
             <!-- state of selected beat goes here -->
         </footer>
     </section>
+    <script>
+        // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
+        window.addEventListener('load', ev => {
+            // FIXME does the editor really take over just from being created?
+            let editor = new Gleam.Editor(document.querySelector('.gleam-editor'));
+            //return;
+
+            // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
+            let root = 'res/prompt2-itchyitchy-final/';
+            let root_url = new URL(root, document.location);
+            //root_url = new URL('https://apps.veekun.com/flora-cutscenes/res/prompt2-itchyitchy-final/');
+            let library = new Gleam.RemoteAssetLibrary(root_url);
+            let xhr = new XMLHttpRequest;
+            xhr.addEventListener('load', ev => {
+                // FIXME handle errors yadda yadda
+                let script = Gleam.MutableScript.from_legacy_json(JSON.parse(xhr.responseText));
+                editor.load_script(script, library);
+            });
+            // XXX lol
+            xhr.open('GET', new URL('script.json', root_url));
+            xhr.send();
+        });
+    </script>
 </body>
 </html>
