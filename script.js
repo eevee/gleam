@@ -502,6 +502,7 @@ class Character extends PictureFrame {
         let role = super.from_legacy_json(name, json);
         role.dialogue_name = json.name || null;
         role.dialogue_color = json.color || null;
+        // FIXME what IS this, it's really the box style to use...
         role.dialogue_position = json.position || null;
         return role;
     }
@@ -612,7 +613,9 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
 
         if (state.phrase === null) {
             // Hide and return
-            // TODO what should this do to speaker tags?
+            // TODO what should this do to speaker tags?  i think this is why
+            // the old code had that wrong speaker bug: try jumping to the very
+            // last beat, then back to someone else, and it won't update
             // FIXME this means disappearing during a curtain lower, which
             // seems goofy?  maybe need a special indicator for "do nothing no
             // matter what the textbox looks like atm"?  er but how would that
@@ -1622,33 +1625,36 @@ class Script {
         }
     }
 
-    // Call to indicate a Step has been altered
-    update_step(step) {
-        this._assert_own_step(step);
+    // Call to indicate one or more Steps have been altered
+    update_steps(...steps) {
+        if (steps.length === 0)
+            return;
 
-        let beat = this.beats[step.beat_index];
-        // Recreate the Beat in question
-        let new_beat = this.beats[step.beat_index] = this._make_fresh_beat(step.beat_index);
-        new_beat.last_step_index = beat.last_step_index;
+        // FIXME could be way more clever about this, but it's a start
+        for (let step of steps) {
+            this._assert_own_step(step);
 
-        for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-            this.steps[i].update_beat(new_beat);
+            let beat = this.beats[step.beat_index];
+            // Recreate the Beat in question
+            let new_beat = this.beats[step.beat_index] = this._make_fresh_beat(step.beat_index);
+            new_beat.last_step_index = beat.last_step_index;
+
+            for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
+                this.steps[i].update_beat(new_beat);
+            }
+
+            // Keep recreating beats until all twiddle changes from the new step
+            // have been overwritten by later steps
+            // FIXME do that
+
+            // FIXME yeah nope, need to know if later steps in the beat have the twiddle.  could track which twiddles are affected by which steps (!!!!!), or just recreate the whole thing, it's only a handful of steps
         }
-
-        // Keep recreating beats until all twiddle changes from the new step
-        // have been overwritten by later steps
-        // FIXME do that
-
-        // FIXME yeah nope, need to know if later steps in the beat have the twiddle.  could track which twiddles are affected by which steps (!!!!!), or just recreate the whole thing, it's only a handful of steps
 
         this._check_constraints();
 
-        this.intercom.dispatchEvent(new CustomEvent('gleam-step-updated', {
+        this.intercom.dispatchEvent(new CustomEvent('gleam-steps-updated', {
             detail: {
-                step: step,
-                // FIXME don't need these any more
-                index: step.index,
-                beat_index: step.beat_index,
+                steps: steps,
             },
         }));
     }
@@ -1978,6 +1984,11 @@ class Director {
         // TODO it seems sensible to not refresh the text if it hasn't changed?
         let refresh_handler = ev => {
             let beat_index = ev.detail.beat_index;
+            if (beat_index === undefined) {
+                // FIXME lol hack and also wrong anyway
+                beat_index = ev.detail.steps[0].beat_index;
+            }
+
             // If a beat was added or removed, adjust the cursor
             if (this.cursor > beat_index) {
                 if (ev.detail.split_beat) {
@@ -1991,7 +2002,7 @@ class Director {
                 this.jump(this.cursor);
             }
         };
-        this.script.intercom.addEventListener('gleam-step-updated', refresh_handler);
+        this.script.intercom.addEventListener('gleam-steps-updated', refresh_handler);
         this.script.intercom.addEventListener('gleam-step-inserted', refresh_handler);
         this.script.intercom.addEventListener('gleam-step-deleted', refresh_handler);
 
@@ -2354,7 +2365,7 @@ const STEP_ARGUMENT_TYPES = {
 // Editors for individual role types
 
 class RoleEditor {
-    constructor(main_editor, role = null) {
+    constructor(main_editor, role) {
         this.main_editor = main_editor;
         this.role = role;
 
@@ -2366,6 +2377,24 @@ class RoleEditor {
         this.container.querySelector('header > h2').textContent = role.name;
 
         this.initialize_steps();
+
+        // FIXME clean this up
+        let h2 = this.container.querySelector('header > h2');
+        h2.addEventListener('click', ev => {
+            let editor = make_element('input');
+            editor.type = 'text';
+            editor.value = this.role.name;
+            // FIXME bah, need to put the styling on the <header>...
+            h2.replaceWith(editor);
+            editor.focus();
+            // TODO on enter, too.  and cancel on esc
+            editor.addEventListener('blur', ev => {
+                h2.textContent = editor.value;
+                this.role.name = editor.value;
+                // TODO inform the script panel
+                editor.replaceWith(h2);
+            });
+        });
     }
 
     static create_role(name) {
@@ -2604,6 +2633,49 @@ PictureFrameEditor.prototype.HTML = `
 
 // FIXME? blurgh
 class CharacterEditor extends PictureFrameEditor {
+    constructor(...args) {
+        super(...args);
+
+        let before = this.container.querySelector('h3');
+        let propmap = make_element('dl', 'gleam-editor-propmap');
+        before.parentNode.insertBefore(propmap, before);
+
+        // FIXME make this all less ugly
+        propmap.append(make_element('dt', null, 'Dialogue box'));
+        let dd = make_element('dd');
+        dd.append(make_element('div', 'gleam-editor-role-dialoguebox', 'dialogue'));
+        propmap.append(dd);
+
+        propmap.append(make_element('dt', null, 'Dialogue name'));
+        dd = make_element('dd');
+        let input = make_element('input');
+        input.type = 'text';
+        input.value = this.role.dialogue_name;
+        dd.append(input);
+        propmap.append(dd);
+
+        propmap.append(make_element('dt', null, 'Dialogue style'));
+        dd = make_element('dd');
+        input = make_element('input');
+        input.type = 'text';
+        input.value = this.role.dialogue_position;
+        dd.append(input);
+        propmap.append(dd);
+
+        propmap.append(make_element('dt', null, 'Dialogue color'));
+        dd = make_element('dd');
+        input = make_element('input');
+        input.type = 'color';
+        input.value = this.role.dialogue_color;
+        input.addEventListener('change', ev => {
+            let color = input.value;
+            this.role.dialogue_color = color;
+            // XXX well, this feels, questionable
+            this.main_editor.script.update_steps(...this.main_editor.script.steps.filter(step => step.role === this.role));
+        });
+        dd.append(input);
+        propmap.append(dd);
+    }
 }
 CharacterEditor.prototype.ROLE_TYPE = Character;
 CharacterEditor.role_type_name = 'character';
@@ -2900,7 +2972,7 @@ class ScriptPanel extends Panel {
                 step.args[i] = new_value;
                 arg_type.update(arg, new_value);
                 // FIXME above could be a step-updated event handler?
-                this.editor.script.update_step(step);
+                this.editor.script.update_steps(step);
             }, () => {
                 // Smother rejection so it doesn't go to the console
             });

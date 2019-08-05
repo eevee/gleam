@@ -29,6 +29,11 @@ body {
     font-size: 14px;
 }
 
+input, select {
+    font-size: inherit;
+    vertical-align: middle;
+}
+
 .gleam-editor-overlay {
     position: fixed;
     top: 0;
@@ -50,6 +55,22 @@ body {
 }
 .gleam-editor-arg-enum-poses li:hover {
     background: #e8e8e8;
+}
+
+dl.gleam-editor-propmap {
+    display: grid;
+    grid-template-columns: 1fr 4fr;
+    align-items: baseline;
+    row-gap: 0.5em;
+    column-gap: 0.5em;
+}
+dl.gleam-editor-propmap > dt {
+    grid-column: 1;
+    text-align: right;
+}
+dl.gleam-editor-propmap > dd {
+    grid-column: 2;
+    margin: 0;
 }
 
 /* Panels, which the entire editor UI is made of */
