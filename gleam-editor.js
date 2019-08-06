@@ -113,6 +113,43 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
     }
 }
 
+// Given a Step, remembers which twiddles it changes, and tells you when all of
+// those twiddles have been overwritten by later steps.  Used temporarily when
+// altering an existing Script.
+class TwiddleChangeTracker {
+    constructor(initial_step) {
+        this.changes = new Map();  // Role => Set of twiddle keys
+
+        for (let [role, key] of initial_step.get_affected_twiddles()) {
+            let set = this.changes.get(role);
+            if (set === undefined) {
+                set = new Set();
+                this.changes.set(role, set);
+            }
+            set.add(key);
+        }
+    }
+
+    overwrite_with(step) {
+        for (let [role, key] of step.get_affected_twiddles()) {
+            let set = this.changes.get(role);
+            if (set) {
+                set.delete(key);
+                // When a Role's keys are all overwritten, just remove that
+                // Role entirely; then it's easy to tell if this change is
+                // done, because the top-level map will be empty
+                if (set.size === 0) {
+                    this.changes.delete(role);
+                }
+            }
+        }
+    }
+
+    get completely_overwritten() {
+        return this.changes.size === 0;
+    }
+}
+
 // Subclass of Script that knows how to edit itself
 class MutableScript extends Gleam.Script {
     add_role(role) {
@@ -594,7 +631,7 @@ class RoleEditor {
                 // TODO?
                 args.push(null);
             }
-            this.main_editor.script_panel.begin_step_drag(new Step(this.role, step_type, args));
+            this.main_editor.script_panel.begin_step_drag(new Gleam.Step(this.role, step_type, args));
         });
     }
 

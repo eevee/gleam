@@ -13,6 +13,17 @@
 window.Gleam = (function() {
 
 
+function make_element(tag, cls, text) {
+    let element = document.createElement(tag);
+    if (cls) {
+        element.className = cls;
+    }
+    if (text) {
+        element.textContent = text;
+    }
+    return element;
+}
+
 function svg_icon_from_path(d) {
     return `<svg width="1em" height="1em" viewBox="0 0 16 16"><path d="${d}" stroke-width="2" stroke-linecap="round" stroke="white" fill="none"></svg>`;
 }
@@ -1336,43 +1347,6 @@ class RemoteAssetLibrary extends AssetLibrary {
     }
 }
 
-// Given a Step, remembers which twiddles it changes, and tells you when all of
-// those twiddles have been overwritten by later steps.  Used temporarily when
-// altering an existing Script.
-class TwiddleChangeTracker {
-    constructor(initial_step) {
-        this.changes = new Map();  // Role => Set of twiddle keys
-
-        for (let [role, key] of initial_step.get_affected_twiddles()) {
-            let set = this.changes.get(role);
-            if (set === undefined) {
-                set = new Set();
-                this.changes.set(role, set);
-            }
-            set.add(key);
-        }
-    }
-
-    overwrite_with(step) {
-        for (let [role, key] of step.get_affected_twiddles()) {
-            let set = this.changes.get(role);
-            if (set) {
-                set.delete(key);
-                // When a Role's keys are all overwritten, just remove that
-                // Role entirely; then it's easy to tell if this change is
-                // done, because the top-level map will be empty
-                if (set.size === 0) {
-                    this.changes.delete(role);
-                }
-            }
-        }
-    }
-
-    get completely_overwritten() {
-        return this.changes.size === 0;
-    }
-}
-
 class Script {
     // A Script describes the entirety of a play (VN).  It has some number of
     // Actors (dialogue boxes, picture frames, etc.), and is defined by some
@@ -1859,21 +1833,12 @@ Player.prototype.PAUSE_SCREEN_HTML = `
     <ol class="gleam-pause-beats"></ol>
 `;
 
-function make_element(tag, cls, text) {
-    let element = document.createElement(tag);
-    if (cls) {
-        element.className = cls;
-    }
-    if (text) {
-        element.textContent = text;
-    }
-    return element;
-}
-
 let ret = {};
 for (let obj of [
     make_element,
     svg_icon_from_path,
+
+    Step,
 
     Stage,
     Curtain,
