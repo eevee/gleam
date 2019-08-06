@@ -1113,7 +1113,8 @@ class ScriptPanel extends Panel {
             if (step_el) {
                 // FIXME more awful offset traversal math
                 // FIXME skip this if this is already the step
-                this.step_toolbar.style.transform = `translateY(${step_el.offsetTop + step_el.offsetParent.offsetTop}px)`;
+                //this.step_toolbar.style.transform = `translateY(${step_el.offsetTop + step_el.offsetParent.offsetTop}px)`;
+                step_el.append(this.step_toolbar);
                 hovered_step_el = step_el;
             }
             else {
@@ -1547,7 +1548,6 @@ class Editor {
         this.script = script;
         this.library = library;
         this.player = new Gleam.Player(this.script, library);
-        this.player.inject(document.querySelector('#gleam-editor-player .gleam-editor-panel-body'));
 
         this.assets_panel.refresh_dom();
 
@@ -1560,8 +1560,7 @@ class Editor {
         this.script_panel.select_beat(this.player.director.cursor);
 
         // Finally, set the player going
-        // TODO this seems, counterintuitive?  and there's no way to pause it atm?  but updates don't happen without it.
-        this.player.play();
+        this.player.inject(document.querySelector('#gleam-editor-player .gleam-editor-panel-body'));
     }
 
     set_library(library) {

@@ -283,9 +283,8 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     /* needs to be above the items */
     z-index: 1;
     top: 0;
-    /* must match the right margin on the beat list */
-    right: 1em;
-    height: 1.2em;
+    bottom: 0;
+    right: 0;
     padding: 0.25em;
     background: #0009;
 }
@@ -366,6 +365,7 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     display: flex;
     /* only the error is expected to wrap, but it helps in very cramped layout too */
     flex-wrap: wrap;
+    position: relative;
     background: #f0f0f0;
     color: #202020;
 }

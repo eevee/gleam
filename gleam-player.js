@@ -1748,17 +1748,24 @@ class Player {
             this.director.advance();
         });
 
-        this.playing = false;
+        // requestAnimationFrame handle.  If this exists, we're doing per-frame
+        // updates
+        this.raf_handle = null;
+        // Bound method used with requestAnimationFrame
+        this.on_frame_bound = this.on_frame.bind(this);
+        // Timestamp of the last animation frame, for finding dt
+        this.last_timestamp = null;
     }
 
-    // TODO kind of a weird api maybe?
-    // Insert the player into a parent element
+    // Add the player to a parent element and set it running
     inject(parent) {
         parent.append(this.container);
+        this._run_frame_loop();
     }
-    // Remove the player from the document
+    // Remove the player from the document and stop it
     detach() {
         this.container.remove();
+        this._stop_frame_loop();
     }
 
     update(dt) {
@@ -1767,12 +1774,20 @@ class Player {
         this.progress_element.style.setProperty('--progress', this.director.cursor / (this.script.beats.length - 1) * 100 + '%');
     }
 
-    play() {
-        this.playing = true;
-        this.last_timestamp = performance.now();
+    _run_frame_loop() {
+        if (this.raf_handle)
+            return;
 
-        this.on_frame_bound = this.on_frame.bind(this);
-        window.requestAnimationFrame(this.on_frame_bound);
+        this.last_timestamp = performance.now();
+        this.raf_handle = window.requestAnimationFrame(this.on_frame_bound);
+    }
+    _stop_frame_loop() {
+        if (! this.raf_handle)
+            return;
+
+        this.last_timestamp = null;
+        window.cancelAnimationFrame(this.raf_handle);
+        this.raf_handle = null;
     }
 
     toggle_paused() {
@@ -1825,15 +1840,18 @@ class Player {
     }
 
     on_frame(timestamp) {
-        if (! this.playing)
+        // If our container leaves the document, stop the loop
+        if (! this.container.isConnected) {
+            this._stop_frame_loop();
             return;
+        }
 
         let dt = (timestamp - this.last_timestamp) / 1000;
         this.last_timestamp = timestamp;
 
         this.update(dt);
 
-        window.requestAnimationFrame(this.on_frame_bound);
+        this.raf_handle = window.requestAnimationFrame(this.on_frame_bound);
     }
 }
 Player.prototype.PAUSE_SCREEN_HTML = `
