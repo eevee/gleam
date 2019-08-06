@@ -1,5 +1,6 @@
 .gleam-player {
     position: relative;
+    overflow: hidden;
     z-index: 0;  /* stacking context */
     width: 800px;
     height: 600px;
@@ -21,6 +22,157 @@
     transition: width var(--transition-time) ease-out;
 }
 
+/* Container used for the loading and pause overlays */
+.gleam-overlay {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    z-index: 10000;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #000c;
+    color: white;
+
+    /* Hidden by default */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    /* Transition used when fading OUT -- switch visibility to off at the end */
+    /* Note that visibility is first so that transition-property can be extended */
+    transition: visibility 0s ease-in var(--transition-time), opacity var(--transition-time) ease-in;
+}
+.gleam-overlay.--visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: initial;
+    /* Transition used when fading IN -- switch visibility on immediately */
+    transition-delay: 0s;
+    transition-timing-function: ease-out;
+}
+.gleam-overlay > header,
+.gleam-overlay > footer {
+    flex: 0 auto;
+    font-size: 1.25em;
+    padding: 0.33em;
+    background: #0009;
+
+    /* Both slide out of frame during a transition, looks very cool */
+    transition: transform var(--transition-time) ease-in;
+}
+.gleam-overlay.--visible > header,
+.gleam-overlay.--visible > footer {
+    transform: none;
+    transition-timing-function: ease-out;
+}
+.gleam-overlay > header {
+    transform: translateY(-100%);
+}
+.gleam-overlay .-body {
+    flex: 1;
+    overflow: auto;
+}
+.gleam-overlay > footer {
+    text-align: right;
+    color: #999;
+    transform: translateY(100%);
+}
+.gleam-overlay h2 {
+    font-size: 3em;
+    font-weight: normal;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.0625em;
+}
+/* Loading screen */
+.gleam-overlay-loading {
+    background: #222;
+    transition-property: visibility, opacity, background-color;
+}
+.gleam-overlay-loading.--finished {
+    /* FIXME boo, this is copy/pasted from .gleam-overlay */
+    background: #000c;
+}
+.gleam-overlay-loading .gleam-loading-progress {
+    flex: 1;
+    display: flex;
+    font-size: 2em;
+}
+/* Consists of -done -divider -total, and is intended to look like "3 / 97" but centered on the slash, so that it doesn't reflow when the progress updates */
+.gleam-overlay-loading .gleam-loading-progress .-done,
+.gleam-overlay-loading .gleam-loading-progress .-total {
+    /* Start them at 50% width and shrink them equally, so the whole shebang is centered */
+    flex: 0 1 50%;
+}
+.gleam-overlay-loading .gleam-loading-progress .-done {
+    text-align: right;
+}
+.gleam-overlay-loading .gleam-loading-progress .-divider {
+    margin: 0 0.25em;
+}
+.gleam-overlay-loading .gleam-loading-progressbar {
+    --progress: 0;
+    position: relative;
+    margin: 1em 10%;
+    height: 1em;
+    border: 1px solid white;
+    background: #fff4;
+}
+.gleam-overlay-loading .gleam-loading-progressbar::before {
+    content: '';
+    display: block;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: calc(var(--progress) * 100%);
+    background: white;
+}
+.gleam-overlay-loading .gleam-loading-play {
+    display: none;
+    font-size: 4em;
+    margin: 1rem auto;
+    text-align: center;
+    cursor: pointer;
+}
+.gleam-overlay-loading.--finished .gleam-loading-play {
+    display: inherit;
+}
+
+/* Pause screen */
+.gleam-overlay-pause {
+}
+/* Beats jumplist */
+.gleam-overlay-pause .gleam-pause-beats {
+    margin: 1em;
+}
+.gleam-overlay-pause .gleam-pause-beats li {
+    /* TODO hmm, grid? */
+    display: inline-block;
+    min-width: 1em;
+    height: 1em;
+    line-height: 1;
+    margin: 0.25em;
+    padding: 0.33em;
+    border: 1px solid #999;
+    vertical-align: middle;
+    text-align: center;
+    background: #222;
+    cursor: pointer;
+}
+.gleam-overlay-pause .gleam-pause-beats li:empty {
+    border-radius: 1em;
+}
+.gleam-overlay-pause .gleam-pause-beats li.--current {
+    background: #666;
+    border-color: #ccc;
+}
+.gleam-overlay-pause .gleam-pause-beats li:hover {
+    border-color: white;
+}
+
+/* Pause button */
 .gleam-pause-button {
     position: absolute;
     display: block;
@@ -42,52 +194,6 @@
 .gleam-pause-button:hover,
 .gleam-player.--paused .gleam-pause-button {
     opacity: 1;
-}
-.gleam-pause {
-    position: absolute;
-    z-index: 10000;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 2em;
-    background: #000c;
-    color: white;
-    visibility: hidden;
-}
-.gleam-player.--paused .gleam-pause {
-    visibility: visible;
-}
-.gleam-pause h2 {
-    text-align: center;
-}
-/* Beats jumplist */
-.gleam-pause .gleam-pause-beats {
-
-}
-.gleam-pause .gleam-pause-beats li {
-    /* TODO hmm, grid? */
-    display: inline-block;
-    min-width: 1em;
-    height: 1em;
-    line-height: 1;
-    margin: 0.25em;
-    padding: 0.33em;
-    border: 1px solid #999;
-    vertical-align: middle;
-    text-align: center;
-    background: #222;
-    cursor: pointer;
-}
-.gleam-pause .gleam-pause-beats li:empty {
-    border-radius: 1em;
-}
-.gleam-pause .gleam-pause-beats li.--current {
-    background: #666;
-    border-color: #ccc;
-}
-.gleam-pause .gleam-pause-beats li:hover {
-    border-color: white;
 }
 
 

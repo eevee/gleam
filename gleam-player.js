@@ -24,6 +24,22 @@ function make_element(tag, cls, text) {
     return element;
 }
 
+function mk(tag_selector, ...children) {
+    let [tag, ...classes] = tag_selector.split('.');
+    let el = document.createElement(tag);
+    el.classList = classes.join(' ');
+    if (children.length > 0) {
+        if (! children[0] instanceof Node && typeof(children[0]) !== "string") {
+            let attrs = children.split(0, 1);
+            for (let [key, value] of Object.entries(attrs)) {
+                el.setAttribute(key, value);
+            }
+        }
+        el.append(...children);
+    }
+    return el;
+}
+
 function svg_icon_from_path(d) {
     return `<svg width="1em" height="1em" viewBox="0 0 16 16"><path d="${d}" stroke-width="2" stroke-linecap="round" stroke="white" fill="none"></svg>`;
 }
@@ -1258,7 +1274,7 @@ class Beat {
     }
 }
 
-// Given a filename, gets a relevant file.  Mainly exists to abstract over the
+// Given a path, gets a relevant file.  Mainly exists to abstract over the
 // difference between loading a live script from a Web source and pulling from
 // the user's hard drive.
 // TODO should wire this into player's initial 'loading' screen
@@ -1296,9 +1312,9 @@ class RemoteAssetLibrary extends AssetLibrary {
         this.root = root;
     }
 
-    load_image(filename) {
+    load_image(path) {
         let element = make_element('img');
-        let asset = this.assets[filename];
+        let asset = this.assets[path];
         if (asset) {
             // After trying to load this once, there's no point in doing all
             // the mechanical checking again; it'd be cached regardless
@@ -1306,38 +1322,37 @@ class RemoteAssetLibrary extends AssetLibrary {
             return element;
         }
 
-        // Bind the event handler FIRST -- if the image is cached, it might
+        // Bind the event handlers FIRST -- if the image is cached, it might
         // load instantly!
         let promise = promise_event(element, 'load', 'error');
-        // TODO what about progress, that seems nice, even if 0/1.  also like something that an asset library should handle
 
-        let url = new URL(filename, this.root);
-        asset = this.assets[filename] = {
+        // TODO indicating more fine-grained progress would be nice, but i
+        // would need to know the sizes of all the assets upfront for it to be
+        // meaningful.  consider including that in the new script format,
+        // maybe?  urgh.  ALSO, note that it would need to use XHR and could
+        // only be done same-origin anyway, because cross-origin XHR doesn't
+        // populate the cache the same way as a regular <img>!
+
+        let url = new URL(path, this.root);
+        asset = this.assets[path] = {
             url: url,
             used: true,
             exists: null,
             progress: 0,
         };
 
-        let progress_handler = ev => {
-            if (ev.lengthComputable) {
-                asset.progress = ev.loaded / ev.total;
-            }
-        };
-        element.addEventListener('progress', progress_handler);
-
         promise = promise.then(
             () => {
                 asset.exists = true;
                 asset.progress = 1;
             },
-            () => {
+            ev => {
+                console.error("error loading image", path, ev);
                 asset.exists = false;
             }
         )
         .finally(() => {
             asset.promise = null;
-            element.addEventListener('progress', progress_handler);
         });
         asset.promise = promise;
 
@@ -1357,6 +1372,12 @@ class Script {
     // occasionally for a fixed amount of time or until some task is complete.
 
     constructor() {
+        // Metadata
+        this.title = null;
+        this.subtitle = null;
+        this.author = null;
+        this.published_date = null;
+
         this.roles = [];
         this.role_index = {};
         this._add_role(new Stage('stage'));
@@ -1380,6 +1401,12 @@ class Script {
         return script;
     }
     _load_legacy_json(json) {
+        // Metadata
+        this.title = json.title || null;
+        this.subtitle = json.subtitle || null;
+        // FIXME relying on Date to parse dates is ill-advised
+        this.published_date = json.date ? new Date(json.date) : null;
+
         // Legacy JSON has an implicit dialogue box
         let dialogue_box = new DialogueBox('dialogue');
         this._add_role(dialogue_box);
@@ -1650,6 +1677,164 @@ class Director {
     }
 }
 
+class PlayerOverlay {
+    constructor(player) {
+        this.player = player;
+        this.body = mk('div.-body');
+        this.element = mk('div.gleam-overlay',
+            // FIXME subtitle, author, date
+            mk('header', this.player.script.title),
+            this.body,
+            // FIXME this should link, um, somewhere
+            mk('footer', 'GLEAM 0.1'),
+        );
+
+        // Clicking on the element shouldn't trigger an advance, which is on
+        // the parent as a click handler; block the event
+        this.element.addEventListener('click', ev => {
+            ev.stopPropagation();
+        });
+    }
+
+    show() {
+        this.element.classList.add('--visible');
+    }
+
+    hide() {
+        this.element.classList.remove('--visible');
+    }
+}
+
+class PlayerLoadingOverlay extends PlayerOverlay {
+    constructor(player) {
+        super(player);
+        this.element.classList.add('gleam-overlay-loading');
+        // FIXME controls; pause button instructions; music warning (if playable AND actually exists); contact in case of problems (from script...?)
+        this.body.append(
+            mk('h2', '...Loading...'),
+            mk('div.gleam-loading-progress',
+                this.done_el = mk('div.-done', '0'),
+                mk('div.-divider', '/'),
+                this.total_el = mk('div.-total', '0'),
+            ),
+            this.progress_bar = mk('div.gleam-loading-progressbar'),
+            this.errors_el = mk('p'),
+            this.play_el = mk('div.gleam-loading-play', '▶'),
+        );
+        // FIXME css, once i figure this out
+        this.errors_el.style.whiteSpace = 'pre-wrap';
+        this.play_el.addEventListener('click', ev => {
+            // FIXME also need to tell the player to show the play button
+            // FIXME shouldn't start playing music until after clicking play, on the off chance the first frame does that...  hm...
+            this.hide();
+        });
+
+        this.successful = true;
+        this.finished = false;
+    }
+
+    update_progress() {
+        if (this.finished)
+            return;
+
+        let done = 0;
+        let failed = 0;
+        let total = 0;
+        let errors = [];
+        for (let [path, asset] of Object.entries(this.player.director.library.assets)) {
+            // TODO hm. inherit_uses can make assets that are used but not yet loaded
+            if (! asset.used)
+                continue;
+
+            if (asset.exists === true) {
+                done++;
+            }
+            else if (asset.exists === false) {
+                this.successful = false;
+                failed++;
+                errors.push(`${path} -- boom!\n`);
+            }
+            total++;
+        }
+        this.done_el.textContent = String(done);
+        this.total_el.textContent = String(total);
+        this.progress_bar.style.setProperty('--progress', String(total ? done / total : 1));
+        // TODO figure out what to actually show the audience
+        //this.errors_el.textContent = errors.join('');
+
+        if (done === total) {
+            this.finished = true;
+            if (this.successful) {
+                this.element.classList.add('--finished');
+            }
+            else {
+                this.element.classList.add('--failed');
+            }
+        }
+    }
+}
+
+class PlayerPauseOverlay extends PlayerOverlay {
+    constructor(player) {
+        super(player);
+        this.element.classList.add('gleam-overlay-pause');
+        this.body.append(
+            mk('h2', 'Paused'),
+            this.beats_list = mk('ol.gleam-pause-beats'),
+        );
+
+        // TODO options (persist!!): volume, hide UI entirely (pause button + progress bar), take screenshot?, low power mode (disable text shadows and the like) or disable transitions entirely (good for motion botherment)
+        // TODO links to currently active assets?  sorta defeats bandcamp i guess, but i always did want a jukebox mode
+        // TODO debug stuff, mostly current state of actors
+
+        // Navigation list
+        this.beats_list.addEventListener('click', ev => {
+            let li = ev.target.closest('.gleam-pause-beats li');
+            if (! li)
+                return;
+            let b = parseInt(li.getAttribute('data-beat-index'), 10);
+            // TODO hm, instant jump?  curtain?
+            this.player.director.jump(b);
+            this.player.unpause();
+        });
+    }
+
+    show() {
+        // Populate navigation -- this could be done once, but that would break
+        // in the editor, and it's quick enough to just do whenever the pause
+        // screen comes up (though obviously it won't update if you edit beats
+        // while paused)
+        let script = this.player.script;
+        let cursor = this.player.director.cursor;
+        let fragment = document.createDocumentFragment();
+        let number_next_beat = false;
+        for (let [i, beat] of script.beats.entries()) {
+            let li = make_element('li');
+            let b = i + 1;
+            if (number_next_beat || b % 10 === 0 || b === 1 || b === script.beats.length) {
+                number_next_beat = false;
+                li.textContent = String(b);
+            }
+            li.setAttribute('data-beat-index', i);
+            if (i === cursor) {
+                li.classList.add('--current');
+            }
+            fragment.appendChild(li);
+
+            if (script.steps[beat.last_step_index].type.is_major_transition) {
+                // TODO ok this is extremely hokey to put in an <ol>
+                fragment.append(make_element('hr'));
+                number_next_beat = true;
+            }
+        }
+
+        this.beats_list.textContent = '';
+        this.beats_list.append(fragment);
+
+        super.show();
+    }
+}
+
 class Player {
     constructor(script, library) {
         this.script = script;
@@ -1657,24 +1842,24 @@ class Player {
         this.director = new Director(script, library);
         this.container = make_element('div', 'gleam-player');
         this.paused = false;
+        this.loaded = false;
 
         // Create some player UI
-        // Progress marker
-        this.progress_element = make_element('div', 'gleam-progress');
-        // FIXME it is not entirely clear how this should be updated
-        this.container.appendChild(this.progress_element);
+        // Loading overlay
+        // FIXME how does this interact with the editor?  loading status is still nice, but having to click play is very silly
+        // FIXME hide pause button until loading is done
+        this.loading_overlay = new PlayerLoadingOverlay(this);
+        this.loading_overlay.show();
+        this.container.appendChild(this.loading_overlay.element);
+
         // Pause screen
-        this.pause_element = make_element('div', 'gleam-pause');
-        this.pause_element.innerHTML = this.PAUSE_SCREEN_HTML;
-        // TODO options (persist!!): volume, hide UI entirely (pause button + progress bar), take screenshot?, low power mode (disable text shadows and the like) or disable transitions entirely (good for motion botherment)
-        // TODO links to currently active assets?  sorta defeats bandcamp i guess, but i always did want a jukebox mode
-        // TODO debug stuff, mostly current state of actors
-        this.pause_element.addEventListener('click', ev => {
-            // Block counting this as an advancement click
-            // TODO could avoid this if we had a child element holding all the actors, but then we'd have to deal with focus nonsense.  but we might anyway since the pause screen has focus targets on it
-            ev.stopPropagation();
-        });
-        // Normally I'd love for something like this to be a button, but I explicitly DO NOT want it to receive focus -- if the audience clicks it to unpause and then presses spacebar to advance, it'll just activate the pause button again!
+        this.pause_overlay = new PlayerPauseOverlay(this);
+        this.container.appendChild(this.pause_overlay.element);
+        // Pause button
+        // Normally I'd love for something like this to be a <button>, but I
+        // explicitly DO NOT want it to receive focus -- if the audience clicks
+        // it to unpause and then presses spacebar to advance, it'll just
+        // activate the pause button again!
         this.pause_button = make_element('div', 'gleam-pause-button');
         this.pause_button.innerHTML = svg_icon_from_path("M 5,1 V 14 M 11,1 V 14");
         this.pause_button.addEventListener('click', ev => {
@@ -1683,18 +1868,12 @@ class Player {
 
             this.toggle_paused();
         });
-        this.container.appendChild(this.pause_element);
         this.container.appendChild(this.pause_button);
-        let beats_list = this.pause_element.querySelector('.gleam-pause-beats');
-        beats_list.addEventListener('click', ev => {
-            let li = ev.target.closest('.gleam-pause-beats li');
-            if (! li)
-                return;
-            let b = parseInt(li.getAttribute('data-beat-index'), 10);
-            this.unpause();
-            // TODO hm, instant jump?  curtain?
-            this.director.jump(b);
-        });
+
+        // Playback progress ticker
+        this.progress_element = make_element('div', 'gleam-progress');
+        // FIXME it is not entirely clear how this should be updated
+        this.container.appendChild(this.progress_element);
 
         // Add the actors to the DOM
         for (let [name, actor] of Object.entries(this.director.actors)) {
@@ -1778,30 +1957,7 @@ class Player {
             return;
         this.paused = true;
 
-        // Populate pause screen
-        let beats_list = this.pause_element.querySelector('.gleam-pause-beats');
-        beats_list.textContent = '';
-        let number_next_beat = false;
-        for (let [i, beat] of this.script.beats.entries()) {
-            let li = make_element('li');
-            let b = i + 1;
-            if (number_next_beat || b % 10 === 0 || b === 1 || b === this.script.beats.length) {
-                number_next_beat = false;
-                li.textContent = String(b);
-            }
-            li.setAttribute('data-beat-index', i);
-            if (i === this.director.cursor) {
-                li.classList.add('--current');
-            }
-            beats_list.appendChild(li);
-
-            if (this.script.steps[beat.last_step_index].type.is_major_transition) {
-                // TODO ok this is extremely hokey
-                beats_list.append(make_element('hr'));
-                number_next_beat = true;
-            }
-        }
-
+        this.pause_overlay.show();
         this.container.classList.add('--paused');
     }
 
@@ -1810,6 +1966,7 @@ class Player {
             return;
         this.paused = false;
 
+        this.pause_overlay.hide();
         this.container.classList.remove('--paused');
     }
 
@@ -1823,15 +1980,29 @@ class Player {
         let dt = (timestamp - this.last_timestamp) / 1000;
         this.last_timestamp = timestamp;
 
-        this.update(dt);
+        if (this.loaded) {
+            this.update(dt);
+        }
+        else {
+            // TODO probably don't need to update this at 60 fps
+            this.loading_overlay.update_progress();
+
+            if (this.loading_overlay.finished) {
+                if (this.loading_overlay.successful) {
+                    // TODO don't keep updating progress while waiting
+                    this.loaded = true;
+                }
+                else {
+                    // TODO mark us as permanently broken -- no more updates
+                    // TODO one day, allow retrying the broken request!
+                    // TODO or let the audience decide to go anyway??
+                }
+            }
+        }
 
         this.raf_handle = window.requestAnimationFrame(this.on_frame_bound);
     }
 }
-Player.prototype.PAUSE_SCREEN_HTML = `
-    <h2>PAUSED</h2>
-    <ol class="gleam-pause-beats"></ol>
-`;
 
 let ret = {};
 for (let obj of [
