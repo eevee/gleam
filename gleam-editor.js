@@ -621,18 +621,15 @@ class RoleEditor {
         this.main_editor = main_editor;
         this.role = role;
 
-        let throwaway = document.createElement('div');
-        // FIXME ditch the templates, they're similar and simple enough to just build
-        throwaway.innerHTML = this.HTML;
-        this.container = throwaway.firstElementChild;  // FIXME experimental, ugh
-        this.container.classList.add(this.CLASS_NAME);
-        this.container.querySelector('header > h2').textContent = role.name;
+        this.element = mk('li');
+        this.element.classList.add(this.CLASS_NAME);
+        this.container = this.element;
 
-        this.initialize_steps();
-
+        // Header
         // FIXME clean this up
-        let h2 = this.container.querySelector('header > h2');
-        h2.addEventListener('click', ev => {
+        this.h2 = mk('h2', role.name);
+        this.element.append(mk('header', this.h2));
+        this.h2.addEventListener('click', ev => {
             let editor = make_element('input');
             editor.type = 'text';
             editor.value = this.role.name;
@@ -647,24 +644,18 @@ class RoleEditor {
                 editor.replaceWith(h2);
             });
         });
-    }
 
-    static create_role(name) {
-        return new this.prototype.ROLE_TYPE(name);
-    }
-
-    initialize_steps() {
         // Add step templates
-        // FIXME this is for picture frame; please genericify
         this.step_type_map = new Map();  // step element => step type
         for (let step_type of Object.values(this.ROLE_TYPE.STEP_TYPES)) {
             let step_el = this.make_sample_step_element(step_type);
-            this.container.appendChild(step_el);
+            this.element.appendChild(step_el);
             this.step_type_map.set(step_el, step_type);
         }
 
         // Enable dragging steps into the script
-        this.container.addEventListener('dragstart', e => {
+        // FIXME doesn't check it's hitting a step
+        this.element.addEventListener('dragstart', e => {
             e.dataTransfer.dropEffect = 'copy';
             e.dataTransfer.setData('text/plain', null);
             let step_type = this.step_type_map.get(e.target);
@@ -675,6 +666,10 @@ class RoleEditor {
             }
             this.main_editor.script_panel.begin_step_drag(new Gleam.Step(this.role, step_type, args));
         });
+    }
+
+    static create_role(name) {
+        return new this.prototype.ROLE_TYPE(name);
     }
 
     make_sample_step_element(step_type) {
@@ -757,45 +752,28 @@ class StageEditor extends RoleEditor {
 }
 StageEditor.prototype.ROLE_TYPE = Gleam.Stage;
 StageEditor.prototype.CLASS_NAME = 'gleam-editor-role-stage';
-StageEditor.prototype.HTML = `
-    <li class="gleam-editor-role-stage">
-        <header>
-            <h2>stage</h2>
-        </header>
-    </li>
-`;
 
 class CurtainEditor extends RoleEditor {
 }
 CurtainEditor.prototype.ROLE_TYPE = Gleam.Curtain;
 CurtainEditor.role_type_name = 'curtain';
 CurtainEditor.prototype.CLASS_NAME = 'gleam-editor-role-curtain';
-CurtainEditor.prototype.HTML = `
-    <li class="gleam-editor-role-curtain">
-        <header>
-            <h2>curtain</h2>
-        </header>
-    </li>
-`;
 
 class DialogueBoxEditor extends RoleEditor {
 }
 DialogueBoxEditor.prototype.ROLE_TYPE = Gleam.DialogueBox;
 DialogueBoxEditor.role_type_name = 'dialogue box';
 DialogueBoxEditor.prototype.CLASS_NAME = 'gleam-editor-role-dialoguebox';
-DialogueBoxEditor.prototype.HTML = `
-    <li class="gleam-editor-role-dialoguebox">
-        <header>
-            <h2>backdrop</h2>
-        </header>
-    </li>
-`;
 
 class JukeboxEditor extends RoleEditor {
     constructor(...args) {
         super(...args);
 
-        this.track_list = this.container.querySelector('.gleam-editor-role-jukebox-tracks');
+        this.track_list = mk('dl.gleam-editor-role-jukebox-tracks');
+        this.element.append(
+            mk('h3', "Tracks ", mk('span.gleam-editor-hint', "(drag and drop into script)")),
+            this.track_list,
+        );
         this.update_assets();
     }
 
@@ -818,24 +796,15 @@ class JukeboxEditor extends RoleEditor {
 JukeboxEditor.prototype.ROLE_TYPE = Gleam.Jukebox;
 JukeboxEditor.role_type_name = 'jukebox';
 JukeboxEditor.prototype.CLASS_NAME = 'gleam-editor-role-jukebox';
-JukeboxEditor.prototype.HTML = `
-    <li class="gleam-editor-role-jukebox">
-        <header>
-            <h2>📻 jukebox</h2>
-        </header>
-        <h3>Tracks <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
-        <dl class="gleam-editor-role-jukebox-tracks"></dl>
-    </li>
-`;
 
 class PictureFrameEditor extends RoleEditor {
     constructor(...args) {
         super(...args);
 
-        this.pose_list = this.container.querySelector('.gleam-editor-role-pictureframe-poses');
-        this.populate_pose_list();
+        this.pose_list = mk('ul.gleam-editor-role-pictureframe-poses');
+        this.update_assets();
 
-        let button = this.container.querySelector('button');
+        let button = mk('button', "add poses by wildcard");
         button.addEventListener('click', ev => {
             let wildcard = 'warmheart*.png';
             let parts = wildcard.split(/([*?])/);
@@ -883,9 +852,15 @@ class PictureFrameEditor extends RoleEditor {
             // FIXME how do i update the existing actor, then?
             this.main_editor.player.director.role_to_actor.get(this.role).sync_with_role(this.main_editor.player.director);
         });
+
+        this.element.append(
+            mk('h3', "Poses ", mk('span.gleam-editor-hint', "(drag and drop into script)")),
+            this.pose_list,
+            button,
+        );
     }
 
-    populate_pose_list() {
+    update_assets() {
         this.pose_list.textContent = '';
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame = pose[0];  // FIXME this format is bonkers
@@ -897,25 +872,10 @@ class PictureFrameEditor extends RoleEditor {
             this.pose_list.appendChild(li);
         }
     }
-
-    update_assets() {
-        this.populate_pose_list();
-    }
 }
 PictureFrameEditor.prototype.ROLE_TYPE = Gleam.PictureFrame;
 PictureFrameEditor.role_type_name = 'picture frame';
 PictureFrameEditor.prototype.CLASS_NAME = 'gleam-editor-role-pictureframe';
-PictureFrameEditor.prototype.HTML = `
-    <li class="gleam-editor-role-pictureframe">
-        <header>
-            <h2>backdrop</h2>
-        </header>
-        <button>add poses by wildcard</button>
-        <h3>Poses <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
-        <ul class="gleam-editor-role-pictureframe-poses">
-        </ul>
-    </li>
-`;
 
 
 // FIXME? blurgh
