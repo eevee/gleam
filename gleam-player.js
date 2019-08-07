@@ -898,6 +898,25 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
 
 
 class Jukebox extends Role {
+    constructor(name) {
+        super(name);
+        this.tracks = {};
+    }
+
+    static from_legacy_json(name, json) {
+        let jukebox = new this(name);
+        for (let [track_name, path] of Object.entries(json.tracks)) {
+            jukebox.add_track(track_name, path);
+        }
+        return jukebox;
+    }
+
+    add_track(track_name, path, loop = true) {
+        this.tracks[track_name] = {
+            path: path,
+            loop: loop,
+        };
+    }
 }
 Jukebox.prototype.TWIDDLES = {
     track: {
@@ -910,7 +929,8 @@ Jukebox.STEP_TYPES = {
         display_name: "play",
         args: [{
             display_name: "track",
-            type: 'key',
+            type: 'track',
+            // FIXME type: 'key',
             type_key_prop: 'tracks',
         }],
         twiddles: [{
@@ -932,10 +952,122 @@ Jukebox.LEGACY_JSON_ACTIONS = {
     stop: ["stop"],
 };
 Jukebox.Actor = class JukeboxActor extends Actor {
+    constructor(role, director) {
+        super(role);
+
+        this.element = mk('div.gleam-actor-jukebox');
+
+        // FIXME If we can't play music at ALL, don't even try to load anything
+        /*
+        if not CAN_PLAY_AUDIO
+            return [$element]
+        */
+
+        this.track_elements = {};
+        for (let [name, track] of Object.entries(this.role.tracks)) {
+            let audio = director.library.load_audio(track.path);
+            audio.loop = track.loop;
+            this.track_elements[name] = audio;
+            this.element.append(audio);
+        }
+    }
+
+    apply_state(state) {
+        let old_state = super.apply_state(state);
+
+        // FIXME needs fadeout probably (oh dear), and also fix time when playing
+        if (state.track !== old_state.track) {
+            if (old_state.track !== null) {
+                this.track_elements[old_state.track].pause();
+            }
+            if (state.track !== null) {
+                this.track_elements[state.track].play();
+            }
+        }
+    }
+
+    // FIXME NEED sync_with_role
+
     play(track_name) {
         // TODO
     }
 };
+/*
+    _id_suffix: ->
+        return 'boombox'
+
+    _change: (event, song_name) =>
+        $el = $ event.currentTarget
+        old_song_name = $el.data 'active-song-name'
+        if old_song_name == song_name
+            return
+        $el.data 'active-song-name', song_name
+
+        $song_elements = $el.data 'song-elements'
+
+        $old_song = $song_elements[old_song_name]
+        $new_song = $song_elements[song_name]
+
+        # TODO maybe this should just be .find('.-visible')
+        if $old_song?
+            old_promise = @_stop_track $old_song[0]
+        else
+            old_promise = promise_always()
+
+        # Kill the animation queue, in case the new song is in the process of
+        # stopping.  The `true`s clear the queue and jump to the end of the
+        # animation.
+        if $new_song?
+            $new_song.stop true, true
+            $new_song[0].volume = 1.0  # XXX default volume?
+            $new_song[0].play()
+
+        return old_promise
+
+    _stop_track: (media) ->
+        ###
+        Stop a track with a fadeout.
+
+        Returns a promise that will complete when the fadeout is finished.
+        ###
+        if media.paused
+            return promise_always()
+
+        original_volume = media.volume
+        return $(media).animate(volume: 0, 'slow').promise().then ->
+            media.pause()
+            media.currentTime = 0.0
+            media.volume = original_volume
+
+    _disable: (event) =>
+        $el = $ event.currentTarget
+        old_song_name = $el.data 'active-song-name'
+        $song_elements = $el.data 'song-elements'
+        $old_song = $song_elements[old_song_name]
+
+        $el.data 'active-song-name', null
+
+        if $old_song?
+            return @_stop_track $old_song[0]
+        else
+            return promise_always()
+
+    _pause: (event, $el) =>
+        current_song_name = $el.data 'active-song-name'
+        $song_elements = $el.data 'song-elements'
+        $current_song = $song_elements[current_song_name]
+
+        if $current_song?
+            $current_song[0].pause()
+
+    _unpause: (event, $el) =>
+        current_song_name = $el.data 'active-song-name'
+        $song_elements = $el.data 'song-elements'
+        $current_song = $song_elements[current_song_name]
+
+        if $current_song?
+            $current_song[0].play()
+*/
 
 
 class PictureFrame extends Role {
@@ -1358,6 +1490,58 @@ class RemoteAssetLibrary extends AssetLibrary {
 
         // TODO fire an event here, or what?
         element.src = url;
+        return element;
+    }
+
+    // FIXME need to implement this for the other two AssetLibrarys!
+    load_audio(path) {
+        let element = mk('audio');
+        element.preload = 'auto';  // ask the browser to download
+        element.autobuffer = true;  // older way to do the same thing
+
+        let asset = this.asset(path);
+        if (asset.url) {
+            element.src = asset.url;
+            return element;
+        }
+
+        // Bind the event handlers FIRST -- if the audio is cached, it might
+        // load instantly!
+        // Note: 'canplaythrough' fires when the entire sound can be played
+        // without buffering.  But Chrome doesn't like downloading the entire
+        // file, and the spec never guarantees this is possible anyway, so go
+        // with 'canplay' and hope for the best.
+        let promise = promise_event(element, 'canplay', 'error');
+
+        let url = new URL(path, this.root);
+        asset.url = url;
+        asset.used = true;
+        asset.exists = null;
+        asset.progress = 0;
+
+        // FIXME if the audio fails to download, the VN should probably still be playable?
+
+        promise = promise.then(
+            () => {
+                asset.exists = true;
+                asset.progress = 1;
+            },
+            ev => {
+                console.error("error loading", path, ev);
+                asset.exists = false;
+            }
+        )
+        .finally(() => {
+            asset.promise = null;
+        });
+        asset.promise = promise;
+
+        // TODO fire an event here, or what?
+        element.src = url;
+        // Unlike images, the downloading doesn't start without this, because
+        // the source selection is potentially more complicated
+        element.load();
+
         return element;
     }
 }

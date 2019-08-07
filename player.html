@@ -11,6 +11,7 @@
         // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
         window.addEventListener('load', ev => {
             let root_url = new URL('https://apps.veekun.com/flora-cutscenes/res/prompt2-itchyitchy-final/');
+            root_url = new URL('http://localhost:8080/res/prompt2-itchyitchy-final/');
             let library = new Gleam.RemoteAssetLibrary(root_url);
             let xhr = new XMLHttpRequest;
             xhr.addEventListener('load', ev => {

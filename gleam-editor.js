@@ -568,6 +568,47 @@ const STEP_ARGUMENT_TYPES = {
             });
         },
     },
+
+    track: {
+        view(value) {
+            return make_element('div', 'gleam-editor-arg-enum', value);
+        },
+        update(element, value) {
+            element.textContent = value;
+        },
+        edit(element, value, step, mouse_event) {
+            // FIXME this is very nearly identical to the poses code
+            return new Promise((resolve, reject) => {
+                // FIXME this very poorly handles a very long list, and doesn't preview or anything
+                // FIXME this ain't poses either
+                let editor_element = make_element('ol', 'gleam-editor-arg-enum-poses');
+                for (let track_name of Object.keys(step.role.tracks)) {
+                    let li = make_element('li', null, track_name);
+                    li.setAttribute('data-track', track_name);
+                    editor_element.appendChild(li);
+                }
+                // Save on clicking a track
+                editor_element.addEventListener('click', ev => {
+                    let li = ev.target.closest('li');
+                    if (! li)
+                        return;
+
+                    resolve(li.getAttribute('data-track'));
+                    close_overlay(ev.target);
+                });
+
+                // FIXME better...  aiming?  don't go off the screen etc
+                // FIXME getting this passed in feels hacky but it's the only place to get the cursor position
+                editor_element.style.left = `${mouse_event.clientX}px`;
+                editor_element.style.top = `${mouse_event.clientY}px`;
+                let overlay = open_overlay(editor_element);
+                // Clicking the overlay to close the menu means cancel
+                overlay.addEventListener('click', ev => {
+                    reject();
+                });
+            });
+        },
+    },
 };
 
 
@@ -750,6 +791,28 @@ DialogueBoxEditor.prototype.HTML = `
 `;
 
 class JukeboxEditor extends RoleEditor {
+    constructor(...args) {
+        super(...args);
+
+        this.track_list = this.container.querySelector('.gleam-editor-role-jukebox-tracks');
+        this.update_assets();
+    }
+
+    update_assets() {
+        // FIXME shouldn't this (and the poses list) also show the path?  but that does seem a bit, noisy...
+        this.track_list.textContent = '';
+        for (let [track_name, track] of Object.entries(this.role.tracks)) {
+            let li = make_element('li');
+            let audio = this.main_editor.library.load_audio(track.path);
+            audio.controls = true;
+            audio.classList.add('-asset');
+            li.append(
+                track_name,
+                audio,
+            );
+            this.track_list.appendChild(li);
+        }
+    }
 }
 JukeboxEditor.prototype.ROLE_TYPE = Gleam.Jukebox;
 JukeboxEditor.role_type_name = 'jukebox';
@@ -760,6 +823,7 @@ JukeboxEditor.prototype.HTML = `
             <h2>📻 jukebox</h2>
         </header>
         <h3>Tracks <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
+        <ol class="gleam-editor-role-jukebox-tracks"></ol>
     </li>
 `;
 
