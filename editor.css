@@ -173,11 +173,15 @@ ol.gleam-editor-roles > li {
     background: white;
     color: #202020;
 }
-ol.gleam-editor-roles > li h2 {
+ol.gleam-editor-roles > li header {
+    display: flex;
     padding: 0.25em 0.5em;
     margin: 0;
     font-size: 1.25em;
-    background: hsl(0, 0%, 75%);
+}
+ol.gleam-editor-roles > li h2 {
+    font-size: 1em;
+    margin: 0;
 }
 ol.gleam-editor-roles > li h3 {
     margin: 0.5em 0 0;
@@ -360,7 +364,6 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     font-size: 1em;
     margin: 0;
     padding: 0.33em;
-    background: #d0d0d0;
 }
 .gleam-editor-script-role-state dl {
     font-size: 0.83em;
@@ -411,7 +414,6 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     z-index: 1;
     padding: 0.25em 0.5em;
     padding-right: 1em;
-    background: hsl(0, 0%, 75%);
     border-top-right-radius: 0.75em 1em;
     border-bottom-right-radius: 0.75em 1em;
 }
@@ -490,62 +492,42 @@ textarea.gleam-editor-arg-prose {
  * headers of their properties in the role list */
 /* TODO maybe make these roles generic instead of needing to update this 
 /* Stage */
-.gleam-editor-step.gleam-editor-role-stage > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-stage h2,
-.gleam-editor-script-role-state.gleam-editor-role-stage h2 {
+.gleam-editor-role-stage {
     background: hsl(0, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-role-stage > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-stage h2::before,
-.gleam-editor-script-role-state.gleam-editor-role-stage h2::before {
+.gleam-editor-role-stage::before {
     content: '📻';
     margin-right: 0.25em;
 }
 /* Jukebox */
-.gleam-editor-step.gleam-editor-role-jukebox > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-jukebox h2,
-.gleam-editor-script-role-state.gleam-editor-role-jukebox h2 {
+.gleam-editor-role-jukebox {
     background: hsl(270, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-role-jukebox > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-jukebox h2::before,
-.gleam-editor-script-role-state.gleam-editor-role-jukebox h2::before {
+.gleam-editor-role-jukebox::before {
     content: '📻';
     margin-right: 0.25em;
 }
 /* Picture frame */
-.gleam-editor-step.gleam-editor-role-pictureframe > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-pictureframe h2,
-.gleam-editor-script-role-state.gleam-editor-role-pictureframe h2 {
+.gleam-editor-role-pictureframe {
     background: hsl(330, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-role-pictureframe > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-pictureframe h2::before,
-.gleam-editor-script-role-state.gleam-editor-role-pictureframe h2::before {
+.gleam-editor-role-pictureframe::before {
     content: '🖼️';
     margin-right: 0.25em;
 }
 /* Dialogue box */
-.gleam-editor-step.gleam-editor-role-dialoguebox > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-dialoguebox h2,
-.gleam-editor-script-role-state.gleam-editor-role-dialoguebox h2 {
+.gleam-editor-role-dialoguebox {
     background: hsl(60, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-role-dialoguebox > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-dialoguebox h2::before,
-.gleam-editor-script-role-state.gleam-editor-role-dialoguebox h2::before {
+.gleam-editor-role-dialoguebox::before {
     content: '💬️';
     margin-right: 0.25em;
 }
 /* Character */
-.gleam-editor-step.gleam-editor-role-character > .-who,
-ol.gleam-editor-roles > li.gleam-editor-role-character h2,
-.gleam-editor-script-role-state.gleam-editor-role-character h2 {
+.gleam-editor-role-character {
     background: hsl(210, 50%, 75%);
 }
-.gleam-editor-step.gleam-editor-role-character > .-who::before,
-ol.gleam-editor-roles > li.gleam-editor-role-character h2::before,
-.gleam-editor-script-role-state.gleam-editor-role-character h2::before {
+.gleam-editor-role-character::before {
     content: '🗣️';
     margin-right: 0.25em;
 }

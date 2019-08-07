@@ -622,13 +622,14 @@ class RoleEditor {
         this.role = role;
 
         this.element = mk('li');
-        this.element.classList.add(this.CLASS_NAME);
         this.container = this.element;
 
         // Header
         // FIXME clean this up
         this.h2 = mk('h2', role.name);
-        this.element.append(mk('header', this.h2));
+        let header = mk('header', this.h2);
+        header.classList.add(this.CLASS_NAME);
+        this.element.append(header);
         this.h2.addEventListener('click', ev => {
             let editor = make_element('input');
             editor.type = 'text';
@@ -674,7 +675,6 @@ class RoleEditor {
 
     make_sample_step_element(step_type) {
         let el = make_element('div', 'gleam-editor-step');
-        el.classList.add(this.CLASS_NAME);
 
         let handle = make_element('div', '-handle', '⠿');
         el.appendChild(handle);
@@ -703,7 +703,6 @@ class RoleEditor {
     // FIXME i changed my mind and this should go on ScriptPanel.  only trouble is this.CLASS_NAME
     make_step_element(step) {
         let el = make_element('div', 'gleam-editor-step');
-        el.classList.add(this.CLASS_NAME);
 
         let handle = make_element('div', '-handle', '⠿');
         el.appendChild(handle);
@@ -722,7 +721,9 @@ class RoleEditor {
         });
 
         // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
-        el.appendChild(make_element('div', '-who', step.role.name));
+        let role_tag = make_element('div', '-who', step.role.name);
+        role_tag.classList.add(this.CLASS_NAME);
+        el.appendChild(role_tag);
         el.appendChild(make_element('div', '-what', step.type.display_name));
 
         for (let [i, arg_def] of step.type.args.entries()) {
@@ -1453,12 +1454,11 @@ class ScriptPanel extends Panel {
         // TODO need to update this when a role is added too, god christ ass.  or when a script is loaded, though it happens to work here
         for (let role_editor of this.editor.roles_panel.role_editors) {
             let box = make_element('div', 'gleam-editor-script-role-state');
-            box.classList.add(role_editor.CLASS_NAME);
             this.footer.append(box);
 
             let dl = make_element('dl');
             box.append(
-                make_element('h2', null, role_editor.role.name),
+                make_element('h2', role_editor.CLASS_NAME, role_editor.role.name),
                 dl);
             let dd_map = {};
             for (let key of Object.keys(role_editor.role.TWIDDLES)) {
