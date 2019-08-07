@@ -634,14 +634,14 @@ class RoleEditor {
             editor.type = 'text';
             editor.value = this.role.name;
             // FIXME bah, need to put the styling on the <header>...
-            h2.replaceWith(editor);
+            this.h2.replaceWith(editor);
             editor.focus();
             // TODO on enter, too.  and cancel on esc
             editor.addEventListener('blur', ev => {
-                h2.textContent = editor.value;
+                this.h2.textContent = editor.value;
                 this.role.name = editor.value;
                 // TODO inform the script panel
-                editor.replaceWith(h2);
+                editor.replaceWith(this.h2);
             });
         });
 
@@ -927,17 +927,6 @@ class CharacterEditor extends PictureFrameEditor {
 CharacterEditor.prototype.ROLE_TYPE = Gleam.Character;
 CharacterEditor.role_type_name = 'character';
 CharacterEditor.prototype.CLASS_NAME = 'gleam-editor-role-character';
-CharacterEditor.prototype.HTML = `
-    <li class="gleam-editor-role-character">
-        <header>
-            <h2>backdrop</h2>
-        </header>
-        <button>add poses by wildcard</button>
-        <h3>Poses <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
-        <ul class="gleam-editor-role-pictureframe-poses">
-        </ul>
-    </li>
-`;
 
 
 // List of all role editor types
