@@ -186,6 +186,30 @@ ol.gleam-editor-roles > li h3 {
     font-weight: normal;
     font-size: 1.2em;
 }
+dl.gleam-editor-role-jukebox-tracks {
+    display: grid;
+    grid-template-columns: 1fr 7fr;
+    align-items: baseline;
+    row-gap: 0.25em;
+    column-gap: 0.25em;
+    margin: 1em;
+}
+dl.gleam-editor-role-jukebox-tracks dt {
+    grid-column: 1;
+    font-family: "Source Code Pro", Inconsolata, monospace;
+}
+dl.gleam-editor-role-jukebox-tracks dd {
+    grid-column: 2;
+    margin: 0;
+}
+dl.gleam-editor-role-jukebox-tracks audio {
+    height: 2em;
+    vertical-align: middle;
+}
+dl.gleam-editor-role-jukebox-tracks .-path {
+    font-size: 0.83em;
+    color: #606060;
+}
 ul.gleam-editor-role-pictureframe-poses {
     margin: 0.5em;
     display: grid;
@@ -381,6 +405,7 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     color: #c0c0c0;
     text-shadow: 0 1px 1px #606060;
     cursor: move;
+    cursor: grab;
 }
 .gleam-editor-step > .-who {
     z-index: 1;

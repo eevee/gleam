@@ -5,7 +5,8 @@ if (! window.Gleam) {
 Object.assign(window.Gleam, (function() {
 
 let make_element = Gleam.make_element;
-    let svg_icon_from_path = Gleam.svg_icon_from_path;
+let mk = Gleam.mk;
+let svg_icon_from_path = Gleam.svg_icon_from_path;
 
 function human_friendly_sort(filenames) {
     filenames.sort((a, b) => {
@@ -800,18 +801,18 @@ class JukeboxEditor extends RoleEditor {
 
     update_assets() {
         // FIXME shouldn't this (and the poses list) also show the path?  but that does seem a bit, noisy...
-        this.track_list.textContent = '';
+        let fragment = document.createDocumentFragment();
         for (let [track_name, track] of Object.entries(this.role.tracks)) {
-            let li = make_element('li');
             let audio = this.main_editor.library.load_audio(track.path);
             audio.controls = true;
             audio.classList.add('-asset');
-            li.append(
-                track_name,
-                audio,
+            fragment.append(
+                mk('dt', track_name),
+                mk('dd', audio, mk('div.-path', track.path)),
             );
-            this.track_list.appendChild(li);
         }
+        this.track_list.textContent = '';
+        this.track_list.append(fragment);
     }
 }
 JukeboxEditor.prototype.ROLE_TYPE = Gleam.Jukebox;
@@ -823,7 +824,7 @@ JukeboxEditor.prototype.HTML = `
             <h2>📻 jukebox</h2>
         </header>
         <h3>Tracks <span class="gleam-editor-hint">(drag and drop into script)</span></h3>
-        <ol class="gleam-editor-role-jukebox-tracks"></ol>
+        <dl class="gleam-editor-role-jukebox-tracks"></dl>
     </li>
 `;
 

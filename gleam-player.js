@@ -2190,6 +2190,7 @@ class Player {
 
 let ret = {};
 for (let obj of [
+    mk,
     make_element,
     svg_icon_from_path,
 
