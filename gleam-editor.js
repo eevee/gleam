@@ -45,11 +45,11 @@ function close_overlay(element) {
 
 // Dummy implementation that can't find any files, used in a fresh editor
 class NullAssetLibrary extends Gleam.AssetLibrary {
-    load_image(filename) {
+    load_image(filename, element) {
         let asset = this.asset(filename);
         asset.used = true;
         asset.exists = false;
-        return make_element('img');
+        return element || mk('img');
     }
 }
 // Entry-based implementation, for local files using the Chrome API
@@ -63,6 +63,7 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
         });
 
         // TODO technically should be calling this repeatedly.  also it's asynchronous, not super sure if that's a problem.
+        // TODO sometimes this is null?  what the fuck is up with drag and drop.
         directory_entry.createReader().readEntries(entries => {
             // TODO hmm, should mark by whether they're present and whether they're used i guess?
             for (let entry of entries) {
@@ -77,8 +78,8 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
     // FIXME surely this should be more generic?  can ANY of it be split out, shared with Remote or with <audio>?
     // FIXME the caller never explicitly knows if this is a bogus image
     // FIXME would be nice if this could update existing elements rather than creating new ones
-    load_image(filename) {
-        let element = mk('img');
+    load_image(filename, element) {
+        element = element || mk('img');
         // TODO oh this be a mess
         this.done_reading_promise.then(() => {
             let asset = this.assets[filename];
@@ -914,6 +915,7 @@ class AddByWildcardDialog {
         for (let [name, path] of this.results) {
             this.role_editor.role.add_pose(name, path);
             // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
+            // FIXME why not just use update_assets for this?
             let li = make_element('li');
             let img = this.library.load_image(path);
             img.classList.add('-asset');
@@ -944,7 +946,21 @@ class PictureFrameEditor extends RoleEditor {
 
         let button2 = mk('button', "Add all poses to script (comic mode)");
         button2.addEventListener('click', ev => {
-            
+            let script = this.main_editor.script;
+            // FIXME this will break if they rename stage oops
+            let stage = script.role_index['stage'];
+            // TODO insert_step does a lot of work; would be nice to extend it
+            // to insert_steps, which adds a block of steps in bulk somewhere
+            for (let [name, pose] of Object.entries(this.role.poses)) {
+                script.insert_step(
+                    new Gleam.Step(this.role, Gleam.PictureFrame.STEP_TYPES.show, [name]),
+                    script.steps.length,
+                );
+                script.insert_step(
+                    new Gleam.Step(stage, Gleam.Stage.STEP_TYPES.pause, []),
+                    script.steps.length,
+                );
+            }
         });
 
         this.element.append(
@@ -956,7 +972,6 @@ class PictureFrameEditor extends RoleEditor {
     }
 
     update_assets() {
-        console.log("updating picture frame assets");
         this.pose_list.textContent = '';
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame = pose[0];  // FIXME this format is bonkers
@@ -1762,7 +1777,12 @@ class Editor {
         }
 
         this.player.director.library = library;
-        // FIXME tell actors to re-fetch assets (aaa)
+        // FIXME tell actors to re-fetch assets (aaa) (this should be the role editors' responsibility?)
+
+        for (let actor of this.player.director.role_to_actor.values()) {
+            actor.sync_with_role(this.player.director);
+        }
+        //this.main_editor.player.director.role_to_actor.get(this.role).sync_with_role(this.main_editor.player.director);
     }
 }
 

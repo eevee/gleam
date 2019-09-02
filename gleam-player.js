@@ -179,6 +179,9 @@ class Actor {
         this.state = state;
         return old_state;
     }
+
+    // TODO figure this out.
+    sync_with_role(director) {}
 }
 Actor.prototype.TWIDDLES = {};
 // Must also be defined on subclasses:
@@ -1244,8 +1247,11 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
     // what.  maybe if this were how the constructor worked it'd be ok
     sync_with_role(director) {
         for (let [pose_name, frames] of Object.entries(this.role.poses)) {
-            if (this.pose_elements[pose_name])
+            if (this.pose_elements[pose_name]) {
+                // FIXME hacky as hell
+                director.library.load_image(frames[0].url, this.pose_elements[pose_name][0]);
                 continue;
+            }
             // FIXME ensure order...
             // FIXME augh, frames need to match too...
             // FIXME remove any that disappeared...
@@ -2333,7 +2339,10 @@ for (let obj of [
     svg_icon_from_path,
 
     Step,
+    Beat,
 
+    Role,
+    Actor,
     Stage,
     Curtain,
     DialogueBox,
