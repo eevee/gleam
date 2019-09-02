@@ -34,29 +34,6 @@ input, select {
     vertical-align: middle;
 }
 
-.gleam-editor-overlay {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    color: black;
-}
-.gleam-editor-arg-enum-poses {
-    position: absolute;
-    min-width: 8em;
-    border: 1px solid black;
-    box-shadow: 0 0 3px #0009;
-}
-.gleam-editor-arg-enum-poses li {
-    background: white;
-    padding: 0.25em 0.5em;
-    cursor: pointer;
-}
-.gleam-editor-arg-enum-poses li:hover {
-    background: #e8e8e8;
-}
-
 dl.gleam-editor-propmap {
     display: grid;
     grid-template-columns: 1fr 4fr;
@@ -488,12 +465,59 @@ textarea.gleam-editor-arg-prose {
 }
 
 
+/* Overlay */
+.gleam-editor-overlay {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    color: black;
+
+    /* Center contents, which are assumed to be a single item */
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+}
+.gleam-editor-arg-enum-poses {
+    position: absolute;
+    min-width: 8em;
+    border: 1px solid black;
+    box-shadow: 0 0 3px #0009;
+}
+.gleam-editor-arg-enum-poses li {
+    background: white;
+    padding: 0.25em 0.5em;
+    cursor: pointer;
+}
+.gleam-editor-arg-enum-poses li:hover {
+    background: #e8e8e8;
+}
+
+
+/* Overlaid dialogs */
+.gleam-editor-dialog {
+    background: white;
+    border: 1px solid black;
+    box-shadow: 0 2px 2px #0009;
+    padding: 1em;
+}
+.gleam-editor-dialog .-files {
+    height: 20em;
+    overflow-y: scroll;
+    border: 1px solid #999;
+    background: #f4f4f4;
+}
+.gleam-editor-dialog .-files li {
+    padding: 0.25em 0.33em;
+}
+
+
 /* Special styling for particular role types; applies to steps and to the
  * headers of their properties in the role list */
-/* TODO maybe make these roles generic instead of needing to update this 
 /* Stage */
 .gleam-editor-role-stage {
-    background: hsl(0, 50%, 75%);
+    background: hsl(0, 80%, 80%);
 }
 .gleam-editor-role-stage::before {
     content: '📻';
@@ -501,7 +525,7 @@ textarea.gleam-editor-arg-prose {
 }
 /* Jukebox */
 .gleam-editor-role-jukebox {
-    background: hsl(270, 50%, 75%);
+    background: hsl(270, 80%, 80%);
 }
 .gleam-editor-role-jukebox::before {
     content: '📻';
@@ -509,7 +533,7 @@ textarea.gleam-editor-arg-prose {
 }
 /* Picture frame */
 .gleam-editor-role-pictureframe {
-    background: hsl(330, 50%, 75%);
+    background: hsl(330, 80%, 80%);
 }
 .gleam-editor-role-pictureframe::before {
     content: '🖼️';
@@ -517,7 +541,7 @@ textarea.gleam-editor-arg-prose {
 }
 /* Dialogue box */
 .gleam-editor-role-dialoguebox {
-    background: hsl(60, 50%, 75%);
+    background: hsl(60, 80%, 80%);
 }
 .gleam-editor-role-dialoguebox::before {
     content: '💬️';
@@ -525,7 +549,7 @@ textarea.gleam-editor-arg-prose {
 }
 /* Character */
 .gleam-editor-role-character {
-    background: hsl(210, 50%, 75%);
+    background: hsl(210, 80%, 80%);
 }
 .gleam-editor-role-character::before {
     content: '🗣️';

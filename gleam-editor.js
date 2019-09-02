@@ -798,6 +798,126 @@ JukeboxEditor.prototype.ROLE_TYPE = Gleam.Jukebox;
 JukeboxEditor.role_type_name = 'jukebox';
 JukeboxEditor.prototype.CLASS_NAME = 'gleam-editor-role-jukebox';
 
+class AddByWildcardDialog {
+    constructor(role_editor, library) {
+        this.role_editor = role_editor;
+        this.library = library;
+        this.results = [];
+
+        this.element = mk('div.gleam-editor-dialog');
+        this.element.innerHTML = `
+            <header><h1>Add poses in bulk</h1></header>
+            <p>Filename pattern: <input type="text" class="-wildcard" placeholder="*.png"></p>
+            <ul class="-files"></ul>
+            <p><button type="button" class="-cancel">Cancel</button><button disabled type="button" class="-confirm">Add 0</button></p>
+        `;
+
+        this.textbox = this.element.querySelector('.-wildcard');
+        this.result_list = this.element.querySelector('.-files');
+        this.cancel_button = this.element.querySelector('.-cancel');
+        this.ok_button = this.element.querySelector('.-confirm');
+
+        this.textbox.addEventListener('input', ev => {
+            if (this.text_timeout) {
+                clearTimeout(this.text_timeout);
+            }
+            // TODO show a throbber or something while this is going so it doesn't seem just arbitrarily laggy
+            this.text_timeout = setTimeout(() => {
+                this.text_timeout = null;
+                this.update_matches();
+            }, 500);
+        });
+
+        this.cancel_button.addEventListener('click', ev => {
+            close_overlay(this.element);
+        });
+
+        this.ok_button.addEventListener('click', ev => {
+            this.finish();
+        });
+    }
+
+    open() {
+        open_overlay(this.element);
+    }
+
+    compile_regex(wildcard) {
+        let parts = wildcard.split(/([*?])/);
+        let rx_parts = ['^'];
+        for (let [i, part] of parts.entries()) {
+            if (i % 2 === 0) {
+                // FIXME regex escape
+            }
+            else if (part === '*') {
+                part = '.*';
+            }
+            else if (part === '?') {
+                part = '.';
+            }
+
+            if (i === 1) {
+                part = '(' + part;
+            }
+            if (i === parts.length - 2) {
+                part = part + ')';
+            }
+
+            rx_parts.push(part);
+        }
+        rx_parts.push('$');
+        return new RegExp(rx_parts.join(''));
+    }
+
+    update_matches() {
+        let rx = this.compile_regex(this.textbox.value);
+        let lib = this.library;
+        let list = this.result_list;
+
+        let library_paths = Object.keys(lib.assets);
+        human_friendly_sort(library_paths);
+
+        this.results = [];
+        this.result_list.textContent = '';
+        for (let path of library_paths) {
+            let m = path.match(rx);
+            if (m) {
+                let name = m[1];
+                // TODO highlight the matched part, which will become the name
+                this.result_list.appendChild(mk('li', path));
+                this.results.push([name, path]);
+            }
+        }
+
+        if (this.results.length === 0) {
+            this.ok_button.disabled = true;
+        }
+        else {
+            this.ok_button.disabled = false;
+        }
+        this.ok_button.textContent = `Add ${this.results.length}`;
+    }
+
+    finish() {
+        // FIXME what if one of these names already exists?
+        for (let [name, path] of this.results) {
+            this.role_editor.role.add_pose(name, path);
+            // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
+            let li = make_element('li');
+            let img = this.library.load_image(path);
+            img.classList.add('-asset');
+            li.append(img);
+            li.appendChild(mk('p.-caption', name));
+            this.role_editor.pose_list.appendChild(li);
+        }
+
+        // FIXME invasive...
+        // FIXME how do i update the existing actor, then?
+        this.role_editor.main_editor.player.director.role_to_actor.get(this.role_editor.role).sync_with_role(this.role_editor.main_editor.player.director);
+
+        close_overlay(this.element);
+    }
+}
+
 class PictureFrameEditor extends RoleEditor {
     constructor(...args) {
         super(...args);
@@ -805,53 +925,9 @@ class PictureFrameEditor extends RoleEditor {
         this.pose_list = mk('ul.gleam-editor-role-pictureframe-poses');
         this.update_assets();
 
-        let button = mk('button', "add poses by wildcard");
+        let button = mk('button', "Add poses in bulk");
         button.addEventListener('click', ev => {
-            let wildcard = 'warmheart*.png';
-            let parts = wildcard.split(/([*?])/);
-            let rx_parts = [];
-            for (let [i, part] of parts.entries()) {
-                if (i % 2 === 0) {
-                    // FIXME regex escape
-                }
-                else if (part === '*') {
-                    part = '.*';
-                }
-                else if (part === '?') {
-                    part = '.';
-                }
-
-                if (i === 1) {
-                    part = '(' + part;
-                }
-                if (i === parts.length - 2) {
-                    part = part + ')';
-                }
-
-                rx_parts.push(part);
-            }
-            let rx = new RegExp(rx_parts.join(''));
-            let lib = this.main_editor.library;
-
-            let library_paths = Object.keys(lib.assets);
-            human_friendly_sort(library_paths);
-
-            for (let path of library_paths) {
-                let m = path.match(rx);
-                if (m) {
-                    let name = m[1];
-                    this.role.add_pose(name, path);
-                    // FIXME overt c/p job
-                    let li = make_element('li');
-                    let img = lib.load_image(path);
-                    img.classList.add('-asset');
-                    li.append(img);
-                    li.appendChild(make_element('p', '-caption', name));
-                    this.pose_list.appendChild(li);
-                }
-            }
-            // FIXME how do i update the existing actor, then?
-            this.main_editor.player.director.role_to_actor.get(this.role).sync_with_role(this.main_editor.player.director);
+            new AddByWildcardDialog(this, this.main_editor.library).open();
         });
 
         this.element.append(
