@@ -1,3 +1,5 @@
+// FIXME <button>s should be type=button
+// FIXME remove make_element probably
 "use strict";
 if (! window.Gleam) {
     throw new Error("Gleam player must be loaded first!");
@@ -55,6 +57,10 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
     constructor(directory_entry) {
         super();
         this.directory_entry = directory_entry;
+        let resolve;
+        this.done_reading_promise = new Promise((res, rej) => {
+            resolve = res;
+        });
 
         // TODO technically should be calling this repeatedly.  also it's asynchronous, not super sure if that's a problem.
         directory_entry.createReader().readEntries(entries => {
@@ -64,49 +70,55 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
                 asset.exists = true;
                 asset.entry = entry;
             }
+            resolve();
         }, console.error)
     }
 
     // FIXME surely this should be more generic?  can ANY of it be split out, shared with Remote or with <audio>?
+    // FIXME the caller never explicitly knows if this is a bogus image
+    // FIXME would be nice if this could update existing elements rather than creating new ones
     load_image(filename) {
-        let element = make_element('img');
-        let asset = this.assets[filename];
-        if (!asset || !asset.entry) {
-            // If there's no asset, this isn't a directory entry, so it can't possibly work
-            if (! asset) {
-                this.assets[filename] = {
-                    used: true,
-                    exists: false,
-                };
+        let element = mk('img');
+        // TODO oh this be a mess
+        this.done_reading_promise.then(() => {
+            let asset = this.assets[filename];
+            if (!asset || !asset.entry) {
+                // If there's no asset, this isn't a directory entry, so it can't possibly work
+                if (! asset) {
+                    this.assets[filename] = {
+                        used: true,
+                        exists: false,
+                    };
+                }
+                return;
             }
-            return element;
-        }
 
-        asset.used = true;
-
-        if (asset.url) {
             asset.used = true;
-            element.src = url;
-            return element;
-        }
 
-        // OK!  There's an asset, it has an Entry, we just need a URL for it
-        let promise;
-        if (asset.entry.toURL) {
-            // WebKit only
-            promise = Promise.resolve(asset.entry.toURL());
-        }
-        else {
-            // TODO is this a bad idea?  it's already async so am i doing a thousand reads at once??
-            promise = new Promise((resolve, reject) => {
-                asset.entry.file(file => {
-                    resolve(URL.createObjectURL(file));
+            if (asset.url) {
+                asset.used = true;
+                element.src = url;
+                return;
+            }
+
+            // OK!  There's an asset, it has an Entry, we just need a URL for it
+            let promise;
+            if (asset.entry.toURL) {
+                // WebKit only
+                promise = Promise.resolve(asset.entry.toURL());
+            }
+            else {
+                // TODO is this a bad idea?  it's already async so am i doing a thousand reads at once??
+                promise = new Promise((resolve, reject) => {
+                    asset.entry.file(file => {
+                        resolve(URL.createObjectURL(file));
+                    });
                 });
-            });
-        }
+            }
 
-        promise.then(url => {
-            element.src = url;
+            promise.then(url => {
+                element.src = url;
+            });
         });
 
         // TODO fire an event here, or what?
@@ -178,7 +190,7 @@ class MutableScript extends Gleam.Script {
             return this.beats[beat_index - 1].create_next();
         }
         else {
-            return Beat.create_first(this.roles);
+            return Gleam.Beat.create_first(this.roles);
         }
     }
 
@@ -930,19 +942,27 @@ class PictureFrameEditor extends RoleEditor {
             new AddByWildcardDialog(this, this.main_editor.library).open();
         });
 
+        let button2 = mk('button', "Add all poses to script (comic mode)");
+        button2.addEventListener('click', ev => {
+            
+        });
+
         this.element.append(
             mk('h3', "Poses ", mk('span.gleam-editor-hint', "(drag and drop into script)")),
             this.pose_list,
             button,
+            button2,
         );
     }
 
     update_assets() {
+        console.log("updating picture frame assets");
         this.pose_list.textContent = '';
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame = pose[0];  // FIXME this format is bonkers
             let li = make_element('li');
             let img = this.main_editor.library.load_image(frame.url);
+            // TODO umm i can't tell from here whether there's actually anything, and i'd like to have a dummy element for stuff that didn't load.
             img.classList.add('-asset');
             li.append(img);
             li.appendChild(make_element('p', '-caption', pose_name));
@@ -1660,7 +1680,19 @@ class Editor {
         this.script_panel = new ScriptPanel(this, document.getElementById('gleam-editor-script'));
 
         // Start with an empty script
-        this.load_script(new MutableScript, new NullAssetLibrary);
+        // TODO i guess this needs some ui
+        //this.load_script(new MutableScript, new NullAssetLibrary);
+        let json = window.localStorage.getItem('gleam-temp');
+        let script;
+        if (json) {
+            // TODO error handling here, probably
+            script = MutableScript.from_json(JSON.parse(json));
+        }
+        else {
+            script = new MutableScript;
+            script.add_role(new Gleam.Stage('stage'));
+        }
+        this.load_script(script, new NullAssetLibrary);
     }
 
     // TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
@@ -1688,6 +1720,29 @@ class Editor {
 
         // Finally, set the player going
         this.player.inject(document.querySelector('#gleam-editor-player .gleam-editor-panel-body'));
+    }
+
+    save() {
+        let json = this.script.to_json();
+        json.meta._editor = {
+            // FIXME put library root in here so we know where to get the files, or what folder to tell the author to fetch
+        };
+        console.log(json);
+        // TODO there's a storage event for catching if this was changed in another tab, ho hum
+        /*
+        let index_json = window.localStorage.getItem('gleam-editor');
+        let index;
+        if (index_json === undefined) {
+            index = {
+                projects: [],
+            };
+        }
+        else {
+            index = JSON.parse(index_json);
+        }
+        */
+
+        window.localStorage.setItem('gleam-temp', JSON.stringify(json));
     }
 
     set_library(library) {

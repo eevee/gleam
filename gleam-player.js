@@ -105,8 +105,28 @@ class Role {
         this.name = name;
     }
 
+    // Call me after creating a Role subclass to make it loadable.
+    static register(type_name) {
+        this.type_name = type_name;
+        Role._ROLE_TYPES[type_name] = this;
+    }
+
     static from_legacy_json(name, json) {
+        if (this.type_name !== json.type) {
+            throw new Error(`Role class ${this.name} can't load a role of type '${json.type}'`);
+        }
         return new this(name);
+    }
+
+    static from_json(json) {
+        return new this(json.name);
+    }
+
+    to_json() {
+        return {
+            name: this.name,
+            type: this.constructor.type_name,
+        };
     }
 
     generate_initial_state() {
@@ -123,6 +143,7 @@ class Role {
     }
 }
 Role.prototype.TWIDDLES = {};
+Role._ROLE_TYPES = {};
 Role.Actor = null;
 
 
@@ -211,6 +232,7 @@ class Step {
 
 class Stage extends Role {
 }
+Stage.register('stage');
 Stage.prototype.TWIDDLES = {};
 Stage.STEP_TYPES = {
     pause: {
@@ -229,6 +251,7 @@ Stage.Actor = class StageActor extends Actor {
 // Full-screen transition actor
 class Curtain extends Role {
 }
+Curtain.register('curtain');
 Curtain.prototype.TWIDDLES = {
     lowered: {
         initial: false,
@@ -278,7 +301,14 @@ class DialogueBox extends Role {
 
         this.speed = 60;
     }
+
+    to_json() {
+        let json = super.to_json();
+        json.speed = 60;
+        return json;
+    }
 }
+DialogueBox.register('dialogue-box');
 DialogueBox.prototype.TWIDDLES = {
     phrase: {
         initial: null,
@@ -911,6 +941,21 @@ class Jukebox extends Role {
         return jukebox;
     }
 
+    static from_json(json) {
+        let jukebox = super.from_json(json);
+        for (let [name, track_def] of Object.entries(json.tracks)) {
+            jukebox.add_track(name, track_def.path, track_def.loop);
+        }
+        return jukebox;
+    }
+
+    to_json() {
+        let json = super.to_json();
+        // FIXME should this be an array?  should it be an array even in the role object proper?
+        json.tracks = this.tracks;
+        return json;
+    }
+
     add_track(track_name, path, loop = true) {
         this.tracks[track_name] = {
             path: path,
@@ -918,6 +963,7 @@ class Jukebox extends Role {
         };
     }
 }
+Jukebox.register('jukebox');
 Jukebox.prototype.TWIDDLES = {
     track: {
         initial: null,
@@ -1084,11 +1130,31 @@ class PictureFrame extends Role {
         return pf;
     }
 
+    static from_json(json) {
+        let pf = new this(json.name, json.position);
+        for (let [key, value] of Object.entries(json.poses)) {
+            pf.add_pose(key, value);
+        }
+        return pf;
+    }
+
+    to_json() {
+        let json = super.to_json();
+        json.poses = {};
+        for (let [name, pose] of Object.entries(this.poses)) {
+            // FIXME this won't fly for ad-hoc animations.  but i don't want to make a big mess for simple cases either
+            // should this be a list, i wonder?  does order matter?
+            json.poses[name] = pose[0].url;
+        }
+        return json;
+    }
+
     // TODO don't really love "view" as the name for this
     add_pose(name, tmp_image_url) {
         this.poses[name] = [{ url: tmp_image_url }];
     }
 }
+PictureFrame.register('picture-frame');
 PictureFrame.prototype.TWIDDLES = {
     pose: {
         initial: null,
@@ -1302,7 +1368,10 @@ class Character extends PictureFrame {
         role.dialogue_position = json.position || null;
         return role;
     }
+
+    // FIXME i think i should also be saving the dialogue box name?  and, dialogue name/color/etc which don't even appear in the constructor
 }
+Character.register('character');
 // XXX aha, this could be a problem.  a character is a delegate; it doesn't have any actual twiddles of its own!
 // in the old code (by which i mean, round two), the character even OWNS the pictureframe...
 // so "Character:say" is really two twiddle updates on the dialogue box: the phrase AND the speaker whose style to use.  hrm.
@@ -1564,7 +1633,6 @@ class Script {
 
         this.roles = [];
         this.role_index = {};
-        this._add_role(new Stage('stage'));
 
         this.set_steps([]);
 
@@ -1595,6 +1663,10 @@ class Script {
         let dialogue_box = new DialogueBox('dialogue');
         this._add_role(dialogue_box);
 
+        // And an implicit stage
+        let stage = new Stage('stage');
+        this._add_role(stage);
+
         // FIXME ???  how do i do... registration?  hmm
         let ROLE_TYPES = {
             curtain: Curtain,
@@ -1619,7 +1691,6 @@ class Script {
             this._add_role(role);
         }
 
-        let stage = this.role_index['stage'];
         let steps = [];
         for (let json_step of json.script) {
             if (! json_step.actor) {
@@ -1668,6 +1739,73 @@ class Script {
         */
 
         return this;
+    }
+
+    static from_json(json) {
+        let script = new this();
+
+        // Metadata
+        script.title = json.meta.title;
+        script.subtitle = json.meta.subtitle;
+        // FIXME relying on Date to parse dates is ill-advised, also what is the date format even
+        // FIXME published vs modified
+        script.modified_date = json.meta.modified ? new Date(json.meta.modified) : null;
+        script.published_date = json.meta.published ? new Date(json.meta.published) : null;
+
+        for (let role_def of json.roles) {
+            let type = Role._ROLE_TYPES[role_def.type];
+            if (! type) {
+                throw new Error(`No such role type: ${role_def.type}`);
+            }
+
+            script._add_role(type.from_json(role_def));
+        }
+
+        let steps = [];
+        for (let json_step of json.steps) {
+            let role = script.role_index[json_step.role];
+            let role_type = role.constructor;
+            // FIXME not sure what this looks like yet, figure it out i guess
+            let [step_key, ...arg_keys] = role_type.LEGACY_JSON_ACTIONS[json_step.action];
+            let step_type = role_type.STEP_TYPES[step_key];
+            if (! step_type) {
+                throw new Error(`No such action '${json_step.action}' for role '${json_step.actor}'`);
+            }
+            steps.push(new Step(role, role_type.STEP_TYPES[step_key], arg_keys.map(key => json_step[key])));
+        }
+
+            script.set_steps(steps);
+
+        return script;
+    }
+
+    // Return a JSON-compatible object representing this Script.
+    // Obviously this is only used by the editor, but it's not much code and it
+    // makes sense to keep it here next to the code for loading from JSON.
+    to_json() {
+        let json = {
+            meta: {
+                //asset_root?
+                //name?
+                title: this.title || null,
+                subtitle: this.subtitle || null,
+                modified: Date.now(),  // TODO utc
+                // TODO published?  updated?
+                version: "1.0",
+                //preview?
+                //credits????
+            },
+            roles: [],
+            steps: [],
+        };
+
+        for (let role of this.roles) {
+            json.roles.push(role.to_json());
+        }
+
+        // TODO steps
+
+        return json;
     }
 
     set_steps(steps) {

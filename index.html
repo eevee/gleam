@@ -47,6 +47,7 @@
         window.addEventListener('load', ev => {
             // FIXME does the editor really take over just from being created?
             let editor = new Gleam.Editor(document.querySelector('.gleam-editor'));
+            window._gleam_editor = editor;
             return;
 
             // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
