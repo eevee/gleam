@@ -192,10 +192,15 @@ Actor.LEGACY_JSON_ACTIONS = null;
 
 // Roles are choreographed by Steps, which are then applied to Actors
 class Step {
-    constructor(role, type, args) {
+    constructor(role, kind_name, args) {
         this.role = role;
-        this.type = type;
+        this.kind_name = kind_name;
         this.args = args;
+
+        this.kind = role.constructor.STEP_TYPES[kind_name];
+        if (! this.kind) {
+            throw new Error(`No such step '${kind_name}' for role '${role}'`);
+        }
 
         // Populated when the Step is added to a Script
         this.index = null;
@@ -203,7 +208,7 @@ class Step {
     }
 
     update_beat(beat) {
-        for (let twiddle_change of this.type.twiddles) {
+        for (let twiddle_change of this.kind.twiddles) {
             let role = this.role;
             if (twiddle_change.delegate) {
                 role = role[twiddle_change.delegate];
@@ -222,7 +227,7 @@ class Step {
     }
 
     *get_affected_twiddles() {
-        for (let twiddle_change of this.type.twiddles) {
+        for (let twiddle_change of this.kind.twiddles) {
             let role = this.role;
             if (twiddle_change.delegate) {
                 role = role[twiddle_change.delegate];
@@ -1714,11 +1719,7 @@ class Script {
             let role = this.role_index[json_step.actor];
             let role_type = role.constructor;
             let [step_key, ...arg_keys] = role_type.LEGACY_JSON_ACTIONS[json_step.action];
-            let step_type = role_type.STEP_TYPES[step_key];
-            if (! step_type) {
-                throw new Error(`No such action '${json_step.action}' for role '${json_step.actor}'`);
-            }
-            steps.push(new Step(role, role_type.STEP_TYPES[step_key], arg_keys.map(key => json_step[key])));
+            steps.push(new Step(role, step_key, arg_keys.map(key => json_step[key])));
         }
 
         this.set_steps(steps);
@@ -1750,6 +1751,8 @@ class Script {
 
     static from_json(json) {
         let script = new this();
+        // TODO check validity
+        // TODO maybe catch immediate errors (like from Step constructor), continue, and aggregate them before failing
 
         // Metadata
         script.title = json.meta.title;
@@ -1770,18 +1773,12 @@ class Script {
 
         let steps = [];
         for (let json_step of json.steps) {
-            let role = script.role_index[json_step.role];
-            let role_type = role.constructor;
-            // FIXME not sure what this looks like yet, figure it out i guess
-            let [step_key, ...arg_keys] = role_type.LEGACY_JSON_ACTIONS[json_step.action];
-            let step_type = role_type.STEP_TYPES[step_key];
-            if (! step_type) {
-                throw new Error(`No such action '${json_step.action}' for role '${json_step.actor}'`);
-            }
-            steps.push(new Step(role, role_type.STEP_TYPES[step_key], arg_keys.map(key => json_step[key])));
+            let [role_name, kind_name, ...args] = json_step;
+            let role = script.role_index[role_name];
+            steps.push(new Step(role, kind_name, args));
         }
 
-            script.set_steps(steps);
+        script.set_steps(steps);
 
         return script;
     }
@@ -1798,7 +1795,7 @@ class Script {
                 subtitle: this.subtitle || null,
                 modified: Date.now(),  // TODO utc
                 // TODO published?  updated?
-                version: "1.0",
+                gleam_version: VERSION,
                 //preview?
                 //credits????
             },
@@ -1810,7 +1807,9 @@ class Script {
             json.roles.push(role.to_json());
         }
 
-        // TODO steps
+        for (let step of this.steps) {
+            json.steps.push([step.role.name, step.kind_name, ...step.args]);
+        }
 
         return json;
     }
@@ -1834,12 +1833,12 @@ class Script {
             beat.last_step_index = i;
 
             // If this step pauses, the next step goes in a new beat
-            if (step.type.pause) {
+            if (step.kind.pause) {
                 // If this is the last step, a pause is meaningless
                 if (i === this.steps.length - 1)
                     break;
 
-                beat.pause = step.type.pause;
+                beat.pause = step.kind.pause;
 
                 let prev_beat = beat;
                 beat = prev_beat.create_next();
@@ -2150,7 +2149,7 @@ class PlayerPauseOverlay extends PlayerOverlay {
             }
             fragment.appendChild(li);
 
-            if (script.steps[beat.last_step_index].type.is_major_transition) {
+            if (script.steps[beat.last_step_index].kind.is_major_transition) {
                 // TODO ok this is extremely hokey to put in an <ol>
                 fragment.append(make_element('hr'));
                 number_next_beat = true;

@@ -250,7 +250,7 @@ class MutableScript extends Gleam.Script {
             new_step.update_beat(beat);
             beat.last_step_index = index;
             // TODO should update_beat do this?
-            beat.pause = new_step.type.pause;
+            beat.pause = new_step.kind.pause;
 
             new_step.index = index;
             new_step.beat_index = new_beat_index;
@@ -272,9 +272,9 @@ class MutableScript extends Gleam.Script {
             // Update with the new step
             new_step.update_beat(new_beat);
 
-            if (new_step.type.pause) {
+            if (new_step.kind.pause) {
                 // The new step pauses, so it splits this beat in half
-                new_beat.pause = new_step.type.pause;
+                new_beat.pause = new_step.kind.pause;
                 new_beat.last_step_index = index;
                 // TODO mark this in the event, somehow
                 new_beat = new_beat.create_next();
@@ -372,7 +372,7 @@ class MutableScript extends Gleam.Script {
                 this.steps[i].update_beat(new_beat);
             }
 
-            if (step.type.pause && beat_index < this.beats.length - 1) {
+            if (step.kind.pause && beat_index < this.beats.length - 1) {
                 // The step pauses, so we need to merge with the next beat --
                 // or, if it's the only step, just delete the beat
                 beat = this.beats[beat_index + 1];
@@ -660,11 +660,10 @@ class RoleEditor {
         });
 
         // Add step templates
-        this.step_type_map = new Map();  // step element => step type
-        for (let step_type of Object.values(this.ROLE_TYPE.STEP_TYPES)) {
-            let step_el = this.make_sample_step_element(step_type);
-            this.element.appendChild(step_el);
-            this.step_type_map.set(step_el, step_type);
+        for (let [step_kind_name, step_kind] of Object.entries(this.ROLE_TYPE.STEP_TYPES)) {
+            let el = this.make_sample_step_element(step_kind);
+            el.setAttribute('data-step-kind', step_kind_name);
+            this.element.appendChild(el);
         }
 
         // Enable dragging steps into the script
@@ -672,13 +671,14 @@ class RoleEditor {
         this.element.addEventListener('dragstart', e => {
             e.dataTransfer.dropEffect = 'copy';
             e.dataTransfer.setData('text/plain', null);
-            let step_type = this.step_type_map.get(e.target);
+            let step_kind_name = e.target.getAttribute('data-step-kind');
+            let step_kind = this.role.constructor.STEP_TYPES[step_kind_name];
             let args = [];
-            for (let arg_def of step_type.args) {
+            for (let arg_def of step_kind.args) {
                 // TODO?
                 args.push(null);
             }
-            this.main_editor.script_panel.begin_step_drag(new Gleam.Step(this.role, step_type, args));
+            this.main_editor.script_panel.begin_step_drag(new Gleam.Step(this.role, step_kind_name, args));
         });
     }
 
@@ -686,7 +686,7 @@ class RoleEditor {
         return new this.prototype.ROLE_TYPE(name);
     }
 
-    make_sample_step_element(step_type) {
+    make_sample_step_element(step_kind) {
         let el = make_element('div', 'gleam-editor-step');
 
         let handle = make_element('div', '-handle', '⠿');
@@ -706,8 +706,8 @@ class RoleEditor {
         });
 
         // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
-        el.appendChild(make_element('div', '-what', step_type.display_name));
-        for (let arg_def of step_type.args) {
+        el.appendChild(make_element('div', '-what', step_kind.display_name));
+        for (let arg_def of step_kind.args) {
             el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
         }
         return el;
@@ -737,9 +737,9 @@ class RoleEditor {
         let role_tag = make_element('div', '-who', step.role.name);
         role_tag.classList.add(this.CLASS_NAME);
         el.appendChild(role_tag);
-        el.appendChild(make_element('div', '-what', step.type.display_name));
+        el.appendChild(make_element('div', '-what', step.kind.display_name));
 
-        for (let [i, arg_def] of step.type.args.entries()) {
+        for (let [i, arg_def] of step.kind.args.entries()) {
             let value = step.args[i];
             let arg_element = make_element('div', '-how');
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
@@ -952,14 +952,8 @@ class PictureFrameEditor extends RoleEditor {
             // TODO insert_step does a lot of work; would be nice to extend it
             // to insert_steps, which adds a block of steps in bulk somewhere
             for (let [name, pose] of Object.entries(this.role.poses)) {
-                script.insert_step(
-                    new Gleam.Step(this.role, Gleam.PictureFrame.STEP_TYPES.show, [name]),
-                    script.steps.length,
-                );
-                script.insert_step(
-                    new Gleam.Step(stage, Gleam.Stage.STEP_TYPES.pause, []),
-                    script.steps.length,
-                );
+                script.insert_step(new Gleam.Step(this.role, 'show', [name]), script.steps.length);
+                script.insert_step(new Gleam.Step(stage, 'pause', []), script.steps.length);
             }
         });
 
@@ -1299,7 +1293,7 @@ class ScriptPanel extends Panel {
             let step_element = arg.closest('.gleam-editor-step');
             let step = this.element_to_step.get(step_element);
             let i = parseInt(arg.getAttribute('data-arg-index'), 10);
-            let arg_def = step.type.args[i];
+            let arg_def = step.kind.args[i];
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
             let promise = arg_type.edit(arg, step.args[i], step, ev);
             // FIXME ahh you could conceivably double-click on the same element again if it edits inline, like prose does...
@@ -1431,8 +1425,8 @@ class ScriptPanel extends Panel {
                 // already pauses, then the caret will be at the end of a beat
                 // gap.  Move it up to appear in the middle of the beat.
                 if (position > 0 &&
-                    this.drag.step.type.pause &&
-                    this.editor.script.steps[position - 1].type.pause)
+                    this.drag.step.kind.pause &&
+                    this.editor.script.steps[position - 1].kind.pause)
                 {
                     caret_mid_beat = true;
                 }
