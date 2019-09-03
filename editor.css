@@ -11,7 +11,9 @@ html {
 body {
     display: grid;
     grid-template:
-        "assets steps player" 1fr
+        "header header header" min-content
+        "meta steps player" min-content
+        "assets steps player" min-content
         "assets steps roles" 1fr
         /* Grid columns seem to default to a minimum width of min-content, so
          * using minmax(0, ...) will force the script column to shrink if
@@ -19,7 +21,7 @@ body {
          * scroll horizontally) */
         / fit-content(10%) minmax(0, 1fr) min-content
     ;
-    height: 100%;
+    height: 100vh;
     width: 100vw;
     margin: 0;
 
@@ -78,10 +80,11 @@ section.gleam-editor-panel > .gleam-editor-panel-body {
     position: relative;
     /* Establish a stacking context to quarantine any z nonsense within each panel -- otherwise stuff can be above the overlay, oops! */
     z-index: 0;
-    /* Note the flex-basis here has to be zero, or the body's contents will be considered large enough to expand the grid beyond the height of the page viewport! */
+    /* Note the flex-basis here has to be something other than auto, or the body's contents will be considered large enough to expand the grid beyond the height of the page viewport!  There's probably a better fix but this is fucking complicated sigh */
     /* FIXME can i hoist this up a level and make it the grid cell's problem? */
-    flex: 1 0 0;
-    overflow: auto;
+    flex: 1 0 10vh;
+    /* auto overflow makes the scrollbar optional, so it doesn't count against the min-content width, which then causes an extra horizontal scrollbar on the asset list.  just always show the scrollbar; it's likely to be necessary for nontrivial projects anyway */
+    overflow-y: scroll;
 }
 section.gleam-editor-panel > footer {
     /* TODO this was a bit of a half-baked idea and isn't done yet */
@@ -90,8 +93,14 @@ section.gleam-editor-panel > footer {
     overflow: auto;
     border-top: 1px solid #101010;
 }
+body > header {
+    grid-area: header;
+}
 #gleam-editor-player {
     grid-area: player;
+}
+#gleam-editor-meta {
+    grid-area: meta;
 }
 #gleam-editor-roles {
     grid-area: roles;
@@ -128,6 +137,11 @@ nav button:hover {
     opacity: 1;
 }
 
+/* Header */
+body > header h1 {
+    margin: 1rem;
+}
+
 /* Stage panel */
 #gleam-editor-player {
     background: #303030;
@@ -139,6 +153,12 @@ nav button:hover {
 }
 #gleam-editor-player .gleam-player {
     margin: auto;
+}
+
+/* Project/metadata panel */
+#gleam-editor-meta > .gleam-editor-panel-body {
+    /* Remove the scrollability here; otherwise max-content is interpreted as zero, for some reason */
+    overflow: visible;
 }
 
 /* Roles panel */
@@ -221,12 +241,12 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
 .gleam-editor-assets li {
     padding: 0.25em 0.5em;
 }
-.gleam-editor-assets li.--missing {
-    background: #803838;
-}
 .gleam-editor-assets li.--unused {
     color: #c0c0c0;
     font-style: italic;
+}
+.gleam-editor-assets li.--missing {
+    color: #f66;
 }
 
 /* Script panel */

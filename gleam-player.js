@@ -12,6 +12,7 @@
 
 window.Gleam = (function() {
 
+const VERSION = "0.1";
 
 function make_element(tag, cls, text) {
     let element = document.createElement(tag);
@@ -2014,7 +2015,7 @@ class PlayerOverlay {
             mk('header', this.player.script.title),
             this.body,
             // FIXME this should link, um, somewhere
-            mk('footer', 'GLEAM 0.1'),
+            mk('footer', `GLEAM ${VERSION}`),
         );
 
         // Clicking on the element shouldn't trigger an advance, which is on
@@ -2332,7 +2333,9 @@ class Player {
     }
 }
 
-let ret = {};
+let ret = {
+    VERSION: VERSION,
+};
 for (let obj of [
     mk,
     make_element,

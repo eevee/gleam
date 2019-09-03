@@ -9,9 +9,22 @@
     <script src="gleam-editor.js"></script>
 </head>
 <body>
+    <header>
+        <h1>GLEAM visual novel creator</h1>
+    </header>
     <section class="gleam-editor-panel" id="gleam-editor-player">
         <header><h1>Stage</h1></header>
         <div class="gleam-editor-panel-body">
+        </div>
+    </section>
+    <section class="gleam-editor-panel" id="gleam-editor-meta">
+        <header><h1>Project</h1></header>
+        <div class="gleam-editor-panel-body">
+            <p><label>Title<input type="text"></label></p>
+            <p><label>Subtitle (optional)<input type="text"></label></p>
+            <p>Last saved 5 seconds ago</p>
+            <p><button type=button>Publish</button></p>
+            <p><button type=button>Close</button></p>
         </div>
     </section>
     <section class="gleam-editor-panel" id="gleam-editor-roles">
