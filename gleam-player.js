@@ -30,8 +30,8 @@ function mk(tag_selector, ...children) {
     let el = document.createElement(tag);
     el.classList = classes.join(' ');
     if (children.length > 0) {
-        if (! children[0] instanceof Node && typeof(children[0]) !== "string") {
-            let attrs = children.split(0, 1);
+        if (!(children[0] instanceof Node) && typeof(children[0]) !== "string") {
+            let [attrs] = children.splice(0, 1);
             for (let [key, value] of Object.entries(attrs)) {
                 el.setAttribute(key, value);
             }
@@ -95,6 +95,33 @@ function promise_transition(el) {
         return Promise.resolve();
     }
 }
+
+// -----------------------------------------------------------------------------
+// Styling stuff
+
+class GoogleFontLoader {
+    constructor() {
+        this.loaded_fonts = {};
+    }
+
+    // TODO i guess this could get more complicated with variants + subsets
+    load(family) {
+        if (this.loaded_fonts[family]) {
+            return;
+        }
+
+        this.loaded_fonts[family] = true;
+
+        let params = new URLSearchParams({family: family});
+        document.head.append(mk('link', {
+            href: `https://fonts.googleapis.com/css?${params}`,
+            rel: 'stylesheet',
+            type: 'text/css',
+        }));
+    }
+}
+
+const GOOGLE_FONT_LOADER = new GoogleFontLoader;
 
 // -----------------------------------------------------------------------------
 // Roles and Actors
@@ -2165,12 +2192,17 @@ class PlayerPauseOverlay extends PlayerOverlay {
 
 class Player {
     constructor(script, library) {
-        this.script = script;
-        // TODO what's a reasonable default for a library?  remote based on location of the script (or the calling file), of course, but...?
-        this.director = new Director(script, library);
         this.container = make_element('div', 'gleam-player');
         this.paused = false;
         this.loaded = false;
+
+        // Do this as early as possible, so it loads first
+        // FIXME this should very much be taken from the script and also configurable etc
+        this.set_default_font('Comfortaa');
+
+        this.script = script;
+        // TODO what's a reasonable default for a library?  remote based on location of the script (or the calling file), of course, but...?
+        this.director = new Director(script, library);
 
         // Create some player UI
         // Loading overlay
@@ -2248,6 +2280,17 @@ class Player {
         this.container.remove();
         this._stop_frame_loop();
     }
+
+    // TODO this is not ideal, exactly; figure out a broader styling concept, later
+    set_default_font(family) {
+        // TODO add this to the loading progress?  which...  is part of the director, hmmm
+        // TODO what if the name is bogus?
+        GOOGLE_FONT_LOADER.load(family);
+        this.container.style.fontFamily = family;
+    }
+
+    // ------------------------------------------------------------------------
+    // Running stuff
 
     update(dt) {
         this.director.update(dt);
