@@ -493,11 +493,16 @@ textarea.gleam-editor-arg-prose {
     left: 0;
     right: 0;
     color: black;
+    background: transparent;
 
     /* Center contents, which are assumed to be a single item */
     display: flex;
     align-items: center;
     justify-content: space-around;
+}
+.gleam-editor-overlay.--modal {
+    background: #0009;
+    transition: background 0.2s;
 }
 .gleam-editor-arg-enum-poses {
     position: absolute;

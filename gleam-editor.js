@@ -25,7 +25,7 @@ function open_overlay(element) {
 
     // Remove the overlay when clicking outside the element
     overlay.addEventListener('click', ev => {
-        overlay.remove();
+        close_overlay(overlay);
     });
     // But ignore any click on the element itself
     element.addEventListener('click', ev => {
@@ -38,6 +38,8 @@ function open_overlay(element) {
 function close_overlay(element) {
     let overlay = element.closest('.gleam-editor-overlay');
     if (overlay) {
+        // Let things respond to the closing
+        overlay.dispatchEvent(new CustomEvent('gleam-overlay-closed'));
         overlay.remove();
         return overlay;
     }
@@ -627,6 +629,147 @@ const STEP_ARGUMENT_TYPES = {
 
 
 // -----------------------------------------------------------------------------
+// Role editor helpers
+
+// TODO i wonder if this would make more sense as a feature on the assets panel?  filter files by wildcard, then select all and drag them over.  i don't know how to do multi drag though
+class AddByWildcardDialog {
+    constructor(role_editor, library) {
+        this.role_editor = role_editor;
+        this.library = library;
+        this.results = [];
+
+        this.element = mk('div.gleam-editor-dialog');
+        this.element.innerHTML = `
+            <header><h1>Add poses in bulk</h1></header>
+            <p>Filename pattern: <input type="text" class="-wildcard" placeholder="*.png"></p>
+            <ul class="-files"></ul>
+            <p><button type="button" class="-cancel">Cancel</button><button disabled type="button" class="-confirm">Add 0</button></p>
+        `;
+
+        this.textbox = this.element.querySelector('.-wildcard');
+        this.result_list = this.element.querySelector('.-files');
+        this.cancel_button = this.element.querySelector('.-cancel');
+        this.ok_button = this.element.querySelector('.-confirm');
+
+        this.textbox.addEventListener('input', ev => {
+            if (this.text_timeout) {
+                clearTimeout(this.text_timeout);
+            }
+            // TODO show a throbber or something while this is going so it doesn't seem just arbitrarily laggy
+            this.text_timeout = setTimeout(() => {
+                this.text_timeout = null;
+                this.update_matches();
+            }, 500);
+        });
+
+        this.cancel_button.addEventListener('click', ev => {
+            close_overlay(this.element);
+        });
+
+        this.ok_button.addEventListener('click', ev => {
+            this._resolve(this.results);
+            // FIXME can't use close_overlay here because it'll get back to us and try to reject, lol whoops
+            this.element.closest('.gleam-editor-overlay').remove();
+        });
+    }
+
+    open() {
+        let overlay = open_overlay(this.element);
+        // Force reflow so the modal transition happens
+        // TODO this is ugly, maybe idk use an animation instead
+        overlay.offsetTop;
+        overlay.classList.add('--modal');
+        // TODO hm, state that assumes this method is only called once but that's not actually guaranteed.  maybe should have another function that actually opens the overlay (or even just do this from open_overlay!), but then how does this thing get at the resolve/reject?
+        this._promise = new Promise((resolve, reject) => {
+            this._resolve = resolve;
+            this._reject = reject;
+        });
+        overlay.addEventListener('gleam-overlay-closed', ev => {
+            this._reject();
+        });
+        return this._promise;
+    }
+
+    compile_regex(wildcard) {
+        let parts = wildcard.split(/([*?])/);
+        let rx_parts = ['^'];
+        for (let [i, part] of parts.entries()) {
+            if (i % 2 === 0) {
+                // FIXME regex escape
+            }
+            else if (part === '*') {
+                part = '.*';
+            }
+            else if (part === '?') {
+                part = '.';
+            }
+
+            if (i === 1) {
+                part = '(' + part;
+            }
+            if (i === parts.length - 2) {
+                part = part + ')';
+            }
+
+            rx_parts.push(part);
+        }
+        rx_parts.push('$');
+        return new RegExp(rx_parts.join(''));
+    }
+
+    update_matches() {
+        let rx = this.compile_regex(this.textbox.value);
+        let lib = this.library;
+        let list = this.result_list;
+
+        let library_paths = Object.keys(lib.assets);
+        human_friendly_sort(library_paths);
+
+        this.results = [];
+        this.result_list.textContent = '';
+        for (let path of library_paths) {
+            let m = path.match(rx);
+            if (m) {
+                let name = m[1];
+                // TODO highlight the matched part, which will become the name
+                this.result_list.appendChild(mk('li', path));
+                this.results.push([name, path]);
+            }
+        }
+
+        if (this.results.length === 0) {
+            this.ok_button.disabled = true;
+        }
+        else {
+            this.ok_button.disabled = false;
+        }
+        this.ok_button.textContent = `Add ${this.results.length}`;
+    }
+
+    finish() {
+        // FIXME what if one of these names already exists?
+        for (let [name, path] of this.results) {
+            this.role_editor.role.add_pose(name, path);
+            // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
+            // FIXME why not just use update_assets for this?
+            let li = make_element('li');
+            let img = this.library.load_image(path);
+            img.classList.add('-asset');
+            li.append(img);
+            li.appendChild(mk('p.-caption', name));
+            this.role_editor.pose_list.appendChild(li);
+        }
+
+        // FIXME invasive...
+        // FIXME how do i update the existing actor, then?
+        this.role_editor.main_editor.player.director.role_to_actor.get(this.role_editor.role).sync_with_role(this.role_editor.main_editor.player.director);
+
+        close_overlay(this.element);
+    }
+}
+
+
+// -----------------------------------------------------------------------------
 // Editors for individual role types
 
 class RoleEditor {
@@ -784,11 +927,44 @@ class JukeboxEditor extends RoleEditor {
         super(...args);
 
         this.track_list = mk('dl.gleam-editor-role-jukebox-tracks');
+        this.update_assets();
+
+        let button = mk('button', "Add tracks in bulk");
+        button.addEventListener('click', async ev => {
+            // FIXME Well this is awkward
+            try {
+                let results = await new AddByWildcardDialog(this, this.main_editor.library).open();
+
+                // FIXME what if one of these names already exists?
+                for (let [name, path] of results) {
+                    // TODO loop?
+                    this.role.add_track(name, path);
+                    /*
+                    // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
+                    // FIXME why not just use update_assets for this?
+                    let li = make_element('li');
+                    let img = this.library.load_image(path);
+                    img.classList.add('-asset');
+                    li.append(img);
+                    li.appendChild(mk('p.-caption', name));
+                    this.role_editor.pose_list.appendChild(li);
+                    */
+                }
+
+                this.update_assets();
+
+                // TODO this seems like it should be part of update_assets, but for ordering reasons it's called explicitly in set_library
+                let director = this.main_editor.player.director;
+                director.role_to_actor.get(this.role).sync_with_role(director);
+            }
+            catch (e) {}
+        });
+
         this.element.append(
             mk('h3', "Tracks ", mk('span.gleam-editor-hint', "(drag and drop into script)")),
             this.track_list,
+            button,
         );
-        this.update_assets();
     }
 
     update_assets() {
@@ -810,127 +986,6 @@ class JukeboxEditor extends RoleEditor {
 JukeboxEditor.prototype.ROLE_TYPE = Gleam.Jukebox;
 JukeboxEditor.role_type_name = 'jukebox';
 JukeboxEditor.prototype.CLASS_NAME = 'gleam-editor-role-jukebox';
-
-class AddByWildcardDialog {
-    constructor(role_editor, library) {
-        this.role_editor = role_editor;
-        this.library = library;
-        this.results = [];
-
-        this.element = mk('div.gleam-editor-dialog');
-        this.element.innerHTML = `
-            <header><h1>Add poses in bulk</h1></header>
-            <p>Filename pattern: <input type="text" class="-wildcard" placeholder="*.png"></p>
-            <ul class="-files"></ul>
-            <p><button type="button" class="-cancel">Cancel</button><button disabled type="button" class="-confirm">Add 0</button></p>
-        `;
-
-        this.textbox = this.element.querySelector('.-wildcard');
-        this.result_list = this.element.querySelector('.-files');
-        this.cancel_button = this.element.querySelector('.-cancel');
-        this.ok_button = this.element.querySelector('.-confirm');
-
-        this.textbox.addEventListener('input', ev => {
-            if (this.text_timeout) {
-                clearTimeout(this.text_timeout);
-            }
-            // TODO show a throbber or something while this is going so it doesn't seem just arbitrarily laggy
-            this.text_timeout = setTimeout(() => {
-                this.text_timeout = null;
-                this.update_matches();
-            }, 500);
-        });
-
-        this.cancel_button.addEventListener('click', ev => {
-            close_overlay(this.element);
-        });
-
-        this.ok_button.addEventListener('click', ev => {
-            this.finish();
-        });
-    }
-
-    open() {
-        open_overlay(this.element);
-    }
-
-    compile_regex(wildcard) {
-        let parts = wildcard.split(/([*?])/);
-        let rx_parts = ['^'];
-        for (let [i, part] of parts.entries()) {
-            if (i % 2 === 0) {
-                // FIXME regex escape
-            }
-            else if (part === '*') {
-                part = '.*';
-            }
-            else if (part === '?') {
-                part = '.';
-            }
-
-            if (i === 1) {
-                part = '(' + part;
-            }
-            if (i === parts.length - 2) {
-                part = part + ')';
-            }
-
-            rx_parts.push(part);
-        }
-        rx_parts.push('$');
-        return new RegExp(rx_parts.join(''));
-    }
-
-    update_matches() {
-        let rx = this.compile_regex(this.textbox.value);
-        let lib = this.library;
-        let list = this.result_list;
-
-        let library_paths = Object.keys(lib.assets);
-        human_friendly_sort(library_paths);
-
-        this.results = [];
-        this.result_list.textContent = '';
-        for (let path of library_paths) {
-            let m = path.match(rx);
-            if (m) {
-                let name = m[1];
-                // TODO highlight the matched part, which will become the name
-                this.result_list.appendChild(mk('li', path));
-                this.results.push([name, path]);
-            }
-        }
-
-        if (this.results.length === 0) {
-            this.ok_button.disabled = true;
-        }
-        else {
-            this.ok_button.disabled = false;
-        }
-        this.ok_button.textContent = `Add ${this.results.length}`;
-    }
-
-    finish() {
-        // FIXME what if one of these names already exists?
-        for (let [name, path] of this.results) {
-            this.role_editor.role.add_pose(name, path);
-            // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
-            // FIXME why not just use update_assets for this?
-            let li = make_element('li');
-            let img = this.library.load_image(path);
-            img.classList.add('-asset');
-            li.append(img);
-            li.appendChild(mk('p.-caption', name));
-            this.role_editor.pose_list.appendChild(li);
-        }
-
-        // FIXME invasive...
-        // FIXME how do i update the existing actor, then?
-        this.role_editor.main_editor.player.director.role_to_actor.get(this.role_editor.role).sync_with_role(this.role_editor.main_editor.player.director);
-
-        close_overlay(this.element);
-    }
-}
 
 class PictureFrameEditor extends RoleEditor {
     constructor(...args) {
