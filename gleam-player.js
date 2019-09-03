@@ -2011,7 +2011,7 @@ class PlayerOverlay {
         this.body = mk('div.-body');
         this.element = mk('div.gleam-overlay',
             // FIXME subtitle, author, date
-            mk('header', this.player.script.title),
+            mk('header', this.player.script.title || 'Untitled'),
             this.body,
             // FIXME this should link, um, somewhere
             mk('footer', `GLEAM ${VERSION}`),
