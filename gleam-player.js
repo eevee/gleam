@@ -1552,8 +1552,12 @@ class RemoteAssetLibrary extends AssetLibrary {
         this.root = root;
     }
 
-    load_image(path) {
-        let element = make_element('img');
+    async get_url_for_path(path) {
+        return new URL(path, this.root);
+    }
+
+    load_image(path, element) {
+        element = element || mk('img');
         let asset = this.assets[path];
         if (asset) {
             // After trying to load this once, there's no point in doing all
@@ -1601,12 +1605,8 @@ class RemoteAssetLibrary extends AssetLibrary {
         return element;
     }
 
-    // FIXME need to implement this for the other two AssetLibrarys!
-    load_audio(path) {
-        let element = mk('audio');
-        element.preload = 'auto';  // ask the browser to download
-        element.autobuffer = true;  // older way to do the same thing
-
+    load_audio(path, element) {
+        element = element || mk('audio', {preload: 'auto'});
         let asset = this.asset(path);
         if (asset.url) {
             element.src = asset.url;

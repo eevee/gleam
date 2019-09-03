@@ -47,14 +47,36 @@ function close_overlay(element) {
 
 // Dummy implementation that can't find any files, used in a fresh editor
 class NullAssetLibrary extends Gleam.AssetLibrary {
-    load_image(filename, element) {
-        let asset = this.asset(filename);
+    load_image(path, element) {
+        let asset = this.asset(path);
         asset.used = true;
         asset.exists = false;
         return element || mk('img');
     }
+
+    load_audio(path, element) {
+        let asset = this.asset(path);
+        asset.used = true;
+        asset.exists = false;
+        // TODO hmm this bit is duplicated like everywhere
+        return element || mk('audio', {preload: 'auto'});
+    }
 }
 // Entry-based implementation, for local files using the Chrome API
+function _entry_to_url(entry) {
+    if (entry.toURL) {
+        // WebKit only
+        return Promise.resolve(entry.toURL());
+    }
+    else {
+        return new Promise((resolve, reject) => {
+            entry.file(file => {
+                resolve(URL.createObjectURL(file));
+            });
+        });
+    }
+}
+// FIXME 'used' isn't really handled very well; there's no way to "un-use" something.  but there's also no way to delete a pose/track yet
 class EntryAssetLibrary extends Gleam.AssetLibrary {
     constructor(directory_entry) {
         super();
@@ -66,6 +88,7 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
 
         // TODO technically should be calling this repeatedly.  also it's asynchronous, not super sure if that's a problem.
         // TODO sometimes this is null?  what the fuck is up with drag and drop.
+        // FIXME this should reject on error, you fool
         directory_entry.createReader().readEntries(entries => {
             // TODO hmm, should mark by whether they're present and whether they're used i guess?
             for (let entry of entries) {
@@ -77,54 +100,43 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
         }, console.error)
     }
 
-    // FIXME surely this should be more generic?  can ANY of it be split out, shared with Remote or with <audio>?
+    async get_url_for_path(path) {
+        // Have to finish reading the directory first
+        await this.done_reading_promise;
+
+        let asset = this.asset(path);
+        asset.used = true;
+        if (! asset.entry) {
+            // If there's no directory entry, this can't possibly work
+            asset.exists = false;
+            throw new Error(`No such local file: ${path}`);
+        }
+
+        if (! asset.url) {
+            asset.url = await _entry_to_url(asset.entry);
+        }
+        return asset.url;
+    }
+
     // FIXME the caller never explicitly knows if this is a bogus image
-    // FIXME would be nice if this could update existing elements rather than creating new ones
-    load_image(filename, element) {
+    // FIXME this seems to have different semantics from Remote, especially wrt asset.url and asset.promise
+    load_image(path, element) {
         element = element || mk('img');
-        // TODO oh this be a mess
-        this.done_reading_promise.then(() => {
-            let asset = this.assets[filename];
-            if (!asset || !asset.entry) {
-                // If there's no asset, this isn't a directory entry, so it can't possibly work
-                if (! asset) {
-                    this.assets[filename] = {
-                        used: true,
-                        exists: false,
-                    };
-                }
-                return;
-            }
-
-            asset.used = true;
-
-            if (asset.url) {
-                asset.used = true;
-                element.src = url;
-                return;
-            }
-
-            // OK!  There's an asset, it has an Entry, we just need a URL for it
-            let promise;
-            if (asset.entry.toURL) {
-                // WebKit only
-                promise = Promise.resolve(asset.entry.toURL());
-            }
-            else {
-                // TODO is this a bad idea?  it's already async so am i doing a thousand reads at once??
-                promise = new Promise((resolve, reject) => {
-                    asset.entry.file(file => {
-                        resolve(URL.createObjectURL(file));
-                    });
-                });
-            }
-
-            promise.then(url => {
-                element.src = url;
-            });
+        // TODO handle failure somehow?
+        this.get_url_for_path(path).then(url => {
+            element.src = url;
         });
 
-        // TODO fire an event here, or what?
+        return element;
+    }
+
+    load_audio(path, element) {
+        element = element || mk('audio', {preload: 'auto'});
+        // TODO handle failure somehow?
+        this.get_url_for_path(path).then(url => {
+            element.src = url;
+        });
+
         return element;
     }
 }
