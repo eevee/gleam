@@ -227,7 +227,7 @@ class MutableScript extends Gleam.Script {
                 this.steps[i].update_beat(new_beat);
             }
 
-            // Keep recreating beats until all twiddle changes from the new step
+            // Keep recreating (or updating??) beats until all twiddle changes from the new step
             // have been overwritten by later steps
             // FIXME do that
 
@@ -520,7 +520,7 @@ class MutableScript extends Gleam.Script {
                 let state0 = beat0.states.get(role);
                 for (let [key, value] of Object.entries(state)) {
                     if (value !== state0[key]) {
-                        console.warn("Role", role, "expected twiddle", key, "to have value", value, "got", state0[key]);
+                        console.warn("Role", role, "expected twiddle:", key, "to have value:", value, "but got:", state0[key]);
                     }
                 }
             }
@@ -1783,6 +1783,9 @@ class Editor {
         this.script = script;
         this.library = library;
         this.player = new Gleam.Player(this.script, library);
+        // XXX stupid hack, disable the loading overlay, which for local files will almost certainly not work
+        this.player.loaded = true;
+        this.player.loading_overlay.hide();
 
         this.assets_panel.refresh_dom();
 
