@@ -445,6 +445,11 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
 
 /* Step arguments */
 /* FIXME consistent hover and "is being edited" effect? */
+.gleam-editor-arg-string {
+    /* FIXME otherwise it's zero height while empty uggh, same below */
+    min-height: 1em;
+    cursor: pointer;
+}
 .gleam-editor-arg-enum {
     color: #404fff;
     /* FIXME make this a more obvious click area */

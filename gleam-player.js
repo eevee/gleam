@@ -277,6 +277,14 @@ Stage.STEP_TYPES = {
         args: [],
         twiddles: [],
     },
+    bookmark: {
+        display_name: "bookmark",
+        args: [{
+            display_name: "label",
+            type: 'string',
+        }],
+        twiddles: [],
+    },
 };
 // TODO from legacy json, and target any actorless actions at us?
 
@@ -1673,7 +1681,10 @@ class Script {
         this.roles = [];
         this.role_index = {};
 
-        this.set_steps([]);
+        // [beat index, label]
+        this.bookmarks = [];
+
+        this._set_steps([]);
 
         // This is mostly used for editing, so that objects wrapping us (e.g.
         // Director, Editor) can know when the step list changes
@@ -1749,7 +1760,7 @@ class Script {
             steps.push(new Step(role, step_key, arg_keys.map(key => json_step[key])));
         }
 
-        this.set_steps(steps);
+        this._set_steps(steps);
         /*
         if actordef.type == "character"
             actor = Character.from_json speech, relative_to, actordef
@@ -1805,7 +1816,7 @@ class Script {
             steps.push(new Step(role, kind_name, args));
         }
 
-        script.set_steps(steps);
+        script._set_steps(steps);
 
         return script;
     }
@@ -1841,11 +1852,12 @@ class Script {
         return json;
     }
 
-    set_steps(steps) {
+    _set_steps(steps) {
         this.steps = steps;
 
         // Consolidate steps into beats -- maps of role => state
         this.beats = [];
+        this.bookmarks = [];
         if (steps.length === 0)
             return;
 
@@ -1870,6 +1882,12 @@ class Script {
                 let prev_beat = beat;
                 beat = prev_beat.create_next();
                 this.beats.push(beat);
+            }
+
+            // Make note of labels and bookmarks
+            // TODO seems hacky, is this the right way to identify the stage
+            if (step.role instanceof Stage && step.kind_name === 'bookmark') {
+                this.bookmarks.push([this.beats.length - 1, step.args[0]]);
             }
         }
     }
@@ -2163,10 +2181,16 @@ class PlayerPauseOverlay extends PlayerOverlay {
         let cursor = this.player.director.cursor;
         let fragment = document.createDocumentFragment();
         let number_next_beat = false;
+        let bm = 0;
         for (let [i, beat] of script.beats.entries()) {
             let li = make_element('li');
             let b = i + 1;
-            if (number_next_beat || b % 10 === 0 || b === 1 || b === script.beats.length) {
+            if (bm < script.bookmarks.length && i === script.bookmarks[bm][0]) {
+                li.textContent = `${b} — ${script.bookmarks[bm][1]}`;
+                li.classList.add('--bookmark');
+                bm++;
+            }
+            else if (number_next_beat || b % 10 === 0 || b === 1 || b === script.beats.length) {
                 number_next_beat = false;
                 li.textContent = String(b);
             }

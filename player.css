@@ -56,7 +56,7 @@
     flex: 0 auto;
     font-size: 1.25em;
     padding: 0.33em;
-    background: #0009;
+    background: #000c;
 
     /* Both slide out of frame during a transition, looks very cool */
     transition: transform var(--transition-time) ease-in;
@@ -155,18 +155,22 @@
     line-height: 1;
     margin: 0.25em;
     padding: 0.33em;
-    border: 1px solid #999;
+    border: 1px solid #444;
     vertical-align: middle;
     text-align: center;
     background: #222;
     cursor: pointer;
 }
 .gleam-overlay-pause .gleam-pause-beats li:empty {
+    padding: 0;
     border-radius: 1em;
 }
 .gleam-overlay-pause .gleam-pause-beats li.--current {
     background: #666;
     border-color: #ccc;
+}
+.gleam-overlay-pause .gleam-pause-beats li.--bookmark {
+    display: block;
 }
 .gleam-overlay-pause .gleam-pause-beats li:hover {
     border-color: white;

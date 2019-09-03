@@ -210,6 +210,7 @@ class MutableScript extends Gleam.Script {
     }
 
     // Call to indicate one or more Steps have been altered
+    // FIXME also update bookmarks, both here and below
     update_steps(...steps) {
         if (steps.length === 0)
             return;
@@ -459,6 +460,7 @@ class MutableScript extends Gleam.Script {
 
     // Debugging helper to ensure constraints are still met after messing with
     // the step or beat lists
+    // FIXME check bookmarks, both existence and order
     _check_constraints() {
         console.log("checking Script constraints...");
 
@@ -497,7 +499,7 @@ class MutableScript extends Gleam.Script {
         let steps = this.steps;
         let beats = this.beats;
 
-        this.set_steps(steps);
+        this._set_steps(steps);
         for (let [i, step] of this.steps.entries()) {
             let step0 = steps[i];
             if (step !== step0) {
@@ -535,6 +537,30 @@ class MutableScript extends Gleam.Script {
 // Step argument configuration
 
 const STEP_ARGUMENT_TYPES = {
+    string: {
+        view(value) {
+            return make_element('div', 'gleam-editor-arg-string', value);
+        },
+        update(element, value) {
+            element.textContent = value;
+        },
+        edit(element, value) {
+            return new Promise((resolve, reject) => {
+                let editor_element = mk('input', {type: 'text'});
+                editor_element.value = value;
+                // FIXME having to click outside (and thus likely activate something else) kind of sucks
+                // TODO but then, i'd love to have an editor that uses the appropriate styling, anyway
+                editor_element.addEventListener('blur', ev => {
+                    editor_element.replaceWith(element);
+                    resolve(editor_element.value);
+                });
+                element.replaceWith(editor_element);
+                // FIXME doesn't focus at the point where you clicked in the text
+                editor_element.focus();
+            });
+        },
+    },
+
     prose: {
         view(value) {
             return make_element('div', 'gleam-editor-arg-prose', value);
