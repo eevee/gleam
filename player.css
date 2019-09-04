@@ -1,3 +1,16 @@
+/* Class you can put on the body to turn the entire page into a GLEAM player */
+.gleam-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    background: #080808;
+    /* TODO i miss the texture from the old GLEAM player */
+}
+
 .gleam-player {
     position: relative;
     overflow: hidden;
