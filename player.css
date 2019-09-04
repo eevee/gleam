@@ -10,6 +10,9 @@
     background: #080808;
     /* TODO i miss the texture from the old GLEAM player */
 }
+.gleam-body > .gleam-player {
+    box-shadow: 0 0 4px black;
+}
 
 .gleam-player {
     position: relative;
