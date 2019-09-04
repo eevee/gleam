@@ -210,6 +210,11 @@ class Actor {
 
     // TODO figure this out.
     sync_with_role(director) {}
+
+    // TODO? kind of a state issue here: what happens if you apply_state while paused?  that can happen in the editor, and also when jumping around from the pause screen, though it seems to incidentally work out alright, and anyway only jukebox is affected
+    pause() {}
+
+    unpause() {}
 }
 Actor.prototype.TWIDDLES = {};
 // Must also be defined on subclasses:
@@ -950,26 +955,6 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
     _disable: (event) ->
         $el = $ event.currentTarget
         $el.text ''
-
-    _pause: (event, $el) =>
-        $dialogue = $el.children '.cutscene--dialogue'
-        if not $dialogue.length
-            return
-
-        timeout = $dialogue.data 'timeout'
-        if timeout?
-            cancelAnimationFrame(timeout)
-
-    _unpause: (event, $el) =>
-        $dialogue = $el.children '.cutscene--dialogue'
-        if not $dialogue.length
-            return
-
-        all_letters = $dialogue.data('all_letters')
-        letter_index = @_next_letter $dialogue
-        if letter_index >= all_letters.length
-            return
-        @_scroll $dialogue, all_letters, letter_index
 */
 
 
@@ -1099,7 +1084,26 @@ Jukebox.Actor = class JukeboxActor extends Actor {
     }
 
     play(track_name) {
-        // TODO
+        // TODO...?
+    }
+
+    pause() {
+        if (! this.state.track)
+            return;
+
+        // Note that this doesn't pause a song that's also fading /out/, but
+        // the fadeout time is usually short, so that's fine.
+        // TODO perhaps a more robust approach would be to look through ALL our elements and pause them if they're playing, then remember which ones to play when we unpause?  i think that would interact between with an apply_state while paused, too
+        let audio = this.track_elements[this.state.track];
+        audio.pause();
+    }
+
+    unpause() {
+        if (! this.state.track)
+            return;
+
+        let audio = this.track_elements[this.state.track];
+        audio.play();
     }
 };
 /*
@@ -1161,22 +1165,6 @@ Jukebox.Actor = class JukeboxActor extends Actor {
             return @_stop_track $old_song[0]
         else
             return promise_always()
-
-    _pause: (event, $el) =>
-        current_song_name = $el.data 'active-song-name'
-        $song_elements = $el.data 'song-elements'
-        $current_song = $song_elements[current_song_name]
-
-        if $current_song?
-            $current_song[0].pause()
-
-    _unpause: (event, $el) =>
-        current_song_name = $el.data 'active-song-name'
-        $song_elements = $el.data 'song-elements'
-        $current_song = $song_elements[current_song_name]
-
-        if $current_song?
-            $current_song[0].play()
 */
 
 
@@ -1936,6 +1924,7 @@ class Director {
         this.library = library;
 
         this.busy = false;
+        this.paused = false;
 
         this.actors = {};
         // TODO this seems clumsy...  maybe if roles had names, hmm
@@ -2068,6 +2057,26 @@ class Director {
     update(dt) {
         for (let [name, actor] of Object.entries(this.actors)) {
             actor.update(dt);
+        }
+    }
+
+    pause() {
+        if (this.paused)
+            return;
+        this.paused = true;
+
+        for (let actor of Object.values(this.actors)) {
+            actor.pause();
+        }
+    }
+
+    unpause() {
+        if (! this.paused)
+            return;
+        this.paused = false;
+
+        for (let actor of Object.values(this.actors)) {
+            actor.unpause();
         }
     }
 }
@@ -2374,6 +2383,9 @@ class Player {
             return;
         this.paused = true;
 
+        this.director.pause();
+
+        this._stop_frame_loop();
         this.pause_overlay.show();
         this.container.classList.add('--paused');
     }
@@ -2383,6 +2395,10 @@ class Player {
             return;
         this.paused = false;
 
+        this.director.unpause();
+
+        // TODO state issue, maybe: what if we unpause before we're loaded, i guess?
+        this._run_frame_loop();
         this.pause_overlay.hide();
         this.container.classList.remove('--paused');
     }
