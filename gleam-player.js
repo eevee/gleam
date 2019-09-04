@@ -1036,6 +1036,7 @@ Jukebox.Actor = class JukeboxActor extends Actor {
 
         this.master_volume = director.master_volume;
         this.element = mk('div.gleam-actor-jukebox');
+        this.track_fades = {};
 
         // FIXME If we can't play music at ALL, don't even try to load anything
         /*
@@ -1058,10 +1059,16 @@ Jukebox.Actor = class JukeboxActor extends Actor {
         // FIXME needs fadeout probably (oh dear), and also fix time when playing
         if (state.track !== old_state.track) {
             if (old_state.track !== null) {
-                this.track_elements[old_state.track].pause();
+                let audio = this.track_elements[old_state.track];
+                this.track_fades[old_state.track] = {
+                    progress: 0,
+                    time: 0.6,
+                };
             }
             if (state.track !== null) {
                 let audio = this.track_elements[state.track];
+                delete this.track_fades[state.track];
+                audio.currentTime = 0;
                 audio.volume = this.master_volume;
                 audio.play();
             }
@@ -1088,6 +1095,21 @@ Jukebox.Actor = class JukeboxActor extends Actor {
 
     play(track_name) {
         // TODO...?
+    }
+
+    update(dt) {
+        for (let [name, state] of Object.entries(this.track_fades)) {
+            let audio = this.track_elements[name];
+            state.progress += dt / state.time;
+            if (state.progress >= 1) {
+                audio.volume = 0;
+                audio.pause();
+                delete this.track_fades[name];
+            }
+            else {
+                audio.volume = (1 - state.progress) * this.master_volume;
+            }
+        }
     }
 
     pause() {
