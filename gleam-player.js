@@ -1080,7 +1080,23 @@ Jukebox.Actor = class JukeboxActor extends Actor {
         }
     }
 
-    // FIXME NEED sync_with_role
+    sync_with_role(director) {
+        for (let [name, track] of Object.entries(this.role.tracks)) {
+            if (this.track_elements[name]) {
+                // FIXME hacky as hell
+                director.library.load_audio(track.path, this.track_elements[name]);
+                this.track_elements[name].loop = track.loop;
+                continue;
+            }
+            // FIXME ensure order...
+            // FIXME remove any that disappeared...
+            // FIXME maybe i should just create a new actor
+            let audio = director.library.load_audio(track.url);
+            audio.loop = track.loop;
+            this.track_elements[name] = audio;
+            this.element.append(audio);
+        }
+    }
 
     play(track_name) {
         // TODO
