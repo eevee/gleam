@@ -1768,7 +1768,7 @@ class Script {
             if (! json_step.actor) {
                 // FIXME special actions like roll_credits
                 if (json_step.action == 'pause') {
-                    steps.push(new Step(stage, Stage.STEP_TYPES.pause, []));
+                    steps.push(new Step(stage, 'pause', []));
                 }
                 else {
                     console.warn("ah, not yet implemented:", json_step);

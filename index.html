@@ -55,7 +55,22 @@
             // FIXME does the editor really take over just from being created?
             let editor = new Gleam.Editor(document.querySelector('.gleam-editor'));
             window._gleam_editor = editor;
+
+            //*
+            // TODO i guess this needs some ui
+            let json = window.localStorage.getItem('gleam-temp');
+            let script;
+            if (json) {
+                // TODO error handling here, probably
+                script = Gleam.MutableScript.from_json(JSON.parse(json));
+            }
+            else {
+                script = new Gleam.MutableScript;
+                script.add_role(new Gleam.Stage('stage'));
+            }
+            editor.load_script(script, new Gleam.NullAssetLibrary);
             return;
+            //*/
 
             // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
             let root = 'res/prompt2-itchyitchy-final/';

@@ -1780,19 +1780,7 @@ class Editor {
         this.script_panel = new ScriptPanel(this, document.getElementById('gleam-editor-script'));
 
         // Start with an empty script
-        // TODO i guess this needs some ui
-        //this.load_script(new MutableScript, new NullAssetLibrary);
-        let json = window.localStorage.getItem('gleam-temp');
-        let script;
-        if (json) {
-            // TODO error handling here, probably
-            script = MutableScript.from_json(JSON.parse(json));
-        }
-        else {
-            script = new MutableScript;
-            script.add_role(new Gleam.Stage('stage'));
-        }
-        this.load_script(script, new NullAssetLibrary);
+        this.load_script(new MutableScript, new NullAssetLibrary);
     }
 
     // TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
@@ -1875,6 +1863,7 @@ class Editor {
 }
 
 return {
+    NullAssetLibrary: NullAssetLibrary,
     MutableScript: MutableScript,
     Editor: Editor,
 };
