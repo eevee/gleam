@@ -528,6 +528,9 @@ textarea.gleam-editor-arg-prose {
 .gleam-editor-arg-enum-poses {
     position: absolute;
     min-width: 8em;
+    max-height: 50vh;
+    overflow-x: hidden;
+    overflow-y: auto;
     border: 1px solid black;
     box-shadow: 0 0 3px #0009;
 }

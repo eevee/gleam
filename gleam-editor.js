@@ -610,11 +610,10 @@ const STEP_ARGUMENT_TYPES = {
                     close_overlay(ev.target);
                 });
 
-                // FIXME better...  aiming?  don't go off the screen etc
-                // FIXME getting this passed in feels hacky but it's the only place to get the cursor position
-                editor_element.style.left = `${mouse_event.clientX}px`;
-                editor_element.style.top = `${mouse_event.clientY}px`;
+                // TODO should probably scroll to and/or highlight the current pose, if any
                 let overlay = open_overlay(editor_element);
+                editor_element.style.left = `${Math.min(mouse_event.clientX, document.body.clientWidth - editor_element.offsetWidth)}px`;
+                editor_element.style.top = `${Math.min(mouse_event.clientY, document.body.clientHeight - editor_element.offsetHeight)}px`;
                 // Clicking the overlay to close the menu means cancel
                 overlay.addEventListener('click', ev => {
                     reject();
