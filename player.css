@@ -24,6 +24,22 @@
 
     --transition-time: 0.2s;
 }
+.gleam-stage {
+    position: absolute;
+    z-index: 0;  /* stacking context */
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transition: filter 0.5s;
+}
+.gleam-player.--paused .gleam-stage {
+    filter: blur(3px) saturate(0.5);
+}
+
+.gleam-player input {
+    vertical-align: middle;
+}
 
 .gleam-progress {
     position: absolute;
@@ -163,6 +179,8 @@
 /* Beats jumplist */
 .gleam-overlay-pause .gleam-pause-beats {
     margin: 1em;
+    padding: 0;
+    color: #222;
 }
 .gleam-overlay-pause .gleam-pause-beats li {
     /* TODO hmm, grid? */
@@ -172,25 +190,25 @@
     line-height: 1;
     margin: 0.25em;
     padding: 0.33em;
-    border: 1px solid #444;
+    border-radius: 3px;
     vertical-align: middle;
     text-align: center;
-    background: #222;
+    background: #ddd;
     cursor: pointer;
 }
 .gleam-overlay-pause .gleam-pause-beats li:empty {
     padding: 0;
+    background: #ccc;
     border-radius: 1em;
 }
 .gleam-overlay-pause .gleam-pause-beats li.--current {
-    background: #666;
-    border-color: #ccc;
+    filter: invert(100%);
 }
 .gleam-overlay-pause .gleam-pause-beats li.--bookmark {
     display: block;
 }
 .gleam-overlay-pause .gleam-pause-beats li:hover {
-    border-color: white;
+    background: #999;
 }
 
 /* Pause button */

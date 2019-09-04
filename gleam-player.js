@@ -2279,7 +2279,8 @@ class PlayerPauseOverlay extends PlayerOverlay {
 
 class Player {
     constructor(script, library) {
-        this.container = mk('div.gleam-player', {tabindex: -1});
+        this.stage_container = mk('div.gleam-stage');
+        this.container = mk('div.gleam-player', {tabindex: -1}, this.stage_container);
         // TODO indicate focus, and not-focus, but probably not in editor
         this.paused = false;
         this.loaded = false;
@@ -2330,7 +2331,7 @@ class Player {
             // maybe?  worst case, stuff loaded in the background already,
             // right?
             if (actor.element) {
-                this.container.appendChild(actor.element);
+                this.stage_container.append(actor.element);
             }
         }
 
@@ -2344,7 +2345,6 @@ class Player {
         });
 
         // Bind some useful event handlers
-        // TODO should make our own sub-container so when we go away (and delete the dom), the events go away too
         this.container.addEventListener('click', ev => {
             this.director.advance();
         });
