@@ -1053,6 +1053,37 @@ class PictureFrameEditor extends RoleEditor {
             button,
             button2,
         );
+
+        // Allow dropping in an asset
+        this.element.addEventListener('dragenter', ev => {
+            let asset_path = ev.dataTransfer.getData('gleam/asset');
+            if (asset_path) {
+               ev.stopPropagation();
+               ev.preventDefault();
+                // TODO react to drag, somehow
+            }
+        });
+        this.element.addEventListener('dragover', ev => {
+            let asset_path = ev.dataTransfer.getData('gleam/asset');
+            if (asset_path) {
+               ev.stopPropagation();
+               ev.preventDefault();
+                // TODO react to drag, somehow
+            }
+        });
+        this.element.addEventListener('drop', ev => {
+            // TODO does this fire if dragenter disallowed the drop?
+            // TODO probably don't allow adding the same asset twice...  except, well, there are reasons you might want that, sigh
+            // TODO should probably allow dropping in a specific place in the asset list
+            let asset_path = ev.dataTransfer.getData('gleam/asset');
+            let name = asset_path.replace(/[.][^.]*$/, '');
+            this.role.add_pose(name, asset_path);
+            this.update_assets();
+
+            // TODO this seems like it should be part of update_assets, but for ordering reasons it's called explicitly in set_library
+            let director = this.main_editor.player.director;
+            director.role_to_actor.get(this.role).sync_with_role(director);
+        });
     }
 
     update_assets() {
@@ -1199,6 +1230,12 @@ class AssetsPanel extends Panel {
             this.editor.set_library(new EntryAssetLibrary(entry));
         });
 
+        // Allow dragging an asset, presumably into a role
+        this.list.addEventListener('dragstart', ev => {
+            ev.dataTransfer.dropEffect = 'copy';
+            ev.dataTransfer.setData('gleam/asset', ev.target.textContent);
+        });
+
         // FIXME this is bad, but given that the Library might have a bunch of stuff happen at once, maybe it's not /that/ bad.
         let cb = () => {
             // FIXME uhh
@@ -1224,7 +1261,7 @@ class AssetsPanel extends Panel {
 
         for (let path of paths) {
             let asset = this.editor.library.assets[path];
-            let li = make_element('li', null, path);
+            let li = mk('li', {draggable: 'true'}, path);
             if (! asset.exists) {
                 li.classList.add('--missing');
             }
