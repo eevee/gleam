@@ -1034,6 +1034,7 @@ Jukebox.Actor = class JukeboxActor extends Actor {
     constructor(role, director) {
         super(role);
 
+        this.master_volume = director.master_volume;
         this.element = mk('div.gleam-actor-jukebox');
 
         // FIXME If we can't play music at ALL, don't even try to load anything
@@ -1060,7 +1061,9 @@ Jukebox.Actor = class JukeboxActor extends Actor {
                 this.track_elements[old_state.track].pause();
             }
             if (state.track !== null) {
-                this.track_elements[state.track].play();
+                let audio = this.track_elements[state.track];
+                audio.volume = this.master_volume;
+                audio.play();
             }
         }
     }
@@ -1103,6 +1106,7 @@ Jukebox.Actor = class JukeboxActor extends Actor {
             return;
 
         let audio = this.track_elements[this.state.track];
+        audio.volume = this.master_volume;
         audio.play();
     }
 };
@@ -1926,6 +1930,8 @@ class Director {
         this.busy = false;
         this.paused = false;
 
+        this.master_volume = 1;
+
         this.actors = {};
         // TODO this seems clumsy...  maybe if roles had names, hmm
         this.role_to_actor = new Map();
@@ -2184,12 +2190,38 @@ class PlayerPauseOverlay extends PlayerOverlay {
         this.element.classList.add('gleam-overlay-pause');
         this.body.append(
             mk('h2', 'Paused'),
+            mk('p',
+                {style: 'text-align: center'},
+                "Volume:",
+                this.volume_slider = mk('input', {
+                    type: 'range',
+                    min: 0,
+                    max: 1,
+                    step: 0.05,
+                    value: player.director.master_volume,
+                }),
+            ),
             this.beats_list = mk('ol.gleam-pause-beats'),
         );
 
         // TODO options (persist!!): volume, hide UI entirely (pause button + progress bar), take screenshot?, low power mode (disable text shadows and the like) or disable transitions entirely (good for motion botherment)
         // TODO links to currently active assets?  sorta defeats bandcamp i guess, but i always did want a jukebox mode
         // TODO debug stuff, mostly current state of actors
+
+        // Options
+        // FIXME i realize it's hard to know for sure what's a good volume when the music is not playing.  but this is a common problem i guess.
+        this.volume_slider.addEventListener('change', ev => {
+            let volume = ev.target.value;
+            player.director.master_volume = volume;
+            for (let actor of Object.values(player.director.actors)) {
+                // FIXME oh this is just stupid, but how am i supposed to get this down there?  ...event, maybe?
+                // FIXME persist, probably
+                // FIXME separate mute button?
+                if (actor instanceof Jukebox.Actor) {
+                    actor.master_volume = volume;
+                }
+            }
+        });
 
         // Navigation list
         this.beats_list.addEventListener('click', ev => {
