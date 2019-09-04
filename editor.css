@@ -12,7 +12,6 @@ body {
     display: grid;
     grid-template:
         "header header header" min-content
-        "meta steps player" min-content
         "assets steps player" min-content
         "assets steps roles" 1fr
         /* Grid columns seem to default to a minimum width of min-content, so
@@ -56,7 +55,7 @@ dl.gleam-editor-propmap > dd {
 section.gleam-editor-panel {
     display: flex;
     flex-direction: column;
-    border: 2px solid #101010;
+    border: 3px solid #000;
 }
 section.gleam-editor-panel > header {
     flex: 0;
@@ -95,12 +94,13 @@ section.gleam-editor-panel > footer {
 }
 body > header {
     grid-area: header;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5em;
 }
 #gleam-editor-player {
     grid-area: player;
-}
-#gleam-editor-meta {
-    grid-area: meta;
 }
 #gleam-editor-roles {
     grid-area: roles;
@@ -138,8 +138,21 @@ nav button:hover {
 }
 
 /* Header */
-body > header h1 {
-    margin: 1rem;
+body > header > h1 {
+    order: 2;
+    margin: 0.5rem 1rem;
+    color: #666;
+}
+#gleam-editor-header-metadata {
+    display: flex;
+    column-gap: 1em;
+}
+#gleam-editor-header-metadata label {
+    font-size: 0.8em;
+}
+#gleam-editor-header-metadata label input {
+    display: block;
+    box-sizing: border-box;
 }
 
 /* Stage panel */
@@ -148,7 +161,6 @@ body > header h1 {
 }
 #gleam-editor-player > .gleam-editor-panel-body {
     flex: 1;
-    padding: 1em;
     overflow: visible;
 }
 #gleam-editor-player .gleam-player {
@@ -215,6 +227,8 @@ ul.gleam-editor-role-pictureframe-poses {
     margin: 0.5em;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    row-gap: 0.25em;
+    column-gap: 0.25em;
 }
 ul.gleam-editor-role-pictureframe-poses li {
 }
@@ -235,6 +249,10 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
     margin: 0.5rem 0;
     font-family: "Source Code Pro", Inconsolata, monospace;
     text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* This makes the ellipsis appear on the LEFT side, so the suffix is visible */
+    direction: rtl;
 }
 
 /* Asset panel */
@@ -257,32 +275,27 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
 ol.gleam-editor-beats-list {
     /* Need this for positioning the numbers */
     position: relative;
-    margin: 0.5em 1em;
-    padding: 0;
 
     /* make room for numbers */
     padding-left: 1.5em;
     counter-reset: beat;
 }
 ol.gleam-editor-beats-list > li {
-    margin: 0.5em 0;
     border: 1px solid #202020;
-    box-shadow: 0 0.125em 0.25em #202020;
 }
 ol.gleam-editor-beats-list > li::before {
     counter-increment: beat;
     content: counter(beat);
     display: block;
     position: absolute;
-    font-size: 0.75em;
     width: 1.5rem;
-    margin-left: -2rem;
-    text-align: right;
+    margin-left: -1.5rem;
+    text-align: center;
+    /* lol this is such a hack */
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
 }
 /* Step currently showing on stage */
-ol.gleam-editor-beats-list > li.--current {
-    outline: 2px solid hsl(45, 100%, 50%);
-}
 ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     background-color: hsl(45, 100%, 90%);
 }
@@ -397,13 +410,13 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     opacity: 0.5;
 }
 .gleam-editor-step + .gleam-editor-step {
-    border-top: 1px solid #808080;
+    border-top: 1px solid #ccc;
 }
-.gleam-editor-step > .-handle {
-    padding: 0.25em;
-    background: #a0a0a0;
-    color: #c0c0c0;
-    text-shadow: 0 1px 1px #606060;
+.gleam-editor-step .-handle {
+    display: inline-block;
+    margin-right: 0.25em;
+    color: #fff;
+    text-shadow: 0 1px 1px #666;
     cursor: move;
     cursor: grab;
 }
@@ -445,6 +458,9 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
 
 /* Step arguments */
 /* FIXME consistent hover and "is being edited" effect? */
+.gleam-editor-arg-hint {
+    color: #999;
+}
 .gleam-editor-arg-string {
     /* FIXME otherwise it's zero height while empty uggh, same below */
     min-height: 1em;

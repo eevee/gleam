@@ -273,12 +273,14 @@ Stage.prototype.TWIDDLES = {};
 Stage.STEP_TYPES = {
     pause: {
         display_name: "pause",
+        hint: "pause and wait for a click",
         pause: true,
         args: [],
         twiddles: [],
     },
     bookmark: {
         display_name: "bookmark",
+        hint: "mark this as a named point in the pause menu",
         args: [{
             display_name: "label",
             type: 'string',
@@ -1017,6 +1019,7 @@ Jukebox.prototype.TWIDDLES = {
 Jukebox.STEP_TYPES = {
     play: {
         display_name: "play",
+        hint: "start playing a given track",
         args: [{
             display_name: "track",
             type: 'track',
@@ -1030,6 +1033,7 @@ Jukebox.STEP_TYPES = {
     },
     stop: {
         display_name: "stop",
+        hint: "stop playing",
         args: [],
         twiddles: [{
             key: 'track',
@@ -1216,7 +1220,8 @@ PictureFrame.prototype.TWIDDLES = {
 // - if i save stuff as twiddle changes, i need to know how to convert those back to ui steps too, but maybe that's the same problem
 PictureFrame.STEP_TYPES = {
     show: {
-        display_name: 'show',
+        display_name: "show",
+        hint: "switch to another pose",
         args: [{
             display_name: 'pose',
             type: 'pose',
@@ -1231,6 +1236,7 @@ PictureFrame.STEP_TYPES = {
     },
     hide: {
         display_name: 'hide',
+        hint: "hide",
         args: [],
         twiddles: [{
             key: 'pose',

@@ -871,15 +871,14 @@ class RoleEditor {
         let el = make_element('div', 'gleam-editor-step');
 
         let handle = make_element('div', '-handle', '⠿');
-        el.appendChild(handle);
 
         // A cheaty hack to make an element draggable only by a child handle: add
         // the 'draggable' attribute (to the whole parent) only on mousedown
         handle.addEventListener('mousedown', ev => {
-            ev.target.parentNode.setAttribute('draggable', 'true');
+            ev.target.closest('.gleam-editor-step').setAttribute('draggable', 'true');
         });
         handle.addEventListener('mouseup', ev => {
-            ev.target.parentNode.removeAttribute('draggable');
+            ev.target.closest('.gleam-editor-step').removeAttribute('draggable');
         });
         // Also remove it after a successful drag
         el.addEventListener('dragend', ev => {
@@ -887,9 +886,9 @@ class RoleEditor {
         });
 
         // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
-        el.appendChild(make_element('div', '-what', step_kind.display_name));
-        for (let arg_def of step_kind.args) {
-            el.appendChild(make_element('div', '-how', `[${arg_def.display_name}]`));
+        el.appendChild(mk('div.-what', handle, step_kind.display_name));
+        if (step_kind.hint) {
+            el.append(mk('div.-how', mk('div.gleam-editor-arg-hint', step_kind.hint)));
         }
         return el;
     }
@@ -899,15 +898,14 @@ class RoleEditor {
         let el = make_element('div', 'gleam-editor-step');
 
         let handle = make_element('div', '-handle', '⠿');
-        el.appendChild(handle);
 
         // A cheaty hack to make an element draggable only by a child handle: add
         // the 'draggable' attribute (to the whole parent) only on mousedown
         handle.addEventListener('mousedown', ev => {
-            ev.target.parentNode.setAttribute('draggable', 'true');
+            ev.target.closest('.gleam-editor-step').setAttribute('draggable', 'true');
         });
         handle.addEventListener('mouseup', ev => {
-            ev.target.parentNode.removeAttribute('draggable');
+            ev.target.closest('.gleam-editor-step').removeAttribute('draggable');
         });
         // Also remove it after a successful drag
         el.addEventListener('dragend', ev => {
@@ -915,7 +913,7 @@ class RoleEditor {
         });
 
         // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
-        let role_tag = make_element('div', '-who', step.role.name);
+        let role_tag = mk('div.-who', handle, step.role.name);
         role_tag.classList.add(this.CLASS_NAME);
         el.appendChild(role_tag);
         el.appendChild(make_element('div', '-what', step.kind.display_name));
