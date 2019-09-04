@@ -1809,11 +1809,16 @@ class Editor {
 
         // Assets panel
         this.assets_panel = new AssetsPanel(this, document.getElementById('gleam-editor-assets'));
-
-        // Roles panel
         this.roles_panel = new RolesPanel(this, document.getElementById('gleam-editor-roles'));
-
         this.script_panel = new ScriptPanel(this, document.getElementById('gleam-editor-script'));
+
+        // Wire up some main UI
+        let meta = document.body.querySelector('#gleam-editor-header-metadata');
+        let button = meta.querySelector('button');
+        button.addEventListener('click', ev => {
+            let json = this.script.to_json();
+            open_overlay(mk('div.gleam-editor-dialog', mk('pre', {style: 'max-height: 90vh; overflow: auto;'}, JSON.stringify(json, null, 2))));
+        });
 
         // Start with an empty script
         this.load_script(new MutableScript, new NullAssetLibrary);
