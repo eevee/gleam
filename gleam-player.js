@@ -2318,7 +2318,7 @@ class Player {
 
         // Do this as early as possible, so it loads first
         // FIXME this should very much be taken from the script and also configurable etc
-        this.set_default_font('Comfortaa');
+        //this.set_default_font('Comfortaa');
 
         this.script = script;
         // TODO what's a reasonable default for a library?  remote based on location of the script (or the calling file), of course, but...?
