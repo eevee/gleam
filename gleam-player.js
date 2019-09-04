@@ -2279,7 +2279,8 @@ class PlayerPauseOverlay extends PlayerOverlay {
 
 class Player {
     constructor(script, library) {
-        this.container = make_element('div', 'gleam-player');
+        this.container = mk('div.gleam-player', {tabindex: -1});
+        // TODO indicate focus, and not-focus, but probably not in editor
         this.paused = false;
         this.loaded = false;
 
@@ -2344,8 +2345,28 @@ class Player {
 
         // Bind some useful event handlers
         // TODO should make our own sub-container so when we go away (and delete the dom), the events go away too
-        this.container.addEventListener('click', e => {
+        this.container.addEventListener('click', ev => {
             this.director.advance();
+        });
+        this.container.addEventListener('keydown', ev => {
+            if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
+                return;
+
+            if (ev.key === "Pause" || ev.key.toUpperCase() === "P") {
+                ev.preventDefault();
+                this.toggle_paused();
+            }
+            else if (ev.key === " " || ev.key === "ArrowRight") {
+                ev.preventDefault();
+                this.director.advance();
+            }
+            else if (ev.key === "ArrowLeft") {
+                ev.preventDefault();
+                // TODO should this make use of advance()?  the main point of that is that it respects busy
+                if (this.director.cursor > 0) {
+                    this.director.jump(this.director.cursor - 1);
+                }
+            }
         });
 
         // requestAnimationFrame handle.  If this exists, we're doing per-frame
@@ -2373,7 +2394,8 @@ class Player {
         // TODO add this to the loading progress?  which...  is part of the director, hmmm
         // TODO what if the name is bogus?
         GOOGLE_FONT_LOADER.load(family);
-        this.container.style.fontFamily = family;
+        // TODO escaping?  and this might be the wrong generic fallback
+        this.container.style.fontFamily = `"${family}", sans-serif`;
     }
 
     // ------------------------------------------------------------------------
