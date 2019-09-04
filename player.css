@@ -20,6 +20,7 @@
     z-index: 0;  /* stacking context */
     width: 800px;
     height: 600px;
+    font-size: 20px;
     border: 1px solid black;
 
     --transition-time: 0.2s;
@@ -33,7 +34,8 @@
     right: 0;
     transition: filter 0.5s;
 }
-.gleam-player.--paused .gleam-stage {
+.gleam-player.--paused .gleam-stage,
+.gleam-player.--loading .gleam-stage {
     filter: blur(3px) saturate(0.5);
 }
 
@@ -66,6 +68,7 @@
     right: 0;
     background: #000c;
     color: white;
+    text-shadow: 0 2px 1px #0004;
 
     /* Hidden by default */
     opacity: 0;
@@ -103,6 +106,8 @@
 }
 .gleam-overlay .-body {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow: auto;
 }
 .gleam-overlay > footer {
@@ -121,16 +126,25 @@
 .gleam-overlay-loading {
     z-index: 10002;  /* above the pause button.  TODO this is stupid */
     background: #222;
+    text-align: center;
     transition-property: visibility, opacity, background-color;
 }
 .gleam-overlay-loading.--finished {
     /* FIXME boo, this is copy/pasted from .gleam-overlay */
     background: #000c;
 }
+.gleam-overlay-loading > .-body > p {
+    flex: 0 0;
+    margin: 0.5em;
+}
+.gleam-overlay-loading > .-body > h2 {
+    flex: 0 0;
+    margin: 0.5em;
+}
 .gleam-overlay-loading .gleam-loading-progress {
-    flex: 1;
+    flex: 0 0;
     display: flex;
-    font-size: 2em;
+    font-size: 1.5em;
 }
 /* Consists of -done -divider -total, and is intended to look like "3 / 97" but centered on the slash, so that it doesn't reflow when the progress updates */
 .gleam-overlay-loading .gleam-loading-progress .-done,
@@ -141,13 +155,17 @@
 .gleam-overlay-loading .gleam-loading-progress .-done {
     text-align: right;
 }
+.gleam-overlay-loading .gleam-loading-progress .-total {
+    text-align: left;
+}
 .gleam-overlay-loading .gleam-loading-progress .-divider {
     margin: 0 0.25em;
 }
 .gleam-overlay-loading .gleam-loading-progressbar {
     --progress: 0;
+    flex: 0 0 1em;
     position: relative;
-    margin: 1em 10%;
+    margin: 0.5em 10%;
     height: 1em;
     border: 1px solid white;
     background: #fff4;
@@ -156,21 +174,23 @@
     content: '';
     display: block;
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: calc(var(--progress) * 100%);
+    top: 1px;
+    bottom: 1px;
+    left: 1px;
+    width: calc(var(--progress) * (100% - 2px));
     background: white;
 }
 .gleam-overlay-loading .gleam-loading-play {
-    display: none;
+    flex: 1;
+    visibility: hidden;
+    pointer-events: none;
     font-size: 4em;
-    margin: 1rem auto;
     text-align: center;
     cursor: pointer;
 }
 .gleam-overlay-loading.--finished .gleam-loading-play {
-    display: inherit;
+    visibility: visible;
+    pointer-events: unset;
 }
 
 /* Pause screen */
@@ -181,6 +201,7 @@
     margin: 1em;
     padding: 0;
     color: #222;
+    text-shadow: none;
 }
 .gleam-overlay-pause .gleam-pause-beats li {
     /* TODO hmm, grid? */

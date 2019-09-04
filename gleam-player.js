@@ -2142,8 +2142,13 @@ class PlayerLoadingOverlay extends PlayerOverlay {
         super(player);
         this.element.classList.add('gleam-overlay-loading');
         // FIXME controls; pause button instructions; music warning (if playable AND actually exists); contact in case of problems (from script...?)
+        // FIXME maybe these instructions should be customizable too
         this.body.append(
-            mk('h2', '...Loading...'),
+            mk('p', "click, tap, spacebar, or arrow keys to browse — backwards too!"),
+            // FIXME only do this if there's a jukebox AND audio support
+            mk('p', "warning: music!  consider headphones, or pause to change volume"),
+            this.status_heading = mk('h2', '...Loading...'),
+            this.play_el = mk('div.gleam-loading-play', '▶'),
             mk('div.gleam-loading-progress',
                 this.done_el = mk('div.-done', '0'),
                 mk('div.-divider', '/'),
@@ -2151,13 +2156,15 @@ class PlayerLoadingOverlay extends PlayerOverlay {
             ),
             this.progress_bar = mk('div.gleam-loading-progressbar'),
             this.errors_el = mk('p'),
-            this.play_el = mk('div.gleam-loading-play', '▶'),
+            mk('p', "art and music licensed under CC BY-SA; code licensed under ISC"),
         );
         // FIXME css, once i figure this out
         this.errors_el.style.whiteSpace = 'pre-wrap';
         this.play_el.addEventListener('click', ev => {
             // FIXME also need to tell the player to show the play button
             // FIXME shouldn't start playing music until after clicking play, on the off chance the first frame does that...  hm...
+            // FIXME this seems invasive also
+            player.container.classList.remove('--loading');
             this.hide();
         });
 
@@ -2198,9 +2205,11 @@ class PlayerLoadingOverlay extends PlayerOverlay {
             this.finished = true;
             if (this.successful) {
                 this.element.classList.add('--finished');
+                this.status_heading.textContent = 'ready';
             }
             else {
                 this.element.classList.add('--failed');
+                this.status_heading.textContent = 'failed';
             }
         }
     }
@@ -2319,6 +2328,7 @@ class Player {
         // Loading overlay
         // FIXME how does this interact with the editor?  loading status is still nice, but having to click play is very silly
         // FIXME hide pause button until loading is done
+        this.container.classList.add('--loading');
         this.loading_overlay = new PlayerLoadingOverlay(this);
         this.loading_overlay.show();
         this.container.appendChild(this.loading_overlay.element);
