@@ -1722,9 +1722,10 @@ class Script {
 
         this._set_steps([]);
 
-        // This is mostly used for editing, so that objects wrapping us (e.g.
-        // Director, Editor) can know when the step list changes
-        this.intercom = new EventTarget();
+        // This is an event target mostly used for editing, so that objects
+        // wrapping us (e.g.  Director, Editor) can know when the step list
+        // changes
+        this.intercom = mk('i');
     }
 
     _add_role(role) {
@@ -1963,8 +1964,8 @@ class Director {
             this.role_to_actor.set(role, actor);
         }
 
-        // Used to announce advancement to wrapper types
-        this.intercom = new EventTarget();
+        // Used as an event target, to announce advancement to wrapper types
+        this.intercom = mk('i');
 
         // Bind some stuff
         // TODO hm, could put this in a 'script' setter to make it Just Work when reassigning script, but why not just make a new Director?
