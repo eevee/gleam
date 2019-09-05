@@ -23,7 +23,6 @@
     font-size: 20px;
     /* TODO what is a good reasonable default anyway, this is all over the place */
     font-family: "Source Sans Pro", Futura, Helvetica, Verdana, Arial, sans-serif;
-    border: 1px solid black;
 
     --transition-time: 0.2s;
 }
