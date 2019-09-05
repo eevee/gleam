@@ -298,12 +298,23 @@
 }
 .gleam-actor-pictureframe img {
     position: absolute;
-    /* TODO strongly consider transitioning visibility, too, although it's a bit more complicated with delays and all */
-    /* visibility: hidden; */
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
 
-    transition: opacity var(--transition-time) linear;
+    /* Transition used when fading OUT -- switch visibility to off at the end */
+    /* Note that visibility is first so that transition-property can be extended */
+    /* Extra wrinkle: A true cross-fade will end up with both images at 0.5
+     * opacity halfway through, for a combined opacity of 0.75, which is no
+     * good -- especially for the backdrop!  As a workaround, fade in the new
+     * one first, then fade out the old one. */
+    /* All in all, that means fading OUT has a delay, then fades opacity, then
+     * changes visibility at the end; fading IN changes visibility immediately,
+     * then fades opacity. */
+    transition-property: visibility, opacity;
+    transition-duration: 0s, var(--transition-time);
+    transition-delay: calc(2 * var(--transition-time)), var(--transition-time);
+    transition-timing-function: linear;
 }
 .gleam-actor-pictureframe img.--visible {
     visibility: visible;
@@ -312,15 +323,8 @@
 
     /* Visible image should be above any that are still fading out */
     z-index: 1;
-}
-/* A true cross-fade will end up with both images at 0.5 opacity halfway
- * through, for a combined opacity of 0.75, which is no good -- especially for
- * the backdrop!  As a workaround, fade in the new one first, then fade out the
- * old one. */
-.gleam-actor-pictureframe img {
-    transition-delay: var(--transition-time);
-}
-.gleam-actor-pictureframe img.--visible {
+
+    /* Transition used when fading IN -- switch visibility on immediately */
     transition-delay: 0s;
 }
 
