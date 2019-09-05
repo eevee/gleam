@@ -1062,7 +1062,6 @@ Jukebox.Actor = class JukeboxActor extends Actor {
     apply_state(state) {
         let old_state = super.apply_state(state);
 
-        // FIXME needs fadeout probably (oh dear), and also fix time when playing
         if (state.track !== old_state.track) {
             if (old_state.track !== null) {
                 let audio = this.track_elements[old_state.track];
@@ -2268,8 +2267,8 @@ class PlayerPauseOverlay extends PlayerOverlay {
                 return;
             let b = parseInt(li.getAttribute('data-beat-index'), 10);
             // TODO hm, instant jump?  curtain?
-            this.player.director.jump(b);
             this.player.unpause();
+            this.player.director.jump(b);
         });
     }
 
