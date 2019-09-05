@@ -2449,8 +2449,13 @@ class Player {
         if (this.raf_handle)
             return;
 
-        this.last_timestamp = performance.now();
-        this.raf_handle = window.requestAnimationFrame(this.on_frame_bound);
+        // rAF doesn't give entirely consistent timestamps, and occasionally
+        // may give them in the PAST (which causes negative dt, which is bad),
+        // so always use the first frame to grab a timestamp and nothing else
+        this.raf_handle = window.requestAnimationFrame(timestamp => {
+            this.last_timestamp = timestamp;
+            this.raf_handle = window.requestAnimationFrame(this.on_frame_bound);
+        });
     }
     _stop_frame_loop() {
         if (! this.raf_handle)
