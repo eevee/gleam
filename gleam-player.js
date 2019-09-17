@@ -12,7 +12,7 @@
 
 window.Gleam = (function() {
 
-const VERSION = "0.1";
+const VERSION = "0.2";
 
 function make_element(tag, cls, text) {
     let element = document.createElement(tag);
