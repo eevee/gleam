@@ -1030,8 +1030,23 @@ class PictureFrameEditor extends RoleEditor {
         this.update_assets();
 
         let button = mk('button', "Add poses in bulk");
-        button.addEventListener('click', ev => {
-            new AddByWildcardDialog(this, this.main_editor.library).open();
+        button.addEventListener('click', async ev => {
+            // FIXME Well this is awkward
+            try {
+                let results = await new AddByWildcardDialog(this, this.main_editor.library).open();
+
+                // FIXME what if one of these names already exists?
+                for (let [name, path] of results) {
+                    this.role.add_pose(name, path);
+                }
+
+                this.update_assets();
+
+                // TODO this seems like it should be part of update_assets, but for ordering reasons it's called explicitly in set_library
+                let director = this.main_editor.player.director;
+                director.role_to_actor.get(this.role).sync_with_role(director);
+            }
+            catch (e) {}
         });
 
         let button2 = mk('button', "Add all poses to script (comic mode)");
