@@ -1719,6 +1719,9 @@ class Script {
         this.author = null;
         this.published_date = null;
 
+        this.width = 800;
+        this.height = 600;
+
         this.roles = [];
         this.role_index = {};
 
@@ -1837,6 +1840,8 @@ class Script {
         // Metadata
         script.title = json.meta.title;
         script.subtitle = json.meta.subtitle;
+        script.width = json.meta.width || script.width;
+        script.height = json.meta.height || script.height;
         // FIXME relying on Date to parse dates is ill-advised, also what is the date format even
         // FIXME published vs modified
         script.modified_date = json.meta.modified ? new Date(json.meta.modified) : null;
@@ -1878,6 +1883,8 @@ class Script {
                 gleam_version: VERSION,
                 //preview?
                 //credits????
+                width: this.width,
+                height: this.height,
             },
             roles: [],
             steps: [],
@@ -2318,6 +2325,9 @@ class Player {
     constructor(script, library) {
         this.stage_container = mk('div.gleam-stage');
         this.container = mk('div.gleam-player', {tabindex: -1}, this.stage_container);
+        // FIXME this needs updating when the editor changes the script size too
+        this.container.style.width = `${script.width}px`;
+        this.container.style.height = `${script.height}px`;
         // TODO indicate focus, and not-focus, but probably not in editor
         this.paused = false;
         this.loaded = false;

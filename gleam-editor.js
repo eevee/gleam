@@ -1812,13 +1812,12 @@ class ScriptPanel extends Panel {
 
 
 class Editor {
-    constructor(container) {
-        // FIXME inject_into method or something?  separate view?
-        // FIXME wait we don't even use this, we claim the whole body!
-        this.container = container;
+    constructor(launchpad) {
+        this.launchpad = launchpad;
 
         // Set by load_script, called after all this setup
         this.script = null;
+        this.script_slot = null;
         this.library = null;
         this.player = null;
 
@@ -1834,6 +1833,14 @@ class Editor {
             let json = this.script.to_json();
             open_overlay(mk('div.gleam-editor-dialog', mk('pre', {style: 'max-height: 90vh; overflow: auto;'}, JSON.stringify(json, null, 2))));
         });
+        button = mk('button', {type: 'button'}, "Save");
+        meta.append(button);
+        button.addEventListener('click', ev => {
+            // TODO some kinda feedback, probably do this automatically, etc
+            if (this.script_slot) {
+                this.launchpad.save_script(this.script_slot, this.script);
+            }
+        });
 
         // Start with an empty script
         this.load_script(new MutableScript, new NullAssetLibrary);
@@ -1841,19 +1848,21 @@ class Editor {
 
     // TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
     // TODO this /has/ to be a MutableScript passed in, but boy that's awkward?  should enforce here?  can i cast it, change the prototype???
-    load_script(script, library) {
+    load_script(script, library, slot) {
         if (this.player) {
             // TODO explicitly ask it to destroy itself?  dunno what that would do though
             this.player.detach();
             this.player = null;
         }
 
+        this.script_slot = slot;
         this.script = script;
         this.library = library;
         this.player = new Gleam.Player(this.script, library);
         // XXX stupid hack, disable the loading overlay, which for local files will almost certainly not work
         this.player.loaded = true;
         this.player.loading_overlay.hide();
+        this.player.container.classList.remove('--loading');
 
         this.assets_panel.refresh_dom();
 
@@ -1867,29 +1876,6 @@ class Editor {
 
         // Finally, set the player going
         this.player.inject(document.querySelector('#gleam-editor-player .gleam-editor-panel-body'));
-    }
-
-    save() {
-        let json = this.script.to_json();
-        json.meta._editor = {
-            // FIXME put library root in here so we know where to get the files, or what folder to tell the author to fetch
-        };
-        console.log(json);
-        // TODO there's a storage event for catching if this was changed in another tab, ho hum
-        /*
-        let index_json = window.localStorage.getItem('gleam-editor');
-        let index;
-        if (index_json === undefined) {
-            index = {
-                projects: [],
-            };
-        }
-        else {
-            index = JSON.parse(index_json);
-        }
-        */
-
-        window.localStorage.setItem('gleam-temp', JSON.stringify(json));
     }
 
     set_library(library) {
@@ -1918,9 +1904,123 @@ class Editor {
     }
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+// Editor "launchpad", which offers some light help and a list of projects
+
+// FIXME this name is stupid
+class EditorLaunchpad {
+    constructor() {
+        this.editor = new Editor(this);
+        
+        // FIXME handle errors
+        this.main_json = JSON.parse(window.localStorage.getItem('GLEAM'));
+        if (! this.main_json) {
+            this.main_json = {
+                projects: {},
+            };
+        }
+
+        this.root = document.querySelector('#gleam-editor-launchpad');
+
+        this.projects_ol = document.querySelector('#gleam-editor-projects-list');
+        let temp_json = window.localStorage.getItem('gleam-temp');
+        let temp_script = JSON.parse(temp_json);
+        this.projects_ol.append(mk('li', mk('button',
+            temp_script['meta']['title'] || "(untitled)",
+            mk('br'),
+            temp_json.length,
+        )));
+        for (let [slot, project] of Object.entries(this.main_json.projects)) {
+            let button = mk('button', {type: 'button'},
+                mk('span.-title', project.title || "(untitled)"),
+                mk('span.-subtitle', project.subtitle || ""),
+                mk('span.-date', new Date(project.modified).toISOString().split(/T/)[0]),
+                mk('span.-filesize', `${project.size} bytes`),
+            );
+            button.addEventListener('click', ev => {
+                let script = MutableScript.from_json(JSON.parse(window.localStorage.getItem(slot)));
+                this.editor.load_script(script, new NullAssetLibrary, slot);
+
+                // Reveal the editor
+                this.root.setAttribute('hidden', '');
+                document.getElementById('gleam-editor-main').removeAttribute('hidden');
+            });
+            this.projects_ol.append(mk('li', button));
+        }
+
+        this.new_form = this.root.querySelector('#gleam-editor-new form');
+        this.new_form.addEventListener('submit', ev => {
+            ev.preventDefault();
+
+            // Create a fresh new script
+            let script = new MutableScript;
+            script.add_role(new Gleam.Stage('stage'));
+            script.title = this.new_form.elements['title'].value;
+            script.subtitle = this.new_form.elements['subtitle'].value;
+            script.author = this.new_form.elements['author'].value;
+            let slot = 'gleam-temp2';
+            this.save_script(slot, script);
+            this.editor.load_script(script, new NullAssetLibrary, slot);
+
+            // Reveal the editor
+            this.root.setAttribute('hidden', '');
+            document.getElementById('gleam-editor-main').removeAttribute('hidden');
+        });
+    }
+
+    save_script(slot, script) {
+        let json = script.to_json();
+        json.meta._editor = {
+            // FIXME put library root in here so we know where to get the files, or what folder to tell the author to fetch
+        };
+        console.log(json);
+        // TODO there's a storage event for catching if this was changed in another tab, ho hum
+        /*
+        let index_json = window.localStorage.getItem('gleam-editor');
+        let index;
+        if (index_json === undefined) {
+            index = {
+                projects: [],
+            };
+        }
+        else {
+            index = JSON.parse(index_json);
+        }
+        */
+
+        let json_string = JSON.stringify(json);
+        window.localStorage.setItem(slot, JSON.stringify(json));
+
+        this.main_json.projects[slot] = {
+            size: json_string.length,
+            // TODO number of beats?
+            title: script.title,
+            subtitle: script.subtitle,
+            author: script.author,
+            modified: Date.now(),
+            // TODO created?  published?
+        };
+        window.localStorage.setItem('GLEAM', JSON.stringify(this.main_json));
+    }
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Entry point
+
+function attach_editor() {
+    let launchpad = new EditorLaunchpad();
+    window._gleam_launchpad = launchpad;
+    return launchpad;
+}
+
 return {
     NullAssetLibrary: NullAssetLibrary,
     MutableScript: MutableScript,
     Editor: Editor,
+    EditorLaunchpad: EditorLaunchpad,
+    attach_editor: attach_editor,
 };
 })());

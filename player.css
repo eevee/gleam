@@ -15,12 +15,15 @@
 }
 
 .gleam-player {
+    font-size: 20px;
     position: relative;
     overflow: hidden;
     z-index: 0;  /* stacking context */
+    /* default size only */
     width: 800px;
     height: 600px;
-    font-size: 20px;
+    /* TODO this should be overridable by the script?  maybe??  or maybe that's for the much-awaited style system.  only shows when the backdrop isn't full-size or fully opaque, so */
+    background: black;
     /* TODO what is a good reasonable default anyway, this is all over the place */
     font-family: "Source Sans Pro", Futura, Helvetica, Verdana, Arial, sans-serif;
 
@@ -37,7 +40,7 @@
 }
 .gleam-player.--paused .gleam-stage,
 .gleam-player.--loading .gleam-stage {
-    filter: blur(3px) saturate(0.5);
+    filter: blur(3px) saturate(0.25);
 }
 
 .gleam-player input {
@@ -295,12 +298,19 @@
     /* Create a stacking context so the z-index on visible images doesn't
      * interfere with the actor ordering */
     z-index: 0;
+    left: 0;
+    right: 0;
 }
 .gleam-actor-pictureframe img {
     position: absolute;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+
+    /* TODO this will center horizontally, but not...  vertically?  maybe?  there's an intrinsic size so maybe that'd work actually, idk find out */
+    left: 0;
+    right: 0;
+    margin: 0 auto;
 
     /* Transition used when fading OUT -- switch visibility to off at the end */
     /* Note that visibility is first so that transition-property can be extended */

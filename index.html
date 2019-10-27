@@ -9,6 +9,57 @@
     <script src="gleam-editor.js"></script>
 </head>
 <body>
+<main id="gleam-editor-launchpad">
+    <header><h1><span class="gleam-title">GLEAM</span> visual novel creator v0.2</h1></header>
+    <section id="gleam-editor-load">
+        <h1>Load project</h1>
+        <ul id="gleam-editor-projects-list">
+            <li><button type="button">
+                <span class="-title">Circlet of the Sun</span>
+                <span class="-subtitle"></span>
+                <span class="-author"></span>
+                <span class="-filesize">xx bytes</span>
+                <span class="-beats">xx beats</span>
+                <span class="-date">published 2019-09-22</span>
+            </button></li>
+        </ul>
+    </section>
+    <section id="gleam-editor-new">
+        <h1>Create a project</h1>
+        <form>
+            <dl id="gleam-editor-new-form">
+                <dt>Title</dt>
+                <dd><input type="text" name="title"></dd>
+                <dt>Subtitle (optional)</dt>
+                <dd><input type="text" name="subtitle"></dd>
+                <dt>Author</dt>
+                <dd><input type="text" name="author"></dd>
+                <dt>Size</dt>
+                <dd>
+                    <input type="text" name="width" size="5"> × <input type="text" name="width" size="5">
+                    <br>
+                    <button type="button">800×600</button>
+                    <button type="button">1280×720</button>
+                    <br>
+                    <div class="gleam-editor-size-preview">
+                        <div class="-screen">
+                            <div class="-browser">
+                                <div class="-viewport">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="-vn"></div>
+                    </div>
+                </dd>
+                <dd><button type="submit" class="gleam-big-button">Create</button>
+            </dl>
+        </form>
+    </section>
+    <section id="gleam-editor-intro">
+        <h1>What is this?</h1>
+    </section>
+</main>
+<main hidden id="gleam-editor-main">
     <header>
         <h1>GLEAM visual novel creator</h1>
         <div id="gleam-editor-header-metadata">
@@ -49,14 +100,13 @@
             <!-- state of selected beat goes here -->
         </footer>
     </section>
+</main>
     <script>
         // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
         window.addEventListener('load', ev => {
-            // FIXME does the editor really take over just from being created?
-            let editor = new Gleam.Editor(document.querySelector('.gleam-editor'));
-            window._gleam_editor = editor;
+            Gleam.attach_editor();
 
-            //*
+            /*
             // TODO i guess this needs some ui
             let json = window.localStorage.getItem('gleam-temp');
             let script;
@@ -73,6 +123,8 @@
             //*/
 
             // NOTE TO FUTURE GIT SPELUNKERS: sorry this exists only on my filesystem and points to all the old flora vns lol
+            /*
+            // FIXME is there ANY kind of hijinks i can do to allow loading a VN cross-domain without CORS?
             let root = 'res/prompt2-itchyitchy-final/';
             let root_url = new URL(root, document.location);
             //root_url = new URL('https://apps.veekun.com/flora-cutscenes/res/prompt2-itchyitchy-final/');
@@ -86,6 +138,7 @@
             // XXX lol
             xhr.open('GET', new URL('script.json', root_url));
             xhr.send();
+            */
         });
     </script>
 </body>

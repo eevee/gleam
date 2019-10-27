@@ -9,30 +9,49 @@ html {
 }
 /* FIXME grid sizing is very uncooperative */
 body {
-    display: grid;
-    grid-template:
-        "header header header" min-content
-        "assets steps player" min-content
-        "assets steps roles" 1fr
-        /* Grid columns seem to default to a minimum width of min-content, so
-         * using minmax(0, ...) will force the script column to shrink if
-         * necessary (which it is, because the twiddle debug panel HAS to
-         * scroll horizontally) */
-        / fit-content(10%) minmax(0, 1fr) min-content
-    ;
-    height: 100vh;
-    width: 100vw;
-    margin: 0;
-
     background: #404040;
     color: white;
     font-family: 'Source Sans Pro', Helvetica, sans-serif;
-    font-size: 14px;
+    font-size: 16px;
+    margin: 0;
+}
+
+main {
+    height: 100vh;
+    width: 100vw;
+}
+main[hidden] {
+    display: none !important;
 }
 
 input, select {
     font-size: inherit;
     vertical-align: middle;
+}
+
+button {
+    margin: 2px;
+    padding: 0.25em 0.5em;
+    border: none;
+    border-radius: 0.5em;
+    color: white;
+    background: #404040;
+    box-shadow: 0 2px #606060;
+    cursor: pointer;
+}
+button:hover {
+    background: #383838;
+}
+button:active {
+    box-shadow: 0 1px #202020;
+    transform: translateY(2px);
+}
+button.gleam-big-button {
+    font-size: 2em;
+}
+
+input[type=text] {
+    
 }
 
 dl.gleam-editor-propmap {
@@ -51,11 +70,137 @@ dl.gleam-editor-propmap > dd {
     margin: 0;
 }
 
+.gleam-title {
+    color: white;
+}
+
+/******************************************************************************/
+/* Landing */
+
+#gleam-editor-launchpad {
+    display: grid;
+    grid-template:
+        "header header header header" min-content
+        ".      load   new    ."
+        "intro  intro  intro  intro"
+        / 2fr 3fr 3fr 2fr
+    ;
+    gap: 2em;
+
+    background: #111;
+}
+
+#gleam-editor-launchpad > header {
+    grid-area: header;
+    background: #222;
+}
+
+#gleam-editor-load {
+    grid-area: load;
+}
+#gleam-editor-projects-list li {
+    margin: 0.5em 0;
+}
+#gleam-editor-projects-list button {
+    display: grid;
+    grid-template:
+        "title      title"
+        "subtitle   subtitle"
+        "author     filesize"
+        "date       beats"
+    ;
+    width: 100%;
+    text-align: left;
+}
+#gleam-editor-projects-list .-title {
+    grid-area: title;
+    font-size: 1.5em;
+}
+#gleam-editor-projects-list .-subtitle {
+    grid-area: subtitle;
+}
+#gleam-editor-projects-list .-author {
+    grid-area: author;
+}
+#gleam-editor-projects-list .-date {
+    grid-area: date;
+}
+#gleam-editor-projects-list .-filesize {
+    grid-area: filesize;
+    text-align: right;
+}
+#gleam-editor-projects-list .-beats {
+    grid-area: beats;
+    text-align: right;
+}
+
+#gleam-editor-new {
+    grid-area: new;
+}
+dl#gleam-editor-new-form {
+}
+dl#gleam-editor-new-form > dt {
+    color: #ccc;
+    margin: 0;
+}
+dl#gleam-editor-new-form > dd {
+    margin: 0;
+    margin-bottom: 1em;
+}
+
+.gleam-editor-size-preview {
+    position: relative;
+}
+.gleam-editor-size-preview .-screen {
+    border: 1px solid black;
+    background: black;
+}
+.gleam-editor-size-preview .-browser {
+    position: absolute;
+    background: #101010;
+}
+.gleam-editor-size-preview .-viewport {
+    position: absolute;
+    background: #202020;
+}
+.gleam-editor-size-preview .-vn {
+    position: absolute;
+    top: 0;
+    width: 128px;
+    height: 72px;
+    border: 1px dashed white;
+}
+
+#gleam-editor-intro {
+    grid-area: intro;
+    background: #222;
+}
+
+/******************************************************************************/
+/* Editor */
+
+#gleam-editor-main {
+    display: grid;
+    grid-template:
+        "header header header" min-content
+        "assets steps player" min-content
+        "assets steps roles" 1fr
+        /* Grid columns seem to default to a minimum width of min-content, so
+         * using minmax(0, ...) will force the script column to shrink if
+         * necessary (which it is, because the twiddle debug panel HAS to
+         * scroll horizontally) */
+        / fit-content(10%) minmax(0, 1fr) min-content
+    ;
+    background: #101010;
+    row-gap: 0.25em;
+    column-gap: 0.25em;
+}
+
 /* Panels, which the entire editor UI is made of */
 section.gleam-editor-panel {
     display: flex;
     flex-direction: column;
-    border: 3px solid #000;
+    background: #303030;
 }
 section.gleam-editor-panel > header {
     flex: 0;
@@ -92,7 +237,7 @@ section.gleam-editor-panel > footer {
     overflow: auto;
     border-top: 1px solid #101010;
 }
-body > header {
+#gleam-editor-main > header {
     grid-area: header;
     display: flex;
     align-items: center;
@@ -138,7 +283,7 @@ nav button:hover {
 }
 
 /* Header */
-body > header > h1 {
+#gleam-editor-main > header > h1 {
     order: 2;
     margin: 0.5rem 1rem;
     color: #666;
