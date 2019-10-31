@@ -18,6 +18,11 @@ function human_friendly_sort(filenames) {
     });
 }
 
+// Very basic overlay handling
+// TODO maybe the overlay should be an object.
+// TODO maybe the overlay should be able to operate as a promise
+// TODO the overlay should be able to position itself by the mouse cursor, if opened in response to a click
+// TODO a transient overlay should probably disappear on document blur?
 function open_overlay(element) {
     let overlay = make_element('div', 'gleam-editor-overlay');
     overlay.appendChild(element);
@@ -42,6 +47,98 @@ function close_overlay(element) {
         overlay.dispatchEvent(new CustomEvent('gleam-overlay-closed'));
         overlay.remove();
         return overlay;
+    }
+}
+
+// Wrapper around a modal that lives above everything else, e.g. a fake popup
+// menu or a dialog.  Note that the constructor also displays the overlay!
+// TODO maybe it shouldn't?
+// TODO unsure about ergonomics
+// FIXME this very poorly handles a very long list, i think?
+// FIXME convert other overlays to use this
+class Overlay {
+    constructor(element, is_transient) {
+        this.is_transient = is_transient;
+        this.element = element;
+
+        this.container = make_element('div', 'gleam-editor-overlay');
+        this.container.appendChild(element);
+        document.body.appendChild(this.container);
+
+        if (is_transient) {
+            // Remove a transient overlay when clicking outside the element
+            this.container.addEventListener('click', ev => {
+                this.dismiss();
+            });
+            // But ignore any click on the element itself
+            element.addEventListener('click', ev => {
+                ev.stopPropagation();
+            });
+        }
+
+        // Create a promise to contain our state
+        this.promise = new Promise((resolve, reject) => {
+            this._resolve = resolve;
+            this._reject = reject;
+        });
+    }
+
+    // Resolve the Promise with a value, then close the overlay
+    choose(value) {
+        this._resolve(value);
+        this._close();
+    }
+
+    // Reject the Promise, then close the overlay
+    dismiss() {
+        this._reject();
+        this._close();
+    }
+
+    // Close and destroy the overlay, WITHOUT touching the Promise
+    _close() {
+        this.container.remove();
+    }
+}
+
+class PopupMenuOverlay extends Overlay {
+    constructor(options, make_label, mouse_event = null) {
+        // FIXME genericize this class
+        let list = mk('ol.gleam-editor-arg-enum-poses');
+        for (let [i, option] of options.entries()) {
+            let label = make_label(option);
+            if (label === null || label === undefined)
+                continue;
+
+            let li = mk('li', {'data-index': i});
+            if (label instanceof Array) {
+                li.append(...label);
+            }
+            else {
+                li.append(label);
+            }
+            list.append(li);
+        }
+
+        super(list, true);
+        this.options = options;
+
+        list.addEventListener('click', ev => {
+            let li = ev.target.closest('li');
+            if (! li)
+                return;
+
+            // TODO resolve(li.getAttribute('data-pose'));
+            this.choose(this.options[parseInt(li.getAttribute('data-index'), 10)]);
+        });
+
+        // TODO should probably scroll to and/or highlight the current selection, if any?
+        // TODO try to align with some particular text??
+        // TODO finer positioning control would be nice i guess
+        if (mouse_event) {
+            list.style.left = `${Math.min(mouse_event.clientX, document.body.clientWidth - list.offsetWidth)}px`;
+            list.style.top = `${Math.min(mouse_event.clientY, document.body.clientHeight - list.offsetHeight)}px`;
+        }
     }
 }
 
@@ -1353,13 +1450,23 @@ class RolesPanel extends Panel {
         this.role_editors = [];
         this.role_to_editor = new Map();
 
-        // Create "add" buttons
-        for (let role_editor_type of ROLE_EDITOR_TYPES) {
-            if (! role_editor_type.role_type_name)
-                continue;
-
-            let button = make_element('button', null, `new ${role_editor_type.role_type_name}`);
-            button.addEventListener('click', ev => {
+        // Add the toolbar
+        // Add role
+        let button = make_element('button', {type: 'button'});
+        button.innerHTML = svg_icon_from_path("M 8,1 V 14 M 1,8 H 14");
+        button.addEventListener('click', ev => {
+            // FIXME more general handling of popup list
+            let overlay = new PopupMenuOverlay(
+                ROLE_EDITOR_TYPES,
+                role_editor_type => {
+                    if (! role_editor_type.role_type_name)
+                        return null;
+                    // TODO add explanations of these things too
+                    return role_editor_type.role_type_name;
+                },
+                ev,
+            );
+            overlay.promise.then(role_editor_type => {
                 // Generate a name
                 let n = 1;
                 let name;
@@ -1373,10 +1480,9 @@ class RolesPanel extends Panel {
 
                 let role = role_editor_type.create_role(name);
                 this.editor.script.add_role(role);
-                // FIXME do in an event handler
-            });
-            this.body.appendChild(button);
-        }
+            }, () => {});
+        });
+        this.nav.appendChild(button);
     }
 
     add_role(role) {
