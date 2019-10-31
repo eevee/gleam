@@ -14,6 +14,11 @@ window.Gleam = (function() {
 
 const VERSION = "0.2";
 
+const CAN_PLAY_AUDIO = (function() {
+    let dummy_audio = document.createElement('audio');
+    return dummy_audio.canPlayType && dummy_audio.canPlayType('audio/ogg; codecs="vorbis"');
+})();
+
 function make_element(tag, cls, text) {
     let element = document.createElement(tag);
     if (cls) {
@@ -1043,14 +1048,12 @@ Jukebox.Actor = class JukeboxActor extends Actor {
         this.master_volume = director.master_volume;
         this.element = mk('div.gleam-actor-jukebox');
         this.track_fades = {};
-
-        // FIXME If we can't play music at ALL, don't even try to load anything
-        /*
-        if not CAN_PLAY_AUDIO
-            return [$element]
-        */
-
         this.track_elements = {};
+
+        // If we can't play music at ALL, don't even try to load anything
+        if (! CAN_PLAY_AUDIO)
+            return;
+
         for (let [name, track] of Object.entries(this.role.tracks)) {
             let audio = director.library.load_audio(track.path);
             audio.loop = track.loop;
@@ -1061,6 +1064,9 @@ Jukebox.Actor = class JukeboxActor extends Actor {
 
     apply_state(state) {
         let old_state = super.apply_state(state);
+
+        if (! CAN_PLAY_AUDIO)
+            return;
 
         if (state.track !== old_state.track) {
             if (old_state.track !== null) {
@@ -2158,8 +2164,11 @@ class PlayerLoadingOverlay extends PlayerOverlay {
         // FIXME maybe these instructions should be customizable too
         this.body.append(
             mk('p', "click, tap, spacebar, or arrow keys to browse — backwards too!"),
-            // FIXME only do this if there's a jukebox AND audio support
-            mk('p', "warning: music!  consider headphones, or pause to change volume"),
+            // FIXME only do this if there's a jukebox?
+            mk('p', CAN_PLAY_AUDIO
+                ? "PLEASE NOTE: there's music!  consider headphones, or pause to change volume"
+                : "PLEASE NOTE: music is disabled, because your browser doesn't support ogg vorbis  :("
+            ),
             this.status_heading = mk('h2', '...Loading...'),
             this.play_el = mk('div.gleam-loading-play', '▶'),
             mk('div.gleam-loading-progress',
