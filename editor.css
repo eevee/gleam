@@ -17,6 +17,7 @@ body {
     color: white;
     font-family: 'Source Sans Pro', Helvetica, sans-serif;
     font-size: 16px;
+    line-height: 1.33;
     margin: 0;
 }
 
@@ -62,6 +63,20 @@ button:disabled {
 
 input[type=text] {
     
+}
+
+input[type=text].gleam-editor-inline {
+    width: 100%;
+    border: none;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-decoration: underline dotted;
+}
+input[type=text].gleam-editor-inline:focus {
+    text-decoration: none;
+    /* faux bottom border, without affecting layout */
+    box-shadow: 0 1px 0 currentColor;
 }
 
 dl.gleam-editor-propmap {
@@ -373,6 +388,9 @@ ol.gleam-editor-roles > li header {
     margin: 0;
     font-size: 1.25em;
 }
+ol.gleam-editor-roles > li header h2 {
+    flex: 1 0 auto;
+}
 ol.gleam-editor-roles > li h2 {
     font-size: 1em;
     margin: 0;
@@ -648,7 +666,13 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
 .gleam-editor-arg-string {
     /* FIXME otherwise it's zero height while empty uggh, same below */
     min-height: 1em;
+    text-decoration: underline dotted;
     cursor: pointer;
+}
+.gleam-editor-arg-string:empty::before {
+    content: '(blank)';
+    color: #808080;
+    font-style: italic;
 }
 .gleam-editor-arg-enum {
     color: #404fff;

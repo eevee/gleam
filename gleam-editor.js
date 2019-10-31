@@ -45,6 +45,39 @@ function close_overlay(element) {
     }
 }
 
+function make_inline_string_editor(initial_value, onchange) {
+    let el = mk('input.gleam-editor-inline', {
+        type: 'text',
+        value: initial_value,
+    });
+    el.addEventListener('focus', ev => {
+        // On focus, save the current value so we can restore it on Esc
+        el.setAttribute('data-saved-value', el.value);
+    });
+    el.addEventListener('blur', ev => {
+        // On blur, update the value
+        onchange(el.value);
+    });
+    el.addEventListener('keydown', ev => {
+        if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
+            return;
+
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            el.blur();
+        }
+        else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            el.value = el.getAttribute('data-saved-value');
+            el.blur();
+        }
+    });
+
+    return el;
+}
+
 // Dummy implementation that can't find any files, used in a fresh editor
 class NullAssetLibrary extends Gleam.AssetLibrary {
     load_image(path, element) {
@@ -536,6 +569,7 @@ class MutableScript extends Gleam.Script {
 // -----------------------------------------------------------------------------
 // Step argument configuration
 
+// FIXME these are un-tabbable.  maybe they should just be regular textboxes all the time?  would still need to do something to the popup ones though
 const STEP_ARGUMENT_TYPES = {
     string: {
         view(value) {
@@ -545,18 +579,33 @@ const STEP_ARGUMENT_TYPES = {
             element.textContent = value;
         },
         edit(element, value) {
+            let editor_element = mk('input.gleam-editor-inline', {type: 'text'});
             return new Promise((resolve, reject) => {
-                let editor_element = mk('input', {type: 'text'});
                 editor_element.value = value;
-                // FIXME having to click outside (and thus likely activate something else) kind of sucks
                 // TODO but then, i'd love to have an editor that uses the appropriate styling, anyway
+                editor_element.addEventListener('keydown', ev => {
+                    if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
+                        return;
+
+                    if (ev.key === 'Enter') {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        resolve(editor_element.value);
+                    }
+                    else if (ev.key === 'Escape') {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        reject();
+                    }
+                });
                 editor_element.addEventListener('blur', ev => {
-                    editor_element.replaceWith(element);
                     resolve(editor_element.value);
                 });
                 element.replaceWith(editor_element);
-                // FIXME doesn't focus at the point where you clicked in the text
+                // FIXME doesn't focus at the point where you clicked in the text, oh dear
                 editor_element.focus();
+            }).finally(() => {
+                editor_element.replaceWith(element);
             });
         },
     },
@@ -818,26 +867,13 @@ class RoleEditor {
         this.container = this.element;
 
         // Header
-        // FIXME clean this up
-        this.h2 = mk('h2', role.name);
-        let header = mk('header', this.h2);
+        this.h2_editor = make_inline_string_editor(role.name, new_name => {
+            this.role.name = new_name;
+            // FIXME actually change the role name in relevant places.  (where is that?  script step elements; other roles that refer to this one; does anything else use name instead of reference?)
+        });
+        let header = mk('header', mk('h2', this.h2_editor));
         header.classList.add(this.CLASS_NAME);
         this.element.append(header);
-        this.h2.addEventListener('click', ev => {
-            let editor = make_element('input');
-            editor.type = 'text';
-            editor.value = this.role.name;
-            // FIXME bah, need to put the styling on the <header>...
-            this.h2.replaceWith(editor);
-            editor.focus();
-            // TODO on enter, too.  and cancel on esc
-            editor.addEventListener('blur', ev => {
-                this.h2.textContent = editor.value;
-                this.role.name = editor.value;
-                // TODO inform the script panel
-                editor.replaceWith(this.h2);
-            });
-        });
 
         // Add step templates
         for (let [step_kind_name, step_kind] of Object.entries(this.ROLE_TYPE.STEP_TYPES)) {
@@ -1444,9 +1480,8 @@ class ScriptPanel extends Panel {
             }
         });
 
-        // Double-click to edit an argument
-        // FIXME this is a bit rude, seeing as double-click is useful for text
-        this.beats_list.addEventListener('contextmenu', ev => {
+        // Click to edit an argument
+        this.beats_list.addEventListener('click', ev => {
             let arg = ev.target.closest('.gleam-editor-arg');
             if (! arg)
                 return;
