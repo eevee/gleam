@@ -3,6 +3,10 @@ ul, ol {
     padding: 0;
     list-style: none;
 }
+h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    font-weight: normal;
+}
 
 html {
     height: 100%;
@@ -39,15 +43,21 @@ button {
     box-shadow: 0 2px #606060;
     cursor: pointer;
 }
-button:hover {
+button:enabled:hover {
     background: #383838;
 }
-button:active {
+button:enabled:active {
     box-shadow: 0 1px #202020;
     transform: translateY(2px);
 }
 button.gleam-big-button {
     font-size: 2em;
+}
+button:disabled {
+    box-shadow: none;
+    cursor: auto;
+    color: #c0c0c0;
+    background: #202020;
 }
 
 input[type=text] {
@@ -71,7 +81,8 @@ dl.gleam-editor-propmap > dd {
 }
 
 .gleam-title {
-    color: white;
+    color: #101010;
+    text-shadow: 0 0 2px white;
 }
 
 /******************************************************************************/
@@ -80,10 +91,10 @@ dl.gleam-editor-propmap > dd {
 #gleam-editor-launchpad {
     display: grid;
     grid-template:
-        "header header header header" min-content
-        ".      load   new    ."
-        "intro  intro  intro  intro"
-        / 2fr 3fr 3fr 2fr
+        "header header header header header" min-content
+        ".      load   .      new    ."
+        "intro  intro  intro  intro  intro"
+        / 3fr 6fr 1fr 6fr 3fr
     ;
     gap: 2em;
 
@@ -140,12 +151,21 @@ dl.gleam-editor-propmap > dd {
 dl#gleam-editor-new-form {
 }
 dl#gleam-editor-new-form > dt {
-    color: #ccc;
+    font-size: 0.8em;
     margin: 0;
+    color: #ccc;
+    font-style: italic;
 }
 dl#gleam-editor-new-form > dd {
     margin: 0;
-    margin-bottom: 1em;
+    margin-bottom: 2em;
+}
+#gleam-editor-new-form input[type=text] {
+    font-size: 1.5em;
+    border: none;
+    border-bottom: 1px solid #666;
+    background: none;
+    color: white;
 }
 
 .gleam-editor-size-preview {
@@ -182,25 +202,26 @@ dl#gleam-editor-new-form > dd {
 #gleam-editor-main {
     display: grid;
     grid-template:
-        "header header header" min-content
-        "assets steps player" min-content
-        "assets steps roles" 1fr
+        "header  header  header" min-content
+        "assets  steps   player" min-content
+        "assets  steps   roles" 1fr
         /* Grid columns seem to default to a minimum width of min-content, so
          * using minmax(0, ...) will force the script column to shrink if
          * necessary (which it is, because the twiddle debug panel HAS to
          * scroll horizontally) */
         / fit-content(10%) minmax(0, 1fr) min-content
     ;
+    gap: 0.5em;
+    box-sizing: border-box;  /* needed so padding eats into the 100vw/vh size */
+    padding: 0.5em;
     background: #101010;
-    row-gap: 0.25em;
-    column-gap: 0.25em;
 }
 
 /* Panels, which the entire editor UI is made of */
 section.gleam-editor-panel {
     display: flex;
     flex-direction: column;
-    background: #303030;
+    background: #202020;
 }
 section.gleam-editor-panel > header {
     flex: 0;
@@ -209,10 +230,11 @@ section.gleam-editor-panel > header {
     justify-content: space-between;
     margin: 0;
     padding: 0.33em 0.5em;
-    background: #202020;
+    border-bottom: 1px solid #606060;
 }
 section.gleam-editor-panel > header h1 {
     flex: 0 0 auto;
+    font-size: 1.25em;
     margin: 0;
 }
 section.gleam-editor-panel > header nav {
@@ -237,13 +259,6 @@ section.gleam-editor-panel > footer {
     overflow: auto;
     border-top: 1px solid #101010;
 }
-#gleam-editor-main > header {
-    grid-area: header;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5em;
-}
 #gleam-editor-player {
     grid-area: player;
 }
@@ -257,19 +272,16 @@ section.gleam-editor-panel > footer {
     grid-area: steps;
 }
 
-body > section.gleam-editor-drag-hover {
+section.gleam-editor-panel.gleam-editor-drag-hover {
     border-color: hsl(210, 50%, 6.25%);
     background-color: hsl(210, 50%, 25%);
 }
-body > section.gleam-editor-drag-hover > header {
-    background-color: hsl(210, 50%, 12.5%);
-}
 
 /* TODO super can't get away with this for long */
-nav button svg {
+section nav button svg {
     display: block;
 }
-nav button {
+section nav button {
     margin: 0 0.25em;
     padding: 0;
     border-radius: 3px;
@@ -278,26 +290,54 @@ nav button {
     color: black;
     opacity: 0.5;
 }
-nav button:hover {
+section nav button:hover {
     opacity: 1;
 }
 
 /* Header */
-#gleam-editor-main > header > h1 {
-    order: 2;
-    margin: 0.5rem 1rem;
-    color: #666;
+#gleam-editor-main > header {
+    grid-area: header;
+    display: grid;
+    grid-template:
+        "script-title gleam"
+        "script-title toolbar"
+    ;
+    color: #a0a0a0;
 }
-#gleam-editor-header-metadata {
+#gleam-editor-main > header h1 {
+    grid-area: gleam;
+    font-size: 1.5em;
+    margin: 0;
+    text-align: right;
+    color: #606060;
+}
+#gleam-editor-main > header #gleam-editor-header-metadata {
+    grid-area: script-title;
+}
+#gleam-editor-main > header h2 {
+    font-size: 2em;
+    margin: 0;
+}
+#gleam-editor-main > header h3 {
+    font-size: 1em;
+    margin: 0;
+}
+#gleam-editor-main > header #gleam-editor-toolbar {
+    grid-area: toolbar;
     display: flex;
-    column-gap: 1em;
+    flex-direction: row;
+    justify-content: end;
+    align-items: center;
 }
-#gleam-editor-header-metadata label {
-    font-size: 0.8em;
-}
-#gleam-editor-header-metadata label input {
-    display: block;
-    box-sizing: border-box;
+
+/* Common panel parts */
+.gleam-editor-hint {
+    font-size: 0.83em;
+    margin: 0.5em;
+    line-height: 1.2;
+    font-style: italic;
+    color: #808080;
+    text-align: center;
 }
 
 /* Stage panel */
@@ -341,7 +381,6 @@ ol.gleam-editor-roles > li h3 {
     margin: 0.5em 0 0;
     padding: 0.125em 0.5em;
     border-bottom: 2px solid #404040;
-    font-weight: normal;
     font-size: 1.2em;
 }
 dl.gleam-editor-role-jukebox-tracks {

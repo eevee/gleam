@@ -36,7 +36,7 @@
                 <dd><input type="text" name="author"></dd>
                 <dt>Size</dt>
                 <dd>
-                    <input type="text" name="width" size="5"> × <input type="text" name="width" size="5">
+                    <input type="text" name="width" inputmode="numeric" pattern="\d+" size="5"> × <input type="text" name="width" inputmode="numeric" size="5">
                     <br>
                     <button type="button">800×600</button>
                     <button type="button">1280×720</button>
@@ -57,16 +57,27 @@
     </section>
     <section id="gleam-editor-intro">
         <h1>What is this?</h1>
+        <p>Good question.</p>
     </section>
 </main>
 <main hidden id="gleam-editor-main">
     <header>
-        <h1>GLEAM visual novel creator</h1>
+        <h1><span class="gleam-title">GLEAM</span> visual novel creator v0.2</h1>
         <div id="gleam-editor-header-metadata">
-            <label>Title: <input type="text" id="gleam-editor-meta-title"></label>
-            <label>Subtitle (optional): <input type="text" id="gleam-editor-meta-subtitle"></label>
-            <button type="button">Export</button>
+            <h2></h2>
+            <h3></h3>
         </div>
+        <nav id="gleam-editor-toolbar">
+            <button type="button" disabled>Undo</button>
+            <button type="button" disabled>Redo</button>
+            <button type="button" disabled>Edit title</button>
+            <button type="button" disabled>Change stage size</button>
+            <button type="button">Save</button>
+            <output>heavily modified!</output>
+            <button type="button" disabled>Save copy</button>
+            <button type="button">Publish</button>
+            <button type="button" disabled>Close</button>
+        </nav>
     </header>
     <section class="gleam-editor-panel" id="gleam-editor-player">
         <div class="gleam-editor-panel-body">
@@ -82,6 +93,10 @@
     <section class="gleam-editor-panel" id="gleam-editor-assets">
         <header><h1>Assets</h1></header>
         <div class="gleam-editor-panel-body">
+            <div id="gleam-editor-assets-source"></div>
+            <div id="gleam-editor-asset-hint" class="gleam-editor-hint">
+                Put all your assets (images, music, etc.) in a directory, then drag that directory here to use them!
+            </div>
             <ol class="gleam-editor-assets">
             </ol>
         </div>

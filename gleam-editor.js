@@ -939,7 +939,7 @@ class RoleEditor {
 }
 
 
-// FIXME you should NOT be able to make more of these
+// Note that this has no role_type_name, which prevents you from creating one
 class StageEditor extends RoleEditor {
 }
 StageEditor.prototype.ROLE_TYPE = Gleam.Stage;
@@ -1173,7 +1173,7 @@ CharacterEditor.prototype.CLASS_NAME = 'gleam-editor-role-character';
 
 // List of all role editor types
 const ROLE_EDITOR_TYPES = [
-    StageEditor,  // FIXME uncreatable
+    StageEditor,
     CurtainEditor,
     DialogueBoxEditor,
     JukeboxEditor,
@@ -1199,6 +1199,7 @@ class Panel {
 class AssetsPanel extends Panel {
     constructor(editor, container) {
         super(editor, container);
+        this.source_text = this.body.querySelector('#gleam-editor-assets-source');
         this.list = this.body.querySelector('.gleam-editor-assets');
         this.item_index = {};  // filename => <li>
 
@@ -1207,6 +1208,7 @@ class AssetsPanel extends Panel {
         // FIXME? this always takes a moment to register, not sure why...
         // FIXME this should only accept an actual directory drag
         // FIXME should have some other way to get a directory.  file upload control?
+        // FIXME should indicate where the files are coming from, the source of the directory
         this.container.addEventListener('dragenter', e => {
             // FIXME well this isn't. right. the enter might go directly to a child
             //if (e.target !== this.container) {
@@ -1240,7 +1242,9 @@ class AssetsPanel extends Panel {
             this.container.classList.remove('gleam-editor-drag-hover');
             console.log(e.dataTransfer);
             let item = e.dataTransfer.items[0];
+            console.log(item);
             let entry = item.webkitGetAsEntry();
+            console.log(entry);
             // FIXME should this...  change the library entirely?  or what?  needs to update //everything//
             this.editor.set_library(new EntryAssetLibrary(entry));
         });
@@ -1268,14 +1272,29 @@ class AssetsPanel extends Panel {
     }
 
     refresh_dom() {
+        let library = this.editor.library;
+
+        if (library instanceof NullAssetLibrary) {
+            this.source_text.textContent = 'no assets';
+        }
+        else if (library instanceof EntryAssetLibrary) {
+            this.source_text.textContent = 'local files';
+        }
+        else if (library instanceof RemoteAssetLibrary) {
+            this.source_text.textContent = 'via the web';
+        }
+        else {
+            this.source_text.textContent = 'unknown source';
+        }
+
         this.list.textContent = '';
         this.item_index = {};
 
-        let paths = Object.keys(this.editor.library.assets);
+        let paths = Object.keys(library.assets);
         human_friendly_sort(paths);
 
         for (let path of paths) {
-            let asset = this.editor.library.assets[path];
+            let asset = library.assets[path];
             let li = mk('li', {draggable: 'true'}, path);
             if (! asset.exists) {
                 li.classList.add('--missing');
@@ -1300,6 +1319,9 @@ class RolesPanel extends Panel {
 
         // Create "add" buttons
         for (let role_editor_type of ROLE_EDITOR_TYPES) {
+            if (! role_editor_type.role_type_name)
+                continue;
+
             let button = make_element('button', null, `new ${role_editor_type.role_type_name}`);
             button.addEventListener('click', ev => {
                 // Generate a name
@@ -1827,19 +1849,22 @@ class Editor {
         this.script_panel = new ScriptPanel(this, document.getElementById('gleam-editor-script'));
 
         // Wire up some main UI
-        let meta = document.body.querySelector('#gleam-editor-header-metadata');
-        let button = meta.querySelector('button');
-        button.addEventListener('click', ev => {
-            let json = this.script.to_json();
-            open_overlay(mk('div.gleam-editor-dialog', mk('pre', {style: 'max-height: 90vh; overflow: auto;'}, JSON.stringify(json, null, 2))));
-        });
-        button = mk('button', {type: 'button'}, "Save");
-        meta.append(button);
-        button.addEventListener('click', ev => {
+        this.toolbar = document.body.querySelector('#gleam-editor-toolbar');
+        let make_button = (label, onclick) => {
+            let button = mk('button', {type: 'button'}, label);
+            this.toolbar.append(button);
+            button.addEventListener('click', onclick);
+            return button;
+        };
+        make_button("Save", ev => {
             // TODO some kinda feedback, probably do this automatically, etc
             if (this.script_slot) {
                 this.launchpad.save_script(this.script_slot, this.script);
             }
+        });
+        make_button("Publish", ev => {
+            let json = this.script.to_json();
+            open_overlay(mk('div.gleam-editor-dialog', mk('pre', {style: 'max-height: 90vh; overflow: auto;'}, JSON.stringify(json, null, 2))));
         });
 
         // Start with an empty script
@@ -1863,6 +1888,11 @@ class Editor {
         this.player.loaded = true;
         this.player.loading_overlay.hide();
         this.player.container.classList.remove('--loading');
+
+        // TODO kind of a mess, should hold a ref to this, etc., but the layout isn't set yet.  maybe also have a method for refreshing these, to contain the dom traversal and also be able to do it after editing them
+        let meta = document.body.querySelector('#gleam-editor-header-metadata');
+        meta.querySelector('h2').textContent = script.title || '(untitled)';
+        meta.querySelector('h3').textContent = script.subtitle || '';
 
         this.assets_panel.refresh_dom();
 
@@ -1959,7 +1989,7 @@ class EditorLaunchpad {
             script.title = this.new_form.elements['title'].value;
             script.subtitle = this.new_form.elements['subtitle'].value;
             script.author = this.new_form.elements['author'].value;
-            let slot = 'gleam-temp2';
+            let slot = `gleam-${Date.now()}`;
             this.save_script(slot, script);
             this.editor.load_script(script, new NullAssetLibrary, slot);
 
