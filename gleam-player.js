@@ -2075,9 +2075,11 @@ class Director {
 
     advance() {
         // FIXME this seems pretty annoying in the editor, and also when scrolling through
-        if (this.busy) {
+        if (this.busy)
             return;
-        }
+
+        if (this.cursor >= this.script.beats.length - 1)
+            return;
 
         // Some actors (namely, dialogue box) can do their own waiting for an
         // advance, so consult them all first, and eject if any of them say
@@ -2089,15 +2091,11 @@ class Director {
                     busy = true;
                 }
             }
-            if (busy) {
+            if (busy)
                 return;
-            }
         }
 
         // If we're still here, advance to the next beat
-        if (this.cursor >= this.script.beats.length)
-            return;
-
         this.jump(this.cursor + 1);
     }
 
