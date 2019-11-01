@@ -822,11 +822,12 @@ class AddByWildcardDialog {
         this.results = [];
 
         this.element = mk('div.gleam-editor-dialog');
+        // TODO initialize wildcard?
         this.element.innerHTML = `
             <header><h1>Add poses in bulk</h1></header>
             <p>Filename pattern: <input type="text" class="-wildcard" placeholder="*.png"></p>
             <ul class="-files"></ul>
-            <p><button type="button" class="-cancel">Cancel</button><button disabled type="button" class="-confirm">Add 0</button></p>
+            <footer><button type="button" class="-cancel">Cancel</button><button disabled type="button" class="-confirm">Add 0</button></footer>
         `;
 
         this.textbox = this.element.querySelector('.-wildcard');
@@ -875,28 +876,33 @@ class AddByWildcardDialog {
 
     compile_regex(wildcard) {
         let parts = wildcard.split(/([*?])/);
-        let rx_parts = ['^'];
+        // This will turn abc*def*xyz into ^(abc)(.*def.*)(xyz)$, allowing us
+        // to grab the middle part as the name
+        // XXX this will make it difficult to allow arbitrary regex matches.
+        let rx_parts = ['^('];
         for (let [i, part] of parts.entries()) {
+            if (i === 1) {
+                // Gap between the first static part and the first wildcard
+                rx_parts.push(')(');
+            }
+
             if (i % 2 === 0) {
                 // FIXME regex escape
+                rx_parts.push(part);
             }
             else if (part === '*') {
-                part = '.*';
+                rx_parts.push('.*');
             }
             else if (part === '?') {
-                part = '.';
+                rx_parts.push('.');
             }
 
-            if (i === 1) {
-                part = '(' + part;
-            }
             if (i === parts.length - 2) {
-                part = part + ')';
+                // Gap between the last wildcard and the last static part
+                rx_parts.push(')(');
             }
-
-            rx_parts.push(part);
         }
-        rx_parts.push('$');
+        rx_parts.push(')$');
         return new RegExp(rx_parts.join(''));
     }
 
@@ -913,9 +919,19 @@ class AddByWildcardDialog {
         for (let path of library_paths) {
             let m = path.match(rx);
             if (m) {
-                let name = m[1];
-                // TODO highlight the matched part, which will become the name
-                this.result_list.appendChild(mk('li', path));
+                // Entire path is split into 1, 2, 3 where 2 is the name
+                let name = m[2];
+                // TODO detect which ones are already in use, either as a pose in this picture frame or just by something else (will require backrefs!).
+                // TODO detect which names are already poses.  overwrite?  rename?
+                // TODO do NOT error for existing poses that this wouldn't change
+                this.result_list.append(mk('li',
+                    // TODO actually support unchecking this.  also can i style the whole row based on the state of the checkbox??
+                    mk('input', {type: 'checkbox', checked: ''}),
+                    ' ',
+                    m[1],
+                    mk('span.-match', m[2]),
+                    m[3],
+                ));
                 this.results.push([name, path]);
             }
         }
