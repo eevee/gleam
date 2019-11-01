@@ -14,6 +14,10 @@ window.Gleam = (function() {
 
 const VERSION = "0.2";
 
+// borrowed from hammer.js
+const SWIPE_THRESHOLD = 10;
+const SWIPE_VELOCITY = 0.3;
+
 const CAN_PLAY_AUDIO = (function() {
     let dummy_audio = document.createElement('audio');
     return dummy_audio.canPlayType && dummy_audio.canPlayType('audio/ogg; codecs="vorbis"');
@@ -2078,9 +2082,6 @@ class Director {
         if (this.busy)
             return;
 
-        if (this.cursor >= this.script.beats.length - 1)
-            return;
-
         // Some actors (namely, dialogue box) can do their own waiting for an
         // advance, so consult them all first, and eject if any of them say
         // they're still busy
@@ -2094,6 +2095,11 @@ class Director {
             if (busy)
                 return;
         }
+
+        // Check this AFTER trying to advance actors, so the viewer can still
+        // e.g. advance through dialogue on the last beat
+        if (this.cursor >= this.script.beats.length - 1)
+            return;
 
         // If we're still here, advance to the next beat
         this.jump(this.cursor + 1);
@@ -2399,7 +2405,7 @@ class Player {
             }
         });
 
-        // Bind some useful event handlers
+        // Bind some useful user input event handlers
         this.container.addEventListener('click', ev => {
             this.director.advance();
         });
@@ -2421,6 +2427,55 @@ class Player {
                 if (this.director.cursor > 0) {
                     this.director.jump(this.director.cursor - 1);
                 }
+            }
+        });
+        // Handle swipes to go back/forwards
+        // TODO some visual feedback on this...?  hm
+        // TODO a general "jump_by" helper?  the notion of advancement complicates that slightly though
+        let current_touch_stats = {};
+        this.container.addEventListener('touchstart', ev => {
+            for (let touch of ev.changedTouches) {
+                current_touch_stats[touch.identifier] = {
+                    t0: performance.now(),
+                    x0: touch.clientX,
+                    y0: touch.clientY,
+                    done: false,
+                };
+            }
+        });
+        this.container.addEventListener('touchmove', ev => {
+            for (let touch of ev.changedTouches) {
+                let touch_stat = current_touch_stats[touch.identifier];
+                if (touch_stat.done)
+                    continue;
+                touch_stat.t1 = performance.now();
+                let dt = touch_stat.t1 - touch_stat.t0;
+                let dx = touch.clientX - touch_stat.x0;
+                if (dt > 0 && Math.abs(dx) > SWIPE_THRESHOLD) {
+                    let vx = dx / dt;
+                    if (Math.abs(vx) > SWIPE_VELOCITY) {
+                        if (vx > 0 && this.director.cursor > 0) {
+                            // Swipe right, meaning move backwards
+                            this.director.jump(this.director.cursor - 1);
+                        }
+                        else if (vx < 0) {
+                            // Swipe left, meaning move forwards
+                            this.director.advance();
+                        }
+                        // Either way, ignore this touch now
+                        touch_stat.done = true;
+                    }
+                }
+            }
+        });
+        this.container.addEventListener('touchend', ev => {
+            for (let touch of ev.changedTouches) {
+                delete current_touch_stats[touch.identifier];
+            }
+        });
+        this.container.addEventListener('touchcancel', ev => {
+            for (let touch of ev.changedTouches) {
+                delete current_touch_stats[touch.identifier];
             }
         });
 
