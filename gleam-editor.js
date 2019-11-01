@@ -181,7 +181,10 @@ class NullAssetLibrary extends Gleam.AssetLibrary {
         let asset = this.asset(path);
         asset.used = true;
         asset.exists = false;
-        return element || mk('img');
+        element = element || mk('img');
+        // XXX kind of fuzzy on when this should be added or removed, or if there should be a pending state, in which case should it also be a data attribute,
+        element.classList.add('--missing');
+        return element;
     }
 
     load_audio(path, element) {
@@ -252,9 +255,11 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
     // FIXME this seems to have different semantics from Remote, especially wrt asset.url and asset.promise
     load_image(path, element) {
         element = element || mk('img');
+        element.classList.add('--missing');
         // TODO handle failure somehow?
         this.get_url_for_path(path).then(url => {
             element.src = url;
+            element.classList.remove('--missing');
         });
 
         return element;

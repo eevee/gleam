@@ -447,7 +447,8 @@ ul.gleam-editor-role-pictureframe-poses .-asset {
     margin: 0 auto;
 }
 ul.gleam-editor-role-pictureframe-poses .-asset.--missing {
-    line-height: 100px;
+    width: 100px;
+    height: 75px;
     background-color: #fcc;
     text-align: center;
     color: #400;
