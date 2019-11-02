@@ -347,7 +347,7 @@ Curtain.Actor = class CurtainActor extends Actor {
         super(role);
         // TODO color?
 
-        this.element = make_element('div', 'gleam-actor-curtain');
+        this.element = mk('div.gleam-actor-curtain');
     }
 
     apply_state(state) {
@@ -359,6 +359,136 @@ Curtain.Actor = class CurtainActor extends Actor {
         }
     }
 };
+
+
+// Full-screen arbitrary markup
+// FIXME this is very hardcodey but should be in backstage
+// FIXME also less generic, more templated, subclasses or something idk, make it safe
+// FIXME make roll_credits on old things work
+// FIXME "powered by GLEAM"!  i guess
+class Mural extends Role {
+    constructor(name, markup) {
+        super(name);
+        markup = `
+            <dl class="gleam-mural-credits">
+                <dt><a href="https://glitchedpuppet.com/">glitchedpuppet</a></dt>
+                <dd>art, music, script</dd>
+                <dt><a href="https://eev.ee/">Eevee</a></dt>
+                <dd>programming</dd>
+            </dl>
+            <p><a href="https://floraverse.com/">Floraverse</a></p>
+            <p><a href="https://floraverse.bandcamp.com/">Bandcamp</a></p>
+            <p>command not found</p>
+        `;
+        this.markup = markup;
+    }
+
+    to_json() {
+        let json = super.to_json();
+        json.markup = this.markup;
+        return json;
+    }
+}
+Mural.register('mural');
+Mural.prototype.TWIDDLES = {
+    visible: {
+        initial: false,
+        type: Boolean,
+        propagate: false,
+    },
+};
+Mural.STEP_TYPES = {
+    show: {
+        display_name: 'show',
+        pause: true,
+        args: [],
+        twiddles: [{
+            key: 'visible',
+            value: true,
+        }],
+    },
+};
+Mural.LEGACY_JSON_ACTIONS = {
+    show: ["show"],
+};
+
+Mural.Actor = class MuralActor extends Actor {
+    constructor(role) {
+        super(role);
+
+        this.element = mk('div.gleam-actor-mural');
+        this.element.innerHTML = role.markup;
+    }
+
+    apply_state(state) {
+        let old_state = super.apply_state(state);
+        this.element.classList.toggle('--visible', state.visible);
+    }
+};
+
+
+class CreditsMural extends Mural {
+    constructor(name, credits) {
+        let markup = mk('div');
+
+        let people_markup = mk('dl');
+        for (let contributor in credits.people || []) {
+            people_markup.append(
+                mk('dt', contributor['for']),
+                mk('dd', contributor.who),
+            );
+
+            /*
+            devart = $('<div>', class: '-deviantart').appendTo row
+            if contributor.deviantart
+                link = $ '<a>', href: "http://#{contributor.deviantart}.deviantart.com/"
+                link.append $ '<img>', src: "img/deviantart.png", alt: "deviantArt"
+                devart.append link
+
+            tumblr = $('<div>', class: '-tumblr').appendTo row
+            if contributor.tumblr
+                link = $ '<a>', href: "http://#{contributor.tumblr}.tumblr.com/"
+                link.append $ '<img>', src: "img/tumblr.png", alt: "Tumblr"
+                tumblr.append link
+
+            twitter = $('<div>', class: '-twitter').appendTo row
+            if contributor.twitter
+                link = $ '<a>', href: "https://twitter.com/#{contributor.twitter}"
+                link.append $ '<img>', src: "img/twitter.png", alt: "Twitter"
+                twitter.append link
+            */
+        }
+        markup.append(people_markup);
+
+        for (let line in credits.footer || []) {
+            markup.append(mk('p', line));
+        }
+
+        /*
+        "people": [
+            {
+                "who": "Glip",
+                "for": "Art, Music, Script",
+                "website": "http://glitchedpuppet.com/",
+                "twitter": "glitchedpuppet"
+            },
+            {
+                "who": "Eevee",
+                "for": "Programming",
+                "website": "https://eev.ee/",
+                "twitter": "eevee"
+            }
+        ],
+        "footer_html": [
+            "<a href='http://floraverse.com/'>Floraverse</a>",
+            "<a href='https://floraverse.bandcamp.com/'>Bandcamp</a>"
+        ]
+        */
+
+        super(name, markup);
+    }
+}
+CreditsMural.register('creditsmural');
 
 
 class DialogueBox extends Role {
@@ -2279,6 +2409,7 @@ class PlayerPauseOverlay extends PlayerOverlay {
                     value: player.director.master_volume,
                 }),
             ),
+            //this.fullscreen_button = mk('button', {type: 'button'}, "Fullscreen"),
             this.beats_list = mk('ol.gleam-pause-beats'),
         );
 
@@ -2300,6 +2431,18 @@ class PlayerPauseOverlay extends PlayerOverlay {
                 }
             }
         });
+
+        /*
+        // FIXME this needs to scale and/or border the whole player, somehow
+        this.fullscreen_button.addEventListener('click', ev => {
+            if (document.fullscreenElement === this.player.container) {
+                document.exitFullscreen();
+            }
+            else {
+                this.player.container.requestFullscreen();
+            }
+        });
+        */
 
         // Navigation list
         this.beats_list.addEventListener('click', ev => {
@@ -2640,6 +2783,7 @@ for (let obj of [
     Actor,
     Stage,
     Curtain,
+    Mural,
     DialogueBox,
     Jukebox,
     PictureFrame,

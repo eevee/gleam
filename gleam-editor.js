@@ -1156,6 +1156,12 @@ CurtainEditor.prototype.ROLE_TYPE = Gleam.Curtain;
 CurtainEditor.role_type_name = 'curtain';
 CurtainEditor.prototype.CLASS_NAME = 'gleam-editor-role-curtain';
 
+class MuralEditor extends RoleEditor {
+}
+MuralEditor.prototype.ROLE_TYPE = Gleam.Mural;
+MuralEditor.role_type_name = 'mural';
+MuralEditor.prototype.CLASS_NAME = 'gleam-editor-role-mural';
+
 class DialogueBoxEditor extends RoleEditor {
 }
 DialogueBoxEditor.prototype.ROLE_TYPE = Gleam.DialogueBox;
@@ -1380,6 +1386,7 @@ CharacterEditor.prototype.CLASS_NAME = 'gleam-editor-role-character';
 const ROLE_EDITOR_TYPES = [
     StageEditor,
     CurtainEditor,
+    MuralEditor,
     DialogueBoxEditor,
     JukeboxEditor,
     PictureFrameEditor,
