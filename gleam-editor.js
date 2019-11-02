@@ -1606,13 +1606,13 @@ class ScriptPanel extends Panel {
         let button = make_element('button');
         button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 6,3 L 1,8 L 6,13");
         button.addEventListener('click', ev => {
-            this.editor.player.director.jump(this.editor.player.director.cursor - 1);
+            this.editor.player.director.backtrack();
         });
         this.nav.appendChild(button);
         button = make_element('button');
         button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 10,3 L 15,8 L 10,13");
         button.addEventListener('click', ev => {
-            this.editor.player.director.jump(this.editor.player.director.cursor + 1);
+            this.editor.player.director.advance();
         });
         this.nav.appendChild(button);
 

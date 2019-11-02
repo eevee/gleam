@@ -2082,6 +2082,7 @@ class Director {
             'gleam-director-beat', { detail: this.cursor }));
     }
 
+    // Advance forward one beat, or advance any pending actors
     advance() {
         // FIXME this seems pretty annoying in the editor, and also when scrolling through
         if (this.busy)
@@ -2108,6 +2109,21 @@ class Director {
 
         // If we're still here, advance to the next beat
         this.jump(this.cursor + 1);
+    }
+
+    // Go backwards one beat
+    backtrack() {
+        if (this.cursor === 0)
+            return;
+
+        let cursor = this.cursor - 1;
+        // Skip over any 'wait' beats (like lowering a curtain), since those
+        // advance automatically
+        while (cursor > 0 && this.script.beats[cursor].pause === 'wait') {
+            cursor--;
+        }
+
+        this.jump(cursor);
     }
 
     update(dt) {
@@ -2428,10 +2444,7 @@ class Player {
             }
             else if (ev.key === "ArrowLeft") {
                 ev.preventDefault();
-                // TODO should this make use of advance()?  the main point of that is that it respects busy
-                if (this.director.cursor > 0) {
-                    this.director.jump(this.director.cursor - 1);
-                }
+                this.director.backtrack();
             }
         });
         // Handle swipes to go back/forwards
@@ -2462,7 +2475,7 @@ class Player {
                     if (Math.abs(vx) > SWIPE_VELOCITY) {
                         if (vx > 0 && this.director.cursor > 0) {
                             // Swipe right, meaning move backwards
-                            this.director.jump(this.director.cursor - 1);
+                            this.director.backtrack();
                         }
                         else if (vx < 0) {
                             // Swipe left, meaning move forwards
