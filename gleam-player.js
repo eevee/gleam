@@ -12,7 +12,7 @@
 
 window.Gleam = (function() {
 
-const VERSION = "0.2";
+const VERSION = "0.3";
 
 // borrowed from hammer.js
 const SWIPE_THRESHOLD = 10;
