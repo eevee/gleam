@@ -124,32 +124,31 @@
     margin: 0.5em;
     font-weight: normal;
     text-align: center;
-    text-transform: uppercase;
+    text-transform: lowercase;
     letter-spacing: 0.0625em;
 }
 /* Loading screen */
 .gleam-overlay-loading {
     z-index: 10002;  /* above the pause button.  TODO this is stupid */
     background: #222;
-    text-align: center;
     transition-property: visibility, opacity, background-color;
 }
 .gleam-overlay-loading.--finished {
     /* FIXME boo, this is copy/pasted from .gleam-overlay */
     background: #000c;
 }
+.gleam-overlay-loading > .-body {
+    text-align: center;
+}
 .gleam-overlay-loading > .-body > p {
     flex: 0 0;
-    margin: 0.25em 0.5em;
-}
-.gleam-overlay-loading > .-body > h2 {
-    flex: 1 0;
-    margin: 0 0.5em;
+    margin: 0.125em 0.5em;
 }
 .gleam-overlay-loading .gleam-loading-progress {
     flex: 0 0;
     display: flex;
     font-size: 1.5em;
+    margin-bottom: 1em;
 }
 /* Consists of -done -divider -total, and is intended to look like "3 / 97" but centered on the slash, so that it doesn't reflow when the progress updates */
 .gleam-overlay-loading .gleam-loading-progress .-done,
@@ -168,12 +167,12 @@
 }
 .gleam-overlay-loading .gleam-loading-progressbar {
     --progress: 0;
-    flex: 0 0 1em;
+    flex: 0 0 0.75em;
     position: relative;
     margin: 0.5em 10%;
-    height: 1em;
+    height: 0.75em;
     border: 1px solid white;
-    background: #fff4;
+    background: #303030;
 }
 .gleam-overlay-loading .gleam-loading-progressbar::before {
     content: '';
@@ -183,19 +182,26 @@
     bottom: 1px;
     left: 1px;
     width: calc(var(--progress) * (100% - 2px));
-    background: white;
+    background: #909090;
 }
 .gleam-overlay-loading .gleam-loading-play {
-    flex: 2;
-    visibility: hidden;
-    pointer-events: none;
-    font-size: 4em;
-    text-align: center;
     cursor: pointer;
 }
+.gleam-overlay-loading.--finished > .-body > h2,
+.gleam-overlay-loading .gleam-loading-play {
+    display: none;
+}
+.gleam-overlay-loading > .-body > h2,
 .gleam-overlay-loading.--finished .gleam-loading-play {
-    visibility: visible;
-    pointer-events: unset;
+    flex: 1;
+    font-size: 4em;
+    margin: 0 0.5em;
+    text-align: center;
+
+    /* Vertically center the text content */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
 /* Pause screen */

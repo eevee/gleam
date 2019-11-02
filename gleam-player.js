@@ -2180,12 +2180,12 @@ class PlayerLoadingOverlay extends PlayerOverlay {
             ),
             this.status_heading = mk('h2', '...Loading...'),
             this.play_el = mk('div.gleam-loading-play', '▶'),
+            this.progress_bar = mk('div.gleam-loading-progressbar'),
             mk('div.gleam-loading-progress',
                 this.done_el = mk('div.-done', '0'),
                 mk('div.-divider', '/'),
                 this.total_el = mk('div.-total', '0'),
             ),
-            this.progress_bar = mk('div.gleam-loading-progressbar'),
             this.errors_el = mk('p'),
             mk('p', "art and music licensed under CC BY-SA; code licensed under ISC"),
         );
