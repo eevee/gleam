@@ -76,6 +76,10 @@ class Overlay {
             });
         }
         else {
+            // Force reflow so the modal transition happens
+            // TODO this is ugly, maybe idk use an animation instead
+            // TODO this isn't much of a transition either?
+            this.container.offsetTop;
             this.container.classList.add('--modal');
         }
 
@@ -983,16 +987,6 @@ class MetadataDialog extends Overlay {
             this.dismiss();
         });
 
-        let confirm_button = mk('button.-confirm', {type: 'button'}, "Save");
-        confirm_button.addEventListener('click', ev => {
-            let results = {};
-            let form = this.element;
-            results['title'] = form.elements['title'].value || null;
-            results['subtitle'] = form.elements['subtitle'].value || null;
-            results['author'] = form.elements['author'].value || null;
-            this.choose(results);
-        });
-
         let dialog = mk('form.gleam-editor-dialog',
             mk('header', mk('h1', "Edit title")),
             // TODO style me, consider a generic dl grid
@@ -1001,9 +995,30 @@ class MetadataDialog extends Overlay {
             mk('p', "Author: ", mk('input', {type: 'text', name: 'author', value: metadata.author || ''})),
             mk('footer',
                 cancel_button,
-                confirm_button,
+                mk('button.-confirm', {type: 'submit'}, "Save"),
             ),
         );
+
+        dialog.addEventListener('submit', ev => {
+            let results = {};
+            let form = this.element;
+            results['title'] = form.elements['title'].value || null;
+            results['subtitle'] = form.elements['subtitle'].value || null;
+            results['author'] = form.elements['author'].value || null;
+            this.choose(results);
+        });
+        // Allow pressing Esc on a field to abandon the dialog
+        dialog.addEventListener('keydown', ev => {
+            if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
+                return;
+
+            if (ev.key === 'Escape') {
+                ev.preventDefault();
+                ev.stopPropagation();
+                this.dismiss();
+            }
+        });
+
         super(dialog, false);
     }
 }
