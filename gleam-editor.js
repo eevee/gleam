@@ -2085,7 +2085,18 @@ class Editor {
         });
         make_button("Publish", ev => {
             let json = this.script.to_json();
-            open_overlay(mk('div.gleam-editor-dialog', mk('pre', {style: 'max-height: 90vh; overflow: auto;'}, JSON.stringify(json, null, 2))));
+            let blob = new Blob([JSON.stringify(json, null, 2)], {type: 'text/json'});
+            let url = URL.createObjectURL(blob);
+            let a = mk('a', {
+                href: url,
+                download: 'gleam-script.json',
+            }, "gleam-script.json");
+            // TODO dang i wish i could drag this to the local folder?
+            // TODO wait.  can't i...  create this myself.
+            let dialog = mk('div.gleam-editor-dialog', mk('p', "Save this file in the same directory as your assets, gleam-player.css, gleam-player.js, and index.html:"), a);
+            new Overlay(dialog, true).promise.finally(() => {
+                URL.revokeObjectURL(url);
+            });
         });
 
         // Start with an empty script
