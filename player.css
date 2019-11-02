@@ -140,10 +140,11 @@
 }
 .gleam-overlay-loading > .-body > p {
     flex: 0 0;
-    margin: 0.5em;
+    margin: 0.25em 0.5em;
 }
 .gleam-overlay-loading > .-body > h2 {
-    flex: 0 0;
+    flex: 1 0;
+    margin: 0 0.5em;
 }
 .gleam-overlay-loading .gleam-loading-progress {
     flex: 0 0;
@@ -185,7 +186,7 @@
     background: white;
 }
 .gleam-overlay-loading .gleam-loading-play {
-    flex: 1;
+    flex: 2;
     visibility: hidden;
     pointer-events: none;
     font-size: 4em;
