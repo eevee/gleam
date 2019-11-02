@@ -2315,7 +2315,7 @@ class PlayerPauseOverlay extends PlayerOverlay {
                 li.classList.add('--bookmark');
                 bm++;
             }
-            else if (number_next_beat || b % 10 === 0 || b === 1 || b === script.beats.length) {
+            else if (number_next_beat || i === cursor || b % 10 === 0 || b === 1 || b === script.beats.length) {
                 number_next_beat = false;
                 li.textContent = String(b);
             }
