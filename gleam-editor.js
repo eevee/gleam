@@ -75,6 +75,9 @@ class Overlay {
                 ev.stopPropagation();
             });
         }
+        else {
+            this.container.classList.add('--modal');
+        }
 
         // Create a promise to contain our state
         this.promise = new Promise((resolve, reject) => {
@@ -817,9 +820,10 @@ const STEP_ARGUMENT_TYPES = {
 
 
 // -----------------------------------------------------------------------------
-// Role editor helpers
+// Dialogs
 
 // TODO i wonder if this would make more sense as a feature on the assets panel?  filter files by wildcard, then select all and drag them over.  i don't know how to do multi drag though
+// FIXME this is inappropriate for jukebox
 class AddByWildcardDialog {
     constructor(role_editor, library) {
         this.role_editor = role_editor;
@@ -969,6 +973,38 @@ class AddByWildcardDialog {
         this.role_editor.main_editor.player.director.role_to_actor.get(this.role_editor.role).sync_with_role(this.role_editor.main_editor.player.director);
 
         close_overlay(this.element);
+    }
+}
+
+class MetadataDialog extends Overlay {
+    constructor(metadata) {
+        let cancel_button = mk('button.-cancel', {type: 'button'}, "Cancel");
+        cancel_button.addEventListener('click', ev => {
+            this.dismiss();
+        });
+
+        let confirm_button = mk('button.-confirm', {type: 'button'}, "Save");
+        confirm_button.addEventListener('click', ev => {
+            let results = {};
+            let form = this.element;
+            results['title'] = form.elements['title'].value || null;
+            results['subtitle'] = form.elements['subtitle'].value || null;
+            results['author'] = form.elements['author'].value || null;
+            this.choose(results);
+        });
+
+        let dialog = mk('form.gleam-editor-dialog',
+            mk('header', mk('h1', "Edit title")),
+            // TODO style me, consider a generic dl grid
+            mk('p', "Title: ", mk('input', {type: 'text', name: 'title', value: metadata.title || ''})),
+            mk('p', "Subtitle: ", mk('input', {type: 'text', name: 'subtitle', value: metadata.subtitle || ''})),
+            mk('p', "Author: ", mk('input', {type: 'text', name: 'author', value: metadata.author || ''})),
+            mk('footer',
+                cancel_button,
+                confirm_button,
+            ),
+        );
+        super(dialog, false);
     }
 }
 
@@ -1574,7 +1610,7 @@ class ScriptPanel extends Panel {
             this.editor.script.jump(hovered_beat_position);
         });
         this.beat_toolbar.appendChild(button);
-        this.body.appendChild(this.beat_toolbar);
+        //this.body.appendChild(this.beat_toolbar);
 
         // FIXME this is a bit ugly still
         this.step_toolbar = make_element('nav', 'gleam-editor-step-toolbar');
@@ -2018,6 +2054,14 @@ class Editor {
             button.addEventListener('click', onclick);
             return button;
         };
+        make_button("Edit title", ev => {
+            new MetadataDialog(this.script).promise.then(metadata => {
+                this.script.title = metadata.title;
+                this.script.subtitle = metadata.subtitle;
+                this.script.author = metadata.author;
+                this.update_script_metadata();
+            }, () => {});
+        });
         make_button("Save", ev => {
             // TODO some kinda feedback, probably do this automatically, etc
             if (this.script_slot) {
@@ -2051,10 +2095,7 @@ class Editor {
         this.player.loading_overlay.hide();
         this.player.container.classList.remove('--loading');
 
-        // TODO kind of a mess, should hold a ref to this, etc., but the layout isn't set yet.  maybe also have a method for refreshing these, to contain the dom traversal and also be able to do it after editing them
-        let meta = document.body.querySelector('#gleam-editor-header-metadata');
-        meta.querySelector('h2').textContent = script.title || '(untitled)';
-        meta.querySelector('h3').textContent = script.subtitle || '';
+        this.update_script_metadata();
 
         this.assets_panel.refresh_dom();
 
@@ -2068,6 +2109,14 @@ class Editor {
 
         // Finally, set the player going
         this.player.inject(document.querySelector('#gleam-editor-player .gleam-editor-panel-body'));
+    }
+
+    update_script_metadata() {
+        // TODO kind of a mess, should hold refs, etc., but the layout isn't set yet
+        let meta = document.body.querySelector('#gleam-editor-header-metadata');
+        // TODO show author?  show slot?
+        meta.querySelector('h2').textContent = this.script.title || '(untitled)';
+        meta.querySelector('h3').textContent = this.script.subtitle || '';
     }
 
     set_library(library) {
@@ -2127,8 +2176,10 @@ class EditorLaunchpad {
             let button = mk('button', {type: 'button'},
                 mk('span.-title', project.title || "(untitled)"),
                 mk('span.-subtitle', project.subtitle || ""),
+                mk('span.-author', project.author || ""),
                 mk('span.-date', new Date(project.modified).toISOString().split(/T/)[0]),
                 mk('span.-filesize', `${project.size} bytes`),
+                mk('span.-beats', `${project.beat_count} beats`),
             );
             button.addEventListener('click', ev => {
                 let script = MutableScript.from_json(JSON.parse(window.localStorage.getItem(slot)));
@@ -2186,7 +2237,8 @@ class EditorLaunchpad {
 
         this.main_json.projects[slot] = {
             size: json_string.length,
-            // TODO number of beats?
+            beat_count: script.beats.length,
+            step_count: script.steps.length,
             title: script.title,
             subtitle: script.subtitle,
             author: script.author,

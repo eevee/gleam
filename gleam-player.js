@@ -1727,6 +1727,8 @@ class Script {
         this.title = null;
         this.subtitle = null;
         this.author = null;
+        this.created_date = Date.now();
+        this.modified_date = Date.now();
         this.published_date = null;
 
         this.width = 800;
@@ -1850,11 +1852,12 @@ class Script {
         // Metadata
         script.title = json.meta.title;
         script.subtitle = json.meta.subtitle;
+        script.author = json.meta.author;
         script.width = json.meta.width || script.width;
         script.height = json.meta.height || script.height;
-        // FIXME relying on Date to parse dates is ill-advised, also what is the date format even
         // FIXME published vs modified
-        script.modified_date = json.meta.modified ? new Date(json.meta.modified) : null;
+        script.created_date = json.meta.created ? new Date(json.meta.created) : Date.now();
+        script.modified_date = json.meta.modified ? new Date(json.meta.modified) : Date.now();
         script.published_date = json.meta.published ? new Date(json.meta.published) : null;
 
         for (let role_def of json.roles) {
@@ -1888,8 +1891,10 @@ class Script {
                 //name?
                 title: this.title || null,
                 subtitle: this.subtitle || null,
-                modified: Date.now(),  // TODO utc
-                // TODO published?  updated?
+                author: this.author || null,
+                created: this.created,
+                modified: Date.now(),  // TODO actually set this correctly
+                published: this.published,
                 gleam_version: VERSION,
                 //preview?
                 //credits????
@@ -2167,7 +2172,7 @@ class PlayerLoadingOverlay extends PlayerOverlay {
         // FIXME controls; pause button instructions; music warning (if playable AND actually exists); contact in case of problems (from script...?)
         // FIXME maybe these instructions should be customizable too
         this.body.append(
-            mk('p', "click, tap, spacebar, or arrow keys to browse — backwards too!"),
+            mk('p', "click, tap, swipe, spacebar, or arrow keys to browse — backwards too!"),
             // FIXME only do this if there's a jukebox?
             mk('p', CAN_PLAY_AUDIO
                 ? "PLEASE NOTE: there's music!  consider headphones, or pause to change volume"
@@ -2444,6 +2449,7 @@ class Player {
             }
         });
         this.container.addEventListener('touchmove', ev => {
+            // FIXME this should preventDefault...  in some cases??
             for (let touch of ev.changedTouches) {
                 let touch_stat = current_touch_stats[touch.identifier];
                 if (touch_stat.done)

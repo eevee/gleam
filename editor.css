@@ -310,6 +310,8 @@ section nav button {
     background: none;
     color: black;
     opacity: 0.5;
+    /* FIXME sucks to be undoing my own button customizing */
+    box-shadow: none;
 }
 section nav button:hover {
     opacity: 1;
