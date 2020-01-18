@@ -1778,15 +1778,15 @@ class RemoteAssetLibrary extends AssetLibrary {
             () => {
                 asset.exists = true;
                 asset.progress = 1;
+                asset.promise = null;
             },
             ev => {
                 console.error("error loading image", path, ev);
                 asset.exists = false;
+                asset.promise = null;
+                throw ev;
             }
-        )
-        .finally(() => {
-            asset.promise = null;
-        });
+        );
         asset.promise = promise;
 
         // TODO fire an event here, or what?
@@ -1822,15 +1822,15 @@ class RemoteAssetLibrary extends AssetLibrary {
             () => {
                 asset.exists = true;
                 asset.progress = 1;
+                asset.promise = null;
             },
             ev => {
                 console.error("error loading", path, ev);
                 asset.exists = false;
+                asset.promise = null;
+                throw ev;
             }
-        )
-        .finally(() => {
-            asset.promise = null;
-        });
+        );
         asset.promise = promise;
 
         // TODO fire an event here, or what?
