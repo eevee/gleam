@@ -1492,7 +1492,7 @@ class AssetsPanel extends Panel {
         else if (library instanceof EntryAssetLibrary) {
             this.source_text.textContent = 'local files';
         }
-        else if (library instanceof RemoteAssetLibrary) {
+        else if (library instanceof Gleam.RemoteAssetLibrary) {
             this.source_text.textContent = 'via the web';
         }
         else {
@@ -2054,8 +2054,8 @@ class ScriptPanel extends Panel {
 
 
 class Editor {
-    constructor(launchpad) {
-        this.launchpad = launchpad;
+    constructor(launcher) {
+        this.launcher = launcher;
 
         // Set by load_script, called after all this setup
         this.script = null;
@@ -2087,7 +2087,7 @@ class Editor {
         make_button("Save", ev => {
             // TODO some kinda feedback, probably do this automatically, etc
             if (this.script_slot) {
-                this.launchpad.save_script(this.script_slot, this.script);
+                this.launcher.save_script(this.script_slot, this.script);
             }
         });
         make_button("Publish", ev => {
@@ -2180,10 +2180,9 @@ class Editor {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Editor "launchpad", which offers some light help and a list of projects
+// Editor launcher, which offers some light help and a list of projects
 
-// FIXME this name is stupid
-class EditorLaunchpad {
+class EditorLauncher {
     constructor() {
         this.editor = new Editor(this);
         
@@ -2195,7 +2194,7 @@ class EditorLaunchpad {
             };
         }
 
-        this.root = document.querySelector('#gleam-editor-launchpad');
+        this.root = document.querySelector('#gleam-editor-launcher');
 
         this.projects_ol = document.querySelector('#gleam-editor-projects-list');
         let temp_json = window.localStorage.getItem('gleam-temp');
@@ -2245,6 +2244,30 @@ class EditorLaunchpad {
         });
     }
 
+    load_from_url(url) {
+        let root = url;
+        let root_url = new URL(root, document.location);
+        //root_url = new URL('https://apps.veekun.com/flora-cutscenes/res/prompt2-itchyitchy-final/');
+        // TODO should get the asset root from the script...?  that's a thing in old ones but not so much new ones
+        let library = new Gleam.RemoteAssetLibrary(root_url);
+        let xhr = new XMLHttpRequest;
+        xhr.addEventListener('load', ev => {
+            // FIXME handle errors yadda yadda
+            let script = Gleam.MutableScript.from_legacy_json(JSON.parse(xhr.responseText));
+            // FIXME editor doesn't know how to handle something not already in a save slot
+            this.editor.load_script(script, library, null);
+
+            // Reveal the editor
+            // TODO show some kinda loading indicator
+            // TODO factor this out
+            this.root.setAttribute('hidden', '');
+            document.getElementById('gleam-editor-main').removeAttribute('hidden');
+        });
+        // XXX lol
+        xhr.open('GET', new URL('script.json', root_url));
+        xhr.send();
+    }
+
     save_script(slot, script) {
         let json = script.to_json();
         json.meta._editor = {
@@ -2288,16 +2311,16 @@ class EditorLaunchpad {
 // Entry point
 
 function attach_editor() {
-    let launchpad = new EditorLaunchpad();
-    window._gleam_launchpad = launchpad;
-    return launchpad;
+    let launcher = new EditorLauncher();
+    window._gleam_launcher = launcher;
+    return launcher;
 }
 
 return {
     NullAssetLibrary: NullAssetLibrary,
     MutableScript: MutableScript,
     Editor: Editor,
-    EditorLaunchpad: EditorLaunchpad,
+    EditorLauncher: EditorLauncher,
     attach_editor: attach_editor,
 };
 })());

@@ -9,7 +9,7 @@
     <script src="gleam-editor.js"></script>
 </head>
 <body>
-<main id="gleam-editor-launchpad">
+<main id="gleam-editor-launcher">
     <header><h1><span class="gleam-title">GLEAM</span> visual novel creator v0.2</h1></header>
     <section id="gleam-editor-load">
         <h1>Load project</h1>
@@ -70,12 +70,9 @@
         <nav id="gleam-editor-toolbar">
             <button type="button" disabled>Undo</button>
             <button type="button" disabled>Redo</button>
-            <button type="button" disabled>Edit title</button>
             <button type="button" disabled>Change stage size</button>
-            <button type="button">Save</button>
             <output>heavily modified!</output>
             <button type="button" disabled>Save copy</button>
-            <button type="button">Publish</button>
             <button type="button" disabled>Close</button>
         </nav>
     </header>
@@ -125,7 +122,8 @@
     <script>
         // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
         window.addEventListener('load', ev => {
-            Gleam.attach_editor();
+            let launcher = Gleam.attach_editor();
+            //launcher.load_from_url('res/species-lunekos/');
 
             /*
             // TODO i guess this needs some ui

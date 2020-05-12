@@ -109,7 +109,7 @@ dl.gleam-editor-propmap > dd {
 /******************************************************************************/
 /* Landing */
 
-#gleam-editor-launchpad {
+#gleam-editor-launcher {
     display: grid;
     grid-template:
         "header header header header header" min-content
@@ -122,7 +122,7 @@ dl.gleam-editor-propmap > dd {
     background: #111;
 }
 
-#gleam-editor-launchpad > header {
+#gleam-editor-launcher > header {
     grid-area: header;
     background: #222;
 }
