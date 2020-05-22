@@ -15,18 +15,24 @@ html {
 body {
     background: #404040;
     color: white;
-    font-family: 'Source Sans Pro', Helvetica, sans-serif;
+    font-family: Ubuntu, 'Source Sans Pro', Helvetica, sans-serif;
     font-size: 16px;
     line-height: 1.33;
     margin: 0;
 }
 
 main {
-    height: 100vh;
     width: 100vw;
 }
 main[hidden] {
     display: none !important;
+}
+main#gleam-editor-launcher {
+    min-height: 100vh;
+    overflow: auto;
+}
+main#gleam-editor-main {
+    height: 100vh;
 }
 
 input, select {
@@ -35,10 +41,11 @@ input, select {
 }
 
 button {
+    font-size: inherit;
     margin: 2px;
     padding: 0.25em 0.5em;
     border: none;
-    border-radius: 0.5em;
+    border-radius: 0.25rem;
     color: white;
     background: #404040;
     box-shadow: 0 2px #606060;
@@ -47,8 +54,14 @@ button {
 button:enabled:hover {
     background: #383838;
 }
+button:enabled:hover,
+button:enabled:focus {
+    box-shadow:
+        0 0 0 1px #606060,
+        0 2px 0 1px #606060;
+}
 button:enabled:active {
-    box-shadow: 0 1px #202020;
+    box-shadow: 0 0 0 1px #606060;
     transform: translateY(2px);
 }
 button.gleam-big-button {
@@ -102,8 +115,9 @@ dl.gleam-editor-propmap > dd {
 }
 
 .gleam-title {
-    color: #101010;
-    text-shadow: 0 0 2px white;
+    font-weight: bold;
+    color: white;
+    text-shadow: 0 0 1px black, 0 0 4px white;
 }
 
 /******************************************************************************/
@@ -115,16 +129,18 @@ dl.gleam-editor-propmap > dd {
         "header header header header header" min-content
         ".      load   .      new    ."
         "intro  intro  intro  intro  intro"
-        / 3fr 6fr 1fr 6fr 3fr
+        / 1fr 8fr 1fr 8fr 1fr
     ;
     gap: 2em;
 
-    background: #111;
+    background: #101010;
 }
 
 #gleam-editor-launcher > header {
     grid-area: header;
-    background: #222;
+    padding: 0.5em 1em;
+    text-align: right;
+    background: #202020;
 }
 
 #gleam-editor-load {
@@ -133,13 +149,22 @@ dl.gleam-editor-propmap > dd {
 #gleam-editor-projects-list li {
     margin: 0.5em 0;
 }
+#gleam-editor-projects-list li.-empty {
+    display: none;
+    color: #999;
+    font-style: italic;
+}
+#gleam-editor-projects-list li.-empty:last-child {
+    /* Only show if the list is otherwise empty */
+    display: initial;
+}
 #gleam-editor-projects-list button {
     display: grid;
     grid-template:
-        "title      title"
-        "subtitle   subtitle"
-        "author     filesize"
-        "date       beats"
+        "title      date"
+        "subtitle   filesize"
+        "author     beats"
+        / 3fr 1fr
     ;
     width: 100%;
     text-align: left;
@@ -150,51 +175,88 @@ dl.gleam-editor-propmap > dd {
 }
 #gleam-editor-projects-list .-subtitle {
     grid-area: subtitle;
+    font-size: 1.25em;
+    font-style: italic;
 }
 #gleam-editor-projects-list .-author {
     grid-area: author;
 }
 #gleam-editor-projects-list .-date {
     grid-area: date;
+    text-align: right;
+    color: #999;
 }
 #gleam-editor-projects-list .-filesize {
     grid-area: filesize;
     text-align: right;
+    color: #999;
 }
 #gleam-editor-projects-list .-beats {
     grid-area: beats;
     text-align: right;
+    color: #999;
 }
 
 #gleam-editor-new {
     grid-area: new;
 }
 dl#gleam-editor-new-form {
+    display: grid;
+    grid-template-columns: min-content auto;
+    align-items: end;
+    gap: 0.5em;
 }
 dl#gleam-editor-new-form > dt {
-    font-size: 0.8em;
+    grid-column: 1;
     margin: 0;
+    text-align: right;
+    white-space: nowrap;
     color: #ccc;
     font-style: italic;
 }
 dl#gleam-editor-new-form > dd {
+    grid-column: 2;
     margin: 0;
-    margin-bottom: 2em;
 }
 #gleam-editor-new-form input[type=text] {
-    font-size: 1.5em;
+    font-size: 1.25em;
     border: none;
     border-bottom: 1px solid #666;
     background: none;
     color: white;
 }
+#gleam-editor-new-form input[type=text]:only-child {
+    width: 100%;
+}
 
 .gleam-editor-size-preview {
     position: relative;
+    background: gold;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.gleam-editor-size-preview::after {
+    /* dummy element to force aspect ratio */
+    content: '';
+    display: block;
+    padding-bottom: 100%;
+}
+.gleam-editor-size-preview > * {
+    position: absolute;
+}
+.gleam-editor-size-preview > *::before {
+    content: attr(data-label);
+    display: block;
+    position: absolute;
+    top: -1.25em;
+    left: 0;
+    line-height: 1;
 }
 .gleam-editor-size-preview .-screen {
     border: 1px solid black;
-    background: black;
+
+    width: 75%; padding-bottom: 60%;
 }
 .gleam-editor-size-preview .-browser {
     position: absolute;
@@ -206,7 +268,6 @@ dl#gleam-editor-new-form > dd {
 }
 .gleam-editor-size-preview .-vn {
     position: absolute;
-    top: 0;
     width: 128px;
     height: 72px;
     border: 1px dashed white;
@@ -214,6 +275,7 @@ dl#gleam-editor-new-form > dd {
 
 #gleam-editor-intro {
     grid-area: intro;
+    padding: 1em;
     background: #222;
 }
 
@@ -366,6 +428,8 @@ section nav button:hover {
 /* Stage panel */
 #gleam-editor-player {
     background: #303030;
+    max-width: 50vw;
+    max-height: 50vh;
 }
 #gleam-editor-player > .gleam-editor-panel-body {
     flex: 1;

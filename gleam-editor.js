@@ -2197,22 +2197,38 @@ class EditorLauncher {
         this.root = document.querySelector('#gleam-editor-launcher');
 
         this.projects_ol = document.querySelector('#gleam-editor-projects-list');
-        let temp_json = window.localStorage.getItem('gleam-temp');
-        let temp_script = JSON.parse(temp_json);
-        this.projects_ol.append(mk('li', mk('button',
-            temp_script['meta']['title'] || "(untitled)",
-            mk('br'),
-            temp_json.length,
-        )));
-        for (let [slot, project] of Object.entries(this.main_json.projects)) {
+        // Sort by last modified
+        let slots = Object.keys(this.main_json.projects);
+        slots.sort((a, b) => b.modified - a.modified);
+        for (let slot of slots) {
+            let project = this.main_json.projects[slot];
+
+            let bytes = project.size;
+            let magnitudes = ['B', 'KiB', 'MiB'];
+            let mag = 0;
+            while (mag < magnitudes.length - 1 && bytes >= 1024 * 0.9) {
+                mag += 1;
+                bytes /= 1024;
+            }
+            let size;
+            if (mag == 0) {
+                size = String(bytes);
+            }
+            else {
+                size = bytes.toFixed(1);
+            }
+            size += ' ';
+            size += magnitudes[mag];
+
             let button = mk('button', {type: 'button'},
                 mk('span.-title', project.title || "(untitled)"),
                 mk('span.-subtitle', project.subtitle || ""),
                 mk('span.-author', project.author || ""),
                 mk('span.-date', new Date(project.modified).toISOString().split(/T/)[0]),
-                mk('span.-filesize', `${project.size} bytes`),
+                mk('span.-filesize', size),
                 mk('span.-beats', `${project.beat_count} beats`),
             );
+            // TODO this could be a single listener on the whole shebang
             button.addEventListener('click', ev => {
                 let script = MutableScript.from_json(JSON.parse(window.localStorage.getItem(slot)));
                 this.editor.load_script(script, new NullAssetLibrary, slot);

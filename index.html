@@ -14,14 +14,7 @@
     <section id="gleam-editor-load">
         <h1>Load project</h1>
         <ul id="gleam-editor-projects-list">
-            <li><button type="button">
-                <span class="-title">Circlet of the Sun</span>
-                <span class="-subtitle"></span>
-                <span class="-author"></span>
-                <span class="-filesize">xx bytes</span>
-                <span class="-beats">xx beats</span>
-                <span class="-date">published 2019-09-22</span>
-            </button></li>
+            <li class="-empty">You don't have any projects yet.</li>
         </ul>
     </section>
     <section id="gleam-editor-new">
@@ -29,27 +22,36 @@
         <form>
             <dl id="gleam-editor-new-form">
                 <dt>Title</dt>
-                <dd><input type="text" name="title"></dd>
-                <dt>Subtitle (optional)</dt>
+                <dd><input type="text" name="title" placeholder="(untitled)"></dd>
+                <dt>Subtitle</dt>
                 <dd><input type="text" name="subtitle"></dd>
                 <dt>Author</dt>
                 <dd><input type="text" name="author"></dd>
                 <dt>Size</dt>
                 <dd>
                     <input type="text" name="width" inputmode="numeric" pattern="\d+" size="5"> × <input type="text" name="width" inputmode="numeric" size="5">
-                    <br>
-                    <button type="button">800×600</button>
-                    <button type="button">1280×720</button>
+                </dd>
+                <dd>
+                    <p>Note that currently, VNs can't scale to fit the screen.</p>
+                    <p>Some people are still on 1280 × 720, and that size will only fit if they go fullscreen.</p>
+                    <p>Phones are a mess, good luck there!</p>
+                    <p>
+                        Some common sizes:
+                        <button type="button">800 × 600</button>
+                        <button type="button">1280 × 720</button>
+                    </p>
+                    <!--
+                    TODO am i ever gonna use this, not clear
                     <br>
                     <div class="gleam-editor-size-preview">
-                        <div class="-screen">
-                            <div class="-browser">
-                                <div class="-viewport">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="-vn"></div>
+                        <div class="-1080p" data-label="1080p"></div>
+                        <div class="-720p" data-label="720p"></div>
+                        <div class="-screen" data-label="screen"></div>
+                        <div class="-browser" data-label="browser"></div>
+                        <div class="-viewport" data-label="viewport"></div>
+                        <div class="-vn" data-label="VN size"></div>
                     </div>
+                    -->
                 </dd>
                 <dd><button type="submit" class="gleam-big-button">Create</button>
             </dl>
@@ -57,7 +59,12 @@
     </section>
     <section id="gleam-editor-intro">
         <h1>What is this?</h1>
-        <p>Good question.</p>
+        <p>This is <span class="gleam-title">GLEAM</span>, a web-based visual novel creator.</p>
+        <p>It's still a work in progress, but it should allow you to create simple linear VNs.</p>
+        <p><span class="gleam-title">GLEAM</span> <em>is not</em>, and will never be, a substitute for much more powerful tools like <a href="https://www.renpy.org/">Ren'Py</a>.  It's for visual novels that are meant to be read more than played.  On the other hand, it doesn't require programming or a text editor.</p>
+        <p>Supported features: backgrounds (or comic panels), speakers with portraits, scrolling text, simple transitions.</p>
+        <p>Planned features: remembering your place, indexable by Google.</p>
+        <p>Features that will <strong>never</strong> be implemented: saving/loading during playback, dynamic jumping, shaders...</p>
     </section>
 </main>
 <main hidden id="gleam-editor-main">
