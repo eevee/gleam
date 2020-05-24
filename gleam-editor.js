@@ -2199,7 +2199,7 @@ class EditorLauncher {
         this.projects_ol = document.querySelector('#gleam-editor-projects-list');
         // Sort by last modified
         let slots = Object.keys(this.main_json.projects);
-        slots.sort((a, b) => b.modified - a.modified);
+        slots.sort((a, b) => this.main_json.projects[b].modified - this.main_json.projects[a].modified);
         for (let slot of slots) {
             let project = this.main_json.projects[slot];
 
