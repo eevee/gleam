@@ -1602,7 +1602,7 @@ class RolesPanel extends Panel {
         // Add the toolbar
         // Add role
         let button = mk('button', {type: 'button'});
-        button.innerHTML = svg_icon_from_path("M 8,1 V 14 M 1,8 H 14");
+        button.innerHTML = svg_icon_from_path("M 8,1 V 15 M 1,8 H 15");
         button.addEventListener('click', ev => {
             // FIXME more general handling of popup list
             let overlay = new PopupMenuOverlay(
@@ -1681,13 +1681,13 @@ class ScriptPanel extends Panel {
         // Add some nav controls
         // FIXME disable these when on first/last step, and make sure they don't trigger even if clicked somehow
         let button = mk('button', {type: 'button'});
-        button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 6,3 L 1,8 L 6,13");
+        button.innerHTML = svg_icon_from_path("M 1,8 H 15 M 6,3 L 1,8 L 6,13");
         button.addEventListener('click', ev => {
             this.editor.player.director.backtrack();
         });
         this.nav.appendChild(button);
         button = mk('button', {type: 'button'});
-        button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 10,3 L 15,8 L 10,13");
+        button.innerHTML = svg_icon_from_path("M 1,8 H 15 M 10,3 L 15,8 L 10,13");
         button.addEventListener('click', ev => {
             this.editor.player.director.advance();
         });
@@ -1708,7 +1708,7 @@ class ScriptPanel extends Panel {
         this.step_toolbar = mk('nav.gleam-editor-step-toolbar');
         let hovered_step_el = null;
         button = mk('button', {type: 'button'});
-        button.innerHTML = svg_icon_from_path("M 2,2 L 14,2 L 12,14 L 4,14 L 2,2 M 6,2 L 7,14 M 10,2 L 9,14");
+        button.innerHTML = svg_icon_from_path("M 2,2 L 14,2 L 12,14 L 4,14 L 2,2 M 6,2 L 6.667,14 M 10,2 L 9.333,14");
         button.addEventListener('click', ev => {
             if (hovered_step_el) {
                 // FIXME clicking this twice doesn't work if you don't move the mouse again, oops
