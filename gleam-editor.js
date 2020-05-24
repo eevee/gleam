@@ -140,8 +140,29 @@ class PopupMenuOverlay extends Overlay {
         // TODO try to align with some particular text??
         // TODO finer positioning control would be nice i guess
         if (mouse_event) {
-            list.style.left = `${Math.min(mouse_event.clientX, document.body.clientWidth - list.offsetWidth)}px`;
-            list.style.top = `${Math.min(mouse_event.clientY, document.body.clientHeight - list.offsetHeight)}px`;
+            this.position({event: mouse_event});
+        }
+    }
+
+    // Align the popup, presumably to a parent element
+    position(args) {
+        let ev = args.event;
+        let relto = args.parent_element;
+
+        if (relto) {
+            let rect = relto.getBoundingClientRect();
+            this.element.style.left = `${rect.left}px`;
+            this.element.style.width = `${rect.width}px`;
+            if (document.body.clientHeight - rect.bottom > 96) {
+                this.element.style.top = `${rect.bottom + 2}px`;
+            }
+            else {
+                this.element.style.bottom = `${document.body.clientHeight - rect.top + 2}px`;
+            }
+        }
+        else if (ev) {
+            this.element.style.left = `${Math.min(ev.clientX, document.body.clientWidth - this.element.offsetWidth)}px`;
+            this.element.style.top = `${Math.min(ev.clientY, document.body.clientHeight - this.element.offsetHeight)}px`;
         }
     }
 }
@@ -726,7 +747,7 @@ const STEP_ARGUMENT_TYPES = {
         },
         edit(element, value) {
             return new Promise((resolve, reject) => {
-                let editor_element = mk('textarea.gleam-editor-arg-prose', value);
+                let editor_element = mk('textarea.gleam-editor-arg-prose', value || '');
                 // FIXME having to click outside (and thus likely activate something else) kind of sucks
                 // TODO but then, i'd love to have an editor that uses the appropriate styling, anyway
                 editor_element.addEventListener('blur', ev => {
@@ -1340,29 +1361,79 @@ class CharacterEditor extends PictureFrameEditor {
 
         // FIXME make this all less ugly
         propmap.append(mk('dt', 'Dialogue box'));
+        // TODO update this if the dialogue box is deleted?
+        // TODO ...or renamed?
+        // TODO use a default?
         let dd = mk('dd');
-        dd.append(mk('div.gleam-editor-role-dialoguebox', 'dialogue'));
+        let prop_editor = mk('div.gleam-editor-role-dialoguebox.gleam-editor-propmap-role');
+        if (this.role.dialogue_box) {
+            prop_editor.textContent = this.role.dialogue_box.name;
+        }
+        else {
+            prop_editor.textContent = 'Must select a dialogue box to display text in!';
+            prop_editor.classList.add('--missing');
+        }
+        prop_editor.addEventListener('click', ev => {
+            let dialogue_boxes = this.main_editor.script.roles.filter(
+                role => role instanceof Gleam.DialogueBox);
+            if (! dialogue_boxes.length) {
+                dialogue_boxes.push(null);
+            }
+            let overlay = new PopupMenuOverlay(
+                dialogue_boxes,
+                role => {
+                    return role ? role.name : "(no dialogue boxes available)";
+                },
+            );
+            overlay.position({
+                event: ev,
+                parent_element: prop_editor,
+            });
+            overlay.promise.then(role => {
+                this.role.dialogue_box = role;
+                if (role) {
+                    prop_editor.textContent = role.name;
+                    prop_editor.classList.remove('--missing');
+                }
+                else {
+                    prop_editor.textContent = 'Must select a dialogue box to display text in!';
+                    prop_editor.classList.add('--missing');
+                }
+            }, () => {});
+        });
+
+        dd.append(prop_editor);
         propmap.append(dd);
 
+        {
         propmap.append(mk('dt', 'Dialogue name'));
         dd = mk('dd');
         let input = mk('input');
         input.type = 'text';
         input.value = this.role.dialogue_name;
+        input.addEventListener('change', ev => {
+            this.role.dialogue_name = input.value;
+            // XXX ???
+            this.main_editor.script.update_steps(...this.main_editor.script.steps.filter(step => step.role === this.role));
+        });
         dd.append(input);
         propmap.append(dd);
+        }
 
+        {
         propmap.append(mk('dt', 'Dialogue style'));
         dd = mk('dd');
-        input = mk('input');
+        let input = mk('input');
         input.type = 'text';
         input.value = this.role.dialogue_position;
         dd.append(input);
         propmap.append(dd);
+        }
 
+        {
         propmap.append(mk('dt', 'Dialogue color'));
         dd = mk('dd');
-        input = mk('input');
+        let input = mk('input');
         input.type = 'color';
         input.value = this.role.dialogue_color;
         input.addEventListener('change', ev => {
@@ -1373,6 +1444,7 @@ class CharacterEditor extends PictureFrameEditor {
         });
         dd.append(input);
         propmap.append(dd);
+        }
     }
 }
 CharacterEditor.prototype.ROLE_TYPE = Gleam.Character;
@@ -1677,6 +1749,7 @@ class ScriptPanel extends Panel {
             let i = parseInt(arg.getAttribute('data-arg-index'), 10);
             let arg_def = step.kind.args[i];
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
+            console.log(step, arg_def, arg_type);
             let promise = arg_type.edit(arg, step.args[i], step, ev);
             // FIXME ahh you could conceivably double-click on the same element again if it edits inline, like prose does...
             promise.then(new_value => {

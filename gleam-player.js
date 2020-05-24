@@ -39,7 +39,7 @@ function mk(tag_selector, ...children) {
     let el = document.createElement(tag);
     el.classList = classes.join(' ');
     if (children.length > 0) {
-        if (!(children[0] instanceof Node) && typeof(children[0]) !== "string") {
+        if (!(children[0] instanceof Node) && typeof(children[0]) !== "string" && typeof(children[0]) !== "number") {
             let [attrs] = children.splice(0, 1);
             for (let [key, value] of Object.entries(attrs)) {
                 el.setAttribute(key, value);
@@ -165,6 +165,9 @@ class Role {
         return new this(json.name);
     }
 
+    // Called after all roles are loaded, for restoring cross-references
+    post_load(script) {}
+
     to_json() {
         return {
             name: this.name,
@@ -259,6 +262,9 @@ class Step {
             let role = this.role;
             if (twiddle_change.delegate) {
                 role = role[twiddle_change.delegate];
+                // TODO this happens with Characters whose dialogue_box is unassigned; what should happen here?
+                if (! role)
+                    continue;
             }
 
             let value = twiddle_change.value;
@@ -1597,6 +1603,28 @@ class Character extends PictureFrame {
         return role;
     }
 
+    static from_json(json) {
+        let character = super.from_json(json);
+        character._dialogue_box_name = json.dialogue_box;
+        character.dialogue_name = json.dialogue_name;
+        character.dialogue_color = json.dialogue_color;
+        return character;
+    }
+
+    post_load(script) {
+        super.post_load(script);
+        this.dialogue_box = script.role_index[this._dialogue_box_name];
+    }
+
+    to_json() {
+        let json = super.to_json();
+        json.dialogue_box = this.dialogue_box.name;
+        json.dialogue_name = this.dialogue_name;
+        json.dialogue_color = this.dialogue_color;
+        // TODO position/style?
+        return json;
+    }
+
     // FIXME i think i should also be saving the dialogue box name?  and, dialogue name/color/etc which don't even appear in the constructor
 }
 Character.register('character');
@@ -1997,6 +2025,9 @@ class Script {
             }
 
             script._add_role(type.from_json(role_def));
+        }
+        for (let role of script.roles) {
+            role.post_load(script);
         }
 
         let steps = [];

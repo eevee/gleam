@@ -104,6 +104,8 @@ dl.gleam-editor-propmap {
     align-items: baseline;
     row-gap: 0.5em;
     column-gap: 0.5em;
+
+    margin: 1em 0.5em;
 }
 dl.gleam-editor-propmap > dt {
     grid-column: 1;
@@ -113,6 +115,18 @@ dl.gleam-editor-propmap > dd {
     grid-column: 2;
     margin: 0;
 }
+
+.gleam-editor-propmap-role {
+    padding: 0.25em 0.5em;
+    cursor: pointer;
+}
+.gleam-editor-propmap-role.--missing {
+    box-shadow: 0 0 0 1px red;
+}
+.gleam-editor-propmap-role:hover {
+    box-shadow: 0 0 0 1px blue;
+}
+
 
 .gleam-title {
     font-weight: bold;
@@ -531,6 +545,10 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
 }
 
 /* Asset panel */
+#gleam-editor-assets-source {
+    padding: 0.5em;
+}
+
 .gleam-editor-assets li {
     padding: 0.25em 0.5em;
 }
@@ -812,16 +830,15 @@ textarea.gleam-editor-arg-prose {
     max-height: 50vh;
     overflow-x: hidden;
     overflow-y: auto;
-    border: 1px solid black;
-    box-shadow: 0 0 3px #0009;
+    box-shadow: 0 0 0 1px #444, 0 1px 4px 2px #0004;
 }
 .gleam-editor-arg-enum-poses li {
-    background: white;
+    background: #e8e8e8;
     padding: 0.25em 0.5em;
     cursor: pointer;
 }
 .gleam-editor-arg-enum-poses li:hover {
-    background: #e8e8e8;
+    background: hsl(45, 75%, 90%);
 }
 
 
