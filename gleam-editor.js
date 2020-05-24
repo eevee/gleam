@@ -1,12 +1,9 @@
-// FIXME <button>s should be type=button
-// FIXME remove make_element probably
 "use strict";
 if (! window.Gleam) {
     throw new Error("Gleam player must be loaded first!");
 }
 Object.assign(window.Gleam, (function() {
 
-let make_element = Gleam.make_element;
 let mk = Gleam.mk;
 let svg_icon_from_path = Gleam.svg_icon_from_path;
 
@@ -24,7 +21,7 @@ function human_friendly_sort(filenames) {
 // TODO the overlay should be able to position itself by the mouse cursor, if opened in response to a click
 // TODO a transient overlay should probably disappear on document blur?
 function open_overlay(element) {
-    let overlay = make_element('div', 'gleam-editor-overlay');
+    let overlay = mk('div.gleam-editor-overlay');
     overlay.appendChild(element);
     document.body.appendChild(overlay);
 
@@ -61,7 +58,7 @@ class Overlay {
         this.is_transient = is_transient;
         this.element = element;
 
-        this.container = make_element('div', 'gleam-editor-overlay');
+        this.container = mk('div.gleam-editor-overlay');
         this.container.appendChild(element);
         document.body.appendChild(this.container);
 
@@ -682,7 +679,7 @@ class MutableScript extends Gleam.Script {
 const STEP_ARGUMENT_TYPES = {
     string: {
         view(value) {
-            return make_element('div', 'gleam-editor-arg-string', value);
+            return mk('div.gleam-editor-arg-string', value);
         },
         update(element, value) {
             element.textContent = value;
@@ -721,14 +718,15 @@ const STEP_ARGUMENT_TYPES = {
 
     prose: {
         view(value) {
-            return make_element('div', 'gleam-editor-arg-prose', value);
+            // TODO null should probably not be allowed, but, there's no real validation on these
+            return mk('div.gleam-editor-arg-prose', value || '');
         },
         update(element, value) {
             element.textContent = value;
         },
         edit(element, value) {
             return new Promise((resolve, reject) => {
-                let editor_element = make_element('textarea', 'gleam-editor-arg-prose', value);
+                let editor_element = mk('textarea.gleam-editor-arg-prose', value);
                 // FIXME having to click outside (and thus likely activate something else) kind of sucks
                 // TODO but then, i'd love to have an editor that uses the appropriate styling, anyway
                 editor_element.addEventListener('blur', ev => {
@@ -744,7 +742,7 @@ const STEP_ARGUMENT_TYPES = {
 
     pose: {
         view(value) {
-            return make_element('div', 'gleam-editor-arg-enum', value);
+            return mk('div.gleam-editor-arg-enum', value);
         },
         update(element, value) {
             element.textContent = value;
@@ -752,9 +750,9 @@ const STEP_ARGUMENT_TYPES = {
         edit(element, value, step, mouse_event) {
             return new Promise((resolve, reject) => {
                 // FIXME this very poorly handles a very long list, and doesn't preview or anything
-                let editor_element = make_element('ol', 'gleam-editor-arg-enum-poses');
+                let editor_element = mk('ol.gleam-editor-arg-enum-poses');
                 for (let pose of Object.keys(step.role.poses)) {
-                    let li = make_element('li', null, pose);
+                    let li = mk('li', pose);
                     li.setAttribute('data-pose', pose);
                     editor_element.appendChild(li);
                 }
@@ -782,7 +780,7 @@ const STEP_ARGUMENT_TYPES = {
 
     track: {
         view(value) {
-            return make_element('div', 'gleam-editor-arg-enum', value);
+            return mk('div.gleam-editor-arg-enum', value);
         },
         update(element, value) {
             element.textContent = value;
@@ -792,9 +790,9 @@ const STEP_ARGUMENT_TYPES = {
             return new Promise((resolve, reject) => {
                 // FIXME this very poorly handles a very long list, and doesn't preview or anything
                 // FIXME this ain't poses either
-                let editor_element = make_element('ol', 'gleam-editor-arg-enum-poses');
+                let editor_element = mk('ol.gleam-editor-arg-enum-poses');
                 for (let track_name of Object.keys(step.role.tracks)) {
-                    let li = make_element('li', null, track_name);
+                    let li = mk('li', track_name);
                     li.setAttribute('data-track', track_name);
                     editor_element.appendChild(li);
                 }
@@ -964,7 +962,7 @@ class AddByWildcardDialog {
             this.role_editor.role.add_pose(name, path);
             // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
             // FIXME why not just use update_assets for this?
-            let li = make_element('li');
+            let li = mk('li');
             let img = this.library.load_image(path);
             img.classList.add('-asset');
             li.append(img);
@@ -1072,9 +1070,9 @@ class RoleEditor {
     }
 
     make_sample_step_element(step_kind) {
-        let el = make_element('div', 'gleam-editor-step');
+        let el = mk('div.gleam-editor-step');
 
-        let handle = make_element('div', '-handle', '⠿');
+        let handle = mk('div.-handle', '⠿');
 
         // A cheaty hack to make an element draggable only by a child handle: add
         // the 'draggable' attribute (to the whole parent) only on mousedown
@@ -1099,9 +1097,9 @@ class RoleEditor {
 
     // FIXME i changed my mind and this should go on ScriptPanel.  only trouble is this.CLASS_NAME
     make_step_element(step) {
-        let el = make_element('div', 'gleam-editor-step');
+        let el = mk('div.gleam-editor-step');
 
-        let handle = make_element('div', '-handle', '⠿');
+        let handle = mk('div.-handle', '⠿');
 
         // A cheaty hack to make an element draggable only by a child handle: add
         // the 'draggable' attribute (to the whole parent) only on mousedown
@@ -1120,11 +1118,11 @@ class RoleEditor {
         let role_tag = mk('div.-who', handle, step.role.name);
         role_tag.classList.add(this.CLASS_NAME);
         el.appendChild(role_tag);
-        el.appendChild(make_element('div', '-what', step.kind.display_name));
+        el.appendChild(mk('div.-what', step.kind.display_name));
 
         for (let [i, arg_def] of step.kind.args.entries()) {
             let value = step.args[i];
-            let arg_element = make_element('div', '-how');
+            let arg_element = mk('div.-how');
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
             if (arg_type) {
                 let viewer = arg_type.view(value);
@@ -1133,7 +1131,7 @@ class RoleEditor {
                 arg_element.appendChild(viewer);
             }
             else {
-                arg_element.appendChild(make_element('span', null, value));
+                arg_element.appendChild(mk('span', value));
             }
             el.appendChild(arg_element);
         }
@@ -1188,7 +1186,7 @@ class JukeboxEditor extends RoleEditor {
                     /*
                     // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
                     // FIXME why not just use update_assets for this?
-                    let li = make_element('li');
+                    let li = mk('li');
                     let img = this.library.load_image(path);
                     img.classList.add('-asset');
                     li.append(img);
@@ -1316,12 +1314,12 @@ class PictureFrameEditor extends RoleEditor {
         this.pose_list.textContent = '';
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame = pose[0];  // FIXME this format is bonkers
-            let li = make_element('li');
+            let li = mk('li');
             let img = this.main_editor.library.load_image(frame.url);
             // TODO umm i can't tell from here whether there's actually anything, and i'd like to have a dummy element for stuff that didn't load.
             img.classList.add('-asset');
             li.append(img);
-            li.appendChild(make_element('p', '-caption', pose_name));
+            li.appendChild(mk('p.-caption', pose_name));
             this.pose_list.appendChild(li);
         }
     }
@@ -1337,34 +1335,34 @@ class CharacterEditor extends PictureFrameEditor {
         super(...args);
 
         let before = this.container.querySelector('h3');
-        let propmap = make_element('dl', 'gleam-editor-propmap');
+        let propmap = mk('dl.gleam-editor-propmap');
         before.parentNode.insertBefore(propmap, before);
 
         // FIXME make this all less ugly
-        propmap.append(make_element('dt', null, 'Dialogue box'));
-        let dd = make_element('dd');
-        dd.append(make_element('div', 'gleam-editor-role-dialoguebox', 'dialogue'));
+        propmap.append(mk('dt', 'Dialogue box'));
+        let dd = mk('dd');
+        dd.append(mk('div.gleam-editor-role-dialoguebox', 'dialogue'));
         propmap.append(dd);
 
-        propmap.append(make_element('dt', null, 'Dialogue name'));
-        dd = make_element('dd');
-        let input = make_element('input');
+        propmap.append(mk('dt', 'Dialogue name'));
+        dd = mk('dd');
+        let input = mk('input');
         input.type = 'text';
         input.value = this.role.dialogue_name;
         dd.append(input);
         propmap.append(dd);
 
-        propmap.append(make_element('dt', null, 'Dialogue style'));
-        dd = make_element('dd');
-        input = make_element('input');
+        propmap.append(mk('dt', 'Dialogue style'));
+        dd = mk('dd');
+        input = mk('input');
         input.type = 'text';
         input.value = this.role.dialogue_position;
         dd.append(input);
         propmap.append(dd);
 
-        propmap.append(make_element('dt', null, 'Dialogue color'));
-        dd = make_element('dd');
-        input = make_element('input');
+        propmap.append(mk('dt', 'Dialogue color'));
+        dd = mk('dd');
+        input = mk('input');
         input.type = 'color';
         input.value = this.role.dialogue_color;
         input.addEventListener('change', ev => {
@@ -1531,7 +1529,7 @@ class RolesPanel extends Panel {
 
         // Add the toolbar
         // Add role
-        let button = make_element('button', {type: 'button'});
+        let button = mk('button', {type: 'button'});
         button.innerHTML = svg_icon_from_path("M 8,1 V 14 M 1,8 H 14");
         button.addEventListener('click', ev => {
             // FIXME more general handling of popup list
@@ -1610,13 +1608,13 @@ class ScriptPanel extends Panel {
 
         // Add some nav controls
         // FIXME disable these when on first/last step, and make sure they don't trigger even if clicked somehow
-        let button = make_element('button');
+        let button = mk('button', {type: 'button'});
         button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 6,3 L 1,8 L 6,13");
         button.addEventListener('click', ev => {
             this.editor.player.director.backtrack();
         });
         this.nav.appendChild(button);
-        button = make_element('button');
+        button = mk('button', {type: 'button'});
         button.innerHTML = svg_icon_from_path("M 1,8 H 14 M 10,3 L 15,8 L 10,13");
         button.addEventListener('click', ev => {
             this.editor.player.director.advance();
@@ -1625,8 +1623,8 @@ class ScriptPanel extends Panel {
 
         // Create the per-beat toolbar
         // TODO i don't super understand how this should work, or how per-step should work either, ugh
-        this.beat_toolbar = make_element('nav', 'gleam-editor-beat-toolbar');
-        button = make_element('button', null, 'jump');
+        this.beat_toolbar = mk('nav.gleam-editor-beat-toolbar');
+        button = mk('button', {type: 'button'}, 'jump');
         let hovered_beat_position = null;
         button.addEventListener('click', ev => {
             this.editor.script.jump(hovered_beat_position);
@@ -1635,9 +1633,9 @@ class ScriptPanel extends Panel {
         //this.body.appendChild(this.beat_toolbar);
 
         // FIXME this is a bit ugly still
-        this.step_toolbar = make_element('nav', 'gleam-editor-step-toolbar');
+        this.step_toolbar = mk('nav.gleam-editor-step-toolbar');
         let hovered_step_el = null;
-        button = make_element('button');
+        button = mk('button', {type: 'button'});
         button.innerHTML = svg_icon_from_path("M 2,2 L 14,2 L 12,14 L 4,14 L 2,2 M 6,2 L 7,14 M 10,2 L 9,14");
         button.addEventListener('click', ev => {
             if (hovered_step_el) {
@@ -1882,7 +1880,7 @@ class ScriptPanel extends Panel {
         this.step_to_element = new WeakMap();
         this.element_to_step = new WeakMap();
         for (let [b, beat] of script.beats.entries()) {
-            let group = make_element('li');
+            let group = mk('li');
             for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
                 let step = script.steps[i];
                 let role_editor = this.editor.roles_panel.role_to_editor.get(step.role);
@@ -1894,7 +1892,7 @@ class ScriptPanel extends Panel {
 
                 // FIXME do this live, and probably in the script panel i assume, and only when steps are affected...?
                 if (i === 6) {
-                    element.append(make_element('div', '-error', "Has no effect because a later step in the same beat overwrites it!"));
+                    element.append(mk('div.-error', "Has no effect because a later step in the same beat overwrites it!"));
                 }
             }
             this.beats_list.append(group);
@@ -1942,19 +1940,19 @@ class ScriptPanel extends Panel {
         this.twiddle_debug_elements = new Map();  // Role => { twiddle => <dd> }
         // TODO need to update this when a role is added too, god christ ass.  or when a script is loaded, though it happens to work here
         for (let role_editor of this.editor.roles_panel.role_editors) {
-            let box = make_element('div', 'gleam-editor-script-role-state');
+            let box = mk('div.gleam-editor-script-role-state');
             this.footer.append(box);
 
-            let dl = make_element('dl');
+            let dl = mk('dl');
             box.append(
-                make_element('h2', role_editor.CLASS_NAME, role_editor.role.name),
+                mk('h2', {'class': role_editor.CLASS_NAME}, role_editor.role.name),
                 dl);
             let dd_map = {};
             for (let key of Object.keys(role_editor.role.TWIDDLES)) {
                 // TODO display name?  maybe not
-                let dd = make_element('dd');
+                let dd = mk('dd');
                 dd_map[key] = dd;
-                dl.append(make_element('dt', null, key), dd);
+                dl.append(mk('dt', key), dd);
             }
             this.twiddle_debug_elements.set(role_editor.role, dd_map);
         }
@@ -2002,7 +2000,7 @@ class ScriptPanel extends Panel {
         // FIXME SIGH the case of the very first step, or adding to the end which is maybe equivalent
 
         if (step.beat_index >= this.beats_list.children.length) {
-            let new_group = make_element('li');
+            let new_group = mk('li');
             new_group.append(element);
             this.beats_list.append(new_group);
         }
@@ -2015,7 +2013,7 @@ class ScriptPanel extends Panel {
             group.insertBefore(element, bumped_element);
 
             if (split_beat) {
-                let new_group = make_element('li');
+                let new_group = mk('li');
                 this.beats_list.insertBefore(new_group, group.nextSibling);
                 while (element.nextSibling) {
                     new_group.appendChild(element.nextSibling);
@@ -2029,7 +2027,7 @@ class ScriptPanel extends Panel {
             // Step being dragged
             step: step,
             // Element showing where the step will be inserted
-            caret: make_element('hr', 'gleam-editor-step-caret'),
+            caret: mk('hr.gleam-editor-step-caret'),
             // Existing step being dragged over
             target: null,
             // Position to insert the step
