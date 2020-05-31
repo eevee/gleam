@@ -2098,11 +2098,11 @@ class Script {
 
             // If this step pauses, the next step goes in a new beat
             if (step.kind.pause) {
-                // If this is the last step, a pause is meaningless
+                beat.pause = step.kind.pause;
+
+                // If this is the last step, there is no next beat
                 if (i === this.steps.length - 1)
                     break;
-
-                beat.pause = step.kind.pause;
 
                 let prev_beat = beat;
                 beat = prev_beat.create_next();
