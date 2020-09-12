@@ -244,18 +244,42 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
             resolve = res;
         });
 
-        // TODO technically should be calling this repeatedly.  also it's asynchronous, not super sure if that's a problem.
         // TODO sometimes this is null?  what the fuck is up with drag and drop.
         // FIXME this should reject on error, you fool
-        directory_entry.createReader().readEntries(entries => {
-            // TODO hmm, should mark by whether they're present and whether they're used i guess?
-            for (let entry of entries) {
-                let asset = this.asset(entry.name);
-                asset.exists = true;
-                asset.entry = entry;
-            }
-            resolve();
-        }, console.error)
+        let pending_directories = 0;
+        let read_directory = (directory_entry, dir_prefix) => {
+            pending_directories += 1;
+            let reader = directory_entry.createReader();
+            let failure_cb = console.error;
+            let success_cb = (entries) => {
+                // TODO hmm, should mark by whether they're present and whether they're used i guess?
+                for (let entry of entries) {
+                    if (entry.isDirectory) {
+                        read_directory(entry, dir_prefix + entry.name + '/');
+                    }
+                    else {
+                        let asset = this.asset(dir_prefix + entry.name);
+                        asset.exists = true;
+                        asset.entry = entry;
+                    }
+                }
+
+                if (entries.length === 0) {
+                    // Done
+                    pending_directories -= 1;
+                    if (pending_directories === 0) {
+                        resolve();
+                    }
+                }
+                else {
+                    // Not done, schedule another read
+                    reader.readEntries(success_cb, failure_cb);
+                }
+            };
+
+            reader.readEntries(success_cb, failure_cb);
+        };
+        read_directory(this.directory_entry, '');
     }
 
     async get_url_for_path(path) {
