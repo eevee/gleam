@@ -209,6 +209,7 @@ class NullAssetLibrary extends Gleam.AssetLibrary {
         element = element || mk('img');
         // XXX kind of fuzzy on when this should be added or removed, or if there should be a pending state, in which case should it also be a data attribute,
         element.classList.add('--missing');
+        this.images.set(element, path);
         return element;
     }
 
@@ -311,6 +312,7 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
             element.classList.remove('--missing');
         });
 
+        this.images.set(element, path);
         return element;
     }
 
@@ -1281,6 +1283,70 @@ class PictureFrameEditor extends RoleEditor {
         super(...args);
 
         this.pose_list = mk('ul.gleam-editor-role-pictureframe-poses');
+        let dummy_composite = {
+            order: ['fire', 'body', 'annoyance', 'eye'],
+            layers: {
+                // TODO need to specify which of these are optional
+                body: {
+                    optional: false,
+                    variants: {
+                        normal: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/normal.PNG',
+                        tea: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/tea.PNG',
+                    },
+                },
+                eye: {
+                    optional: false,
+                    variants: {
+                        // TODO 'front' is baked in, these other have a 'base'; i don't think that's sensible to support though?
+                        down: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/eye/down.PNG',
+                        right: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/eye/right.PNG',
+                        upper: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/eye/upper.PNG',
+                    },
+                },
+                annoyance: {
+                    optional: true,
+                    variants: {
+                        '': 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/extra/annoyance lines.PNG',
+                    },
+                },
+                fire: {
+                    optional: true,
+                    variants: {
+                        '': 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/extra/fire.PNG',
+                    },
+                },
+            },
+        };
+        this.composite_list = mk('div.gleam-editor-role-pictureframe-composite',
+            mk('div.-layers'),
+            //mk('button', "Add layer"),
+            mk('div.-preview'), 
+        );
+        // TODO this is all a big mess!!
+        let layers = this.composite_list.querySelector('div.-layers');
+        let preview = this.composite_list.querySelector('div.-preview')
+        for (let layername of dummy_composite.order) {
+            let layer = dummy_composite.layers[layername];
+            let variants_el = mk('ul.-variants');
+            let img = this.main_editor.library.load_image(Object.values(layer.variants)[0]);
+            preview.append(img);
+            // TODO how do i indicate optional...?
+            for (let [name, path] of Object.entries(layer.variants)) {
+                let thumb = this.main_editor.library.load_image(path);
+                thumb.classList.add('-asset');
+                let li = mk('li', thumb, name);
+                variants_el.append(li);
+                // TODO i feel like i do "select one of these things and then deselect the other one" a lot, maybe write a helper for this
+                li.addEventListener('click', ev => {
+                    this.main_editor.library.load_image(path, img);
+                });
+            }
+            layers.append(
+                mk('h4', layername),
+                variants_el,
+            );
+        }
+
         this.update_assets();
 
         let button = mk('button', "Add poses in bulk");
@@ -1316,11 +1382,24 @@ class PictureFrameEditor extends RoleEditor {
             }
         });
 
+        let button3 = mk('button', "Create stacked pose");
+        button3.addEventListener('click', ev => {
+            // TODO name
+            //this.role.add_composite_pose('composite', []);
+            new CompositePoseDialog(this).open();
+        });
+
         this.element.append(
             mk('h3', "Poses ", mk('span.gleam-editor-hint', "(drag and drop into script)")),
             this.pose_list,
+            button3,
             button,
             button2,
+        );
+
+        this.element.append(
+            mk('h3', "Composite poses"),
+            this.composite_list,
         );
 
         // Allow dropping in an asset

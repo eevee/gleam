@@ -1740,6 +1740,8 @@ class Beat {
 class AssetLibrary {
     constructor() {
         this.assets = {};
+        // Map of <img> to asset path, for automatic reloading
+        this.images = new Map;
     }
 
     asset(path) {
@@ -1757,6 +1759,18 @@ class AssetLibrary {
         for (let [path, asset] of Object.entries(library.assets)) {
             if (asset.used) {
                 this.asset(path).used = asset.used;
+            }
+        }
+
+        for (let [img, path] of library.images) {
+            // Ignore removed images
+            if (! img.isConnected)
+                continue;
+
+            let new_img = this.load_image(path, img);
+            if (new_img !== img) {
+                new_img.className = img.className;
+                img.replaceWith(new_img);
             }
         }
     }
@@ -1780,6 +1794,7 @@ class RemoteAssetLibrary extends AssetLibrary {
             // After trying to load this once, there's no point in doing all
             // the mechanical checking again; it'd be cached regardless
             element.src = asset.url;
+            this.images.set(element, path);
             return element;
         }
 
@@ -1819,6 +1834,7 @@ class RemoteAssetLibrary extends AssetLibrary {
 
         // TODO fire an event here, or what?
         element.src = url;
+        this.images.set(element, path);
         return element;
     }
 

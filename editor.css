@@ -543,6 +543,56 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
     /* This makes the ellipsis appear on the LEFT side, so the suffix is visible */
     direction: rtl;
 }
+.gleam-editor-role-pictureframe-composite {
+    display: flex;
+    margin: 0.5em;
+}
+.gleam-editor-role-pictureframe-composite .-layers {
+    flex: 1;
+}
+.gleam-editor-role-pictureframe-composite .-layers h4 {
+    font-style: italic;
+}
+.gleam-editor-role-pictureframe-composite .-layers * + h4 {
+    margin-top: 0.5em;
+    padding-top: 0.5em;
+    border-top: 1px solid #606060;
+}
+.gleam-editor-role-pictureframe-composite .-layers .-variants {
+    display: flex;
+    flex-wrap: wrap;
+}
+.gleam-editor-role-pictureframe-composite .-layers .-variants li {
+    width: 100px;
+    font-family: monospace;
+    text-align: center;
+}
+.gleam-editor-role-pictureframe-composite .-preview {
+    flex: 0 1 auto;
+    display: grid;
+}
+.gleam-editor-role-pictureframe-composite .-preview img {
+    grid-row: 1;
+    grid-column: 1;
+    max-width: 400px;
+    max-height: 400px;
+    width: 100%;
+}
+.gleam-editor-role-pictureframe-composite .-asset {
+    display: block;
+    max-width: 100px;
+    max-height: 100px;
+    margin: 0 auto;
+    border: 1px dashed #c0c0c0;
+}
+.gleam-editor-role-pictureframe-composite .-asset.--missing {
+    width: 100px;
+    height: 75px;
+    background-color: #fcc;
+    text-align: center;
+    color: #400;
+}
+
 
 /* Asset panel */
 #gleam-editor-assets-source {
