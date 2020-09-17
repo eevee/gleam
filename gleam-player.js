@@ -1345,6 +1345,15 @@ Jukebox.Actor = class JukeboxActor extends Actor {
 */
 
 
+// Stored format is defined as follows:
+// An 'animation' is:
+// - a single path
+// - a list of { path, duration }
+// And a pose is:
+// - an animation
+// - { type: 'static', path },
+// - { type: 'animated', frames: [{path, duration}] },
+// - { type: 'composite', order: [ layer names... ], layers: { optional?, variants: { name: animation } } }
 class PictureFrame extends Role {
     constructor(name, position) {
         super(name);
@@ -1354,7 +1363,7 @@ class PictureFrame extends Role {
     static from_legacy_json(name, json) {
         let pf = new this(name, json.position);
         for (let [key, value] of Object.entries(json.views)) {
-            pf.add_pose(key, value);
+            pf.poses[key] = this.inflate_pose(value);
         }
         return pf;
     }
@@ -1362,25 +1371,51 @@ class PictureFrame extends Role {
     static from_json(json) {
         let pf = new this(json.name, json.position);
         for (let [key, value] of Object.entries(json.poses)) {
-            pf.add_pose(key, value);
+            pf.poses[key] = this.inflate_pose(value);
         }
         return pf;
+    }
+
+    static inflate_pose(posedef) {
+        if (typeof posedef === 'string' || posedef instanceof String) {
+            // Single string: static pose
+            return { type: 'static', path: posedef };
+        }
+        else if (posedef.type) {
+            return posedef;
+        }
+        else {
+            console.error("Don't know how to inflate pose definition", posedef);
+        }
     }
 
     to_json() {
         let json = super.to_json();
         json.poses = {};
         for (let [name, pose] of Object.entries(this.poses)) {
-            // FIXME this won't fly for ad-hoc animations.  but i don't want to make a big mess for simple cases either
-            // should this be a list, i wonder?  does order matter?
-            json.poses[name] = pose[0].url;
+            // Deflate the pose
+            let posedef;
+            if (pose.type === 'static') {
+                posedef = pose.path;
+            }
+            else if (pose.type === 'composite') {
+                // Can't really do any better
+                posedef = pose;
+            }
+            else {
+                console.error("Don't know how to deflate pose definition", pose);
+                throw new Error;
+            }
+            json.poses[name] = posedef;
         }
         return json;
     }
 
-    // TODO don't really love "view" as the name for this
-    add_pose(name, tmp_image_url) {
-        this.poses[name] = [{ url: tmp_image_url }];
+    add_static_pose(name, path) {
+        this.poses[name] = {
+            type: 'static',
+            path: path,
+        };
     }
 }
 PictureFrame.register('picture-frame');
@@ -1438,14 +1473,15 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         this.element = element;
 
         this.pose_elements = {};
-        for (let [pose_name, frames] of Object.entries(this.role.poses)) {
+        for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame_elements = this.pose_elements[pose_name] = [];
-            for (let frame of frames) {
-                let image = director.library.load_image(frame.url);
+            if (pose.type === 'static') {
+                let image = director.library.load_image(pose.path);
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
                 element.appendChild(image);
                 frame_elements.push(image);
             }
+            // FIXME else if ...
         }
 
         // FIXME why am i using event delegation here i Do Not get it
@@ -1477,7 +1513,7 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         for (let [pose_name, frames] of Object.entries(this.role.poses)) {
             if (this.pose_elements[pose_name]) {
                 // FIXME hacky as hell
-                director.library.load_image(frames[0].url, this.pose_elements[pose_name][0]);
+                director.library.load_image(frames.path, this.pose_elements[pose_name][0]);
                 continue;
             }
             // FIXME ensure order...
@@ -1486,7 +1522,7 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
             // FIXME maybe i should just create a new actor
             let frame_elements = this.pose_elements[pose_name] = [];
             for (let frame of frames) {
-                let image = director.library.load_image(frame.url);
+                let image = director.library.load_image(frame.path);
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
                 this.element.appendChild(image);
                 frame_elements.push(image);

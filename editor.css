@@ -470,6 +470,9 @@ ol.gleam-editor-roles > li {
 }
 ol.gleam-editor-roles > li header {
     display: flex;
+    position: sticky;
+    z-index: 1;
+    top: 0;
     padding: 0.25em 0.5em;
     margin: 0;
     font-size: 1.25em;
@@ -512,13 +515,26 @@ dl.gleam-editor-role-jukebox-tracks .-path {
     color: #606060;
 }
 ul.gleam-editor-role-pictureframe-poses {
-    margin: 0.5em;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    row-gap: 0.25em;
-    column-gap: 0.25em;
+    gap: 0.25em;
+
+    min-height: 100px;
+    margin: 0.5em;
+}
+ul.gleam-editor-role-pictureframe-poses:empty {
+    grid-template-columns: 1fr;
+}
+ul.gleam-editor-role-pictureframe-poses:empty::before {
+    content: "Drag assets here or use the buttons below to add poses";
+    place-self: center center;
+    font-style: italic;
+    color: #606060;
 }
 ul.gleam-editor-role-pictureframe-poses li {
+}
+ul.gleam-editor-role-pictureframe-poses li.--selected {
+    background: hsl(30, 90%, 75%);
 }
 ul.gleam-editor-role-pictureframe-poses .-asset {
     display: block;
@@ -567,6 +583,20 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
     font-family: monospace;
     text-align: center;
 }
+.gleam-editor-role-pictureframe-composite .-layers img {
+    display: block;
+    max-width: 100px;
+    max-height: 100px;
+    margin: 0 auto;
+    border: 1px dashed #c0c0c0;
+}
+.gleam-editor-role-pictureframe-composite .-layers img.--missing {
+    width: 100px;
+    height: 75px;
+    background-color: #fcc;
+    text-align: center;
+    color: #400;
+}
 .gleam-editor-role-pictureframe-composite .-preview {
     flex: 0 1 auto;
     display: grid;
@@ -577,20 +607,6 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
     max-width: 400px;
     max-height: 400px;
     width: 100%;
-}
-.gleam-editor-role-pictureframe-composite .-asset {
-    display: block;
-    max-width: 100px;
-    max-height: 100px;
-    margin: 0 auto;
-    border: 1px dashed #c0c0c0;
-}
-.gleam-editor-role-pictureframe-composite .-asset.--missing {
-    width: 100px;
-    height: 75px;
-    background-color: #fcc;
-    text-align: center;
-    color: #400;
 }
 
 

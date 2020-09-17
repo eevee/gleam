@@ -6,7 +6,6 @@
     <link rel="stylesheet" type="text/css" href="editor.css">
     <link rel="stylesheet" type="text/css" href="player.css">
     <script src="gleam-player.js"></script>
-    <script src="gleam-editor.js"></script>
 </head>
 <body>
 <main id="gleam-editor-launcher">
@@ -126,10 +125,11 @@
         </footer>
     </section>
 </main>
-    <script>
+    <script type="module">
+        import { attach_editor } from './gleam-editor.js';
         // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
         window.addEventListener('load', ev => {
-            let launcher = Gleam.attach_editor();
+            let launcher = attach_editor();
             //launcher.load_from_url('res/species-lunekos/');
 
             /*

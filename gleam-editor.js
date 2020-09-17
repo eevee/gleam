@@ -1,8 +1,9 @@
-"use strict";
+import {html, render} from 'https://unpkg.com/lit-html?module';
+import {repeat} from 'https://unpkg.com/lit-html/directives/repeat.js?module';
+
 if (! window.Gleam) {
     throw new Error("Gleam player must be loaded first!");
 }
-Object.assign(window.Gleam, (function() {
 
 let mk = Gleam.mk;
 let svg_icon_from_path = Gleam.svg_icon_from_path;
@@ -13,6 +14,105 @@ function human_friendly_sort(filenames) {
         // human-friendly number sorting already, hallelujah
         return a.localeCompare(b, undefined, { numeric: true });
     });
+}
+
+function accept_drop(args) {
+    let target = args.target;
+    let delegate_selector = args.delegate ?? null;
+    let mimetype = args.mimetype;
+    let ondrop = args.ondrop;
+
+    target.addEventListener('dragenter', ev => {
+        let data = ev.dataTransfer.getData(mimetype);
+        if (! data)
+            return;
+
+        if (delegate_selector) {
+            let delegate_el = ev.target.closest(delegate_selector);
+            if (! delegate_el || ! target.contains(delegate_el))
+                return;
+        }
+        ev.stopPropagation();
+        ev.preventDefault();
+        // TODO react to drag, somehow
+    });
+    target.addEventListener('dragover', ev => {
+        let data = ev.dataTransfer.getData(mimetype);
+        if (! data)
+            return;
+
+        if (delegate_selector) {
+            let delegate_el = ev.target.closest(delegate_selector);
+            if (! delegate_el || ! target.contains(delegate_el))
+                return;
+        }
+        ev.stopPropagation();
+        ev.preventDefault();
+        // TODO react to drag, somehow
+    });
+    target.addEventListener('drop', ev => {
+        // TODO can this ever fire without this data?
+        let data = ev.dataTransfer.getData(mimetype);
+        if (! data)
+            return;
+
+        let delegate_el = null;
+        if (delegate_selector) {
+            delegate_el = ev.target.closest(delegate_selector);
+            if (! delegate_el || ! target.contains(delegate_el))
+                return;
+        }
+
+        ondrop(data, delegate_el);
+    });
+};
+
+class FauxRadioSet {
+    constructor(args) {
+        this.root = args.root;
+        this.selector = args.selector;
+        this.selected_class = args.selected_class;
+        this.identifier = args.identifier;
+        this.onselect = args.onselect;
+        this.selected = null;
+        this.selected_node = null;
+
+        this.root.addEventListener('click', this.onclick.bind(this));
+    }
+
+    onclick(ev) {
+        let target = ev.target.closest(this.selector);
+        if (! target || ! this.root.contains(target))
+            return;
+
+        this.select(target);
+    }
+
+    deselect() {
+        if (! this.selected_node)
+            return;
+
+        if (this.selected_class) {
+            this.selected_node.classList.remove(this.selected_class);
+        }
+
+        this.selected_node = null;
+        this.selected = null;
+    }
+
+    select(target) {
+        this.deselect();
+
+        this.selected_node = target;
+        this.selected = target.getAttribute(this.identifier);
+
+        if (this.selected_class) {
+            this.selected_node.classList.add(this.selected_class);
+        }
+        if (this.onselect) {
+            this.onselect(this.selected_node, this.selected);
+        }
+    }
 }
 
 // Very basic overlay handling
@@ -306,11 +406,12 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
     load_image(path, element) {
         element = element || mk('img');
         element.classList.add('--missing');
+        element.setAttribute('data-path', path);
         // TODO handle failure somehow?
         this.get_url_for_path(path).then(url => {
             element.src = url;
             element.classList.remove('--missing');
-        });
+        }, err => {console.error(err, element)});
 
         this.images.set(element, path);
         return element;
@@ -318,6 +419,7 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
 
     load_audio(path, element) {
         element = element || mk('audio', {preload: 'auto'});
+        element.setAttribute('data-path', path);
         // TODO handle failure somehow?
         this.get_url_for_path(path).then(url => {
             element.src = url;
@@ -1006,7 +1108,7 @@ class AddByWildcardDialog {
     finish() {
         // FIXME what if one of these names already exists?
         for (let [name, path] of this.results) {
-            this.role_editor.role.add_pose(name, path);
+            this.role_editor.role.add_static_pose(name, path);
             // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
             // FIXME why not just use update_assets for this?
             let li = mk('li');
@@ -1278,12 +1380,21 @@ JukeboxEditor.prototype.ROLE_TYPE = Gleam.Jukebox;
 JukeboxEditor.role_type_name = 'jukebox';
 JukeboxEditor.prototype.CLASS_NAME = 'gleam-editor-role-jukebox';
 
+
 class PictureFrameEditor extends RoleEditor {
     constructor(...args) {
         super(...args);
 
         this.pose_list = mk('ul.gleam-editor-role-pictureframe-poses');
-        let dummy_composite = {
+        this.pose_selector = new FauxRadioSet({
+            root: this.pose_list,
+            selector: 'li',
+            selected_class: '--selected',
+            identifier: 'data-pose-name',
+            onselect: () => this.render_pose_editor(),
+        });
+        this.dummy_composite = {
+            type: 'composite',
             order: ['fire', 'body', 'annoyance', 'eye'],
             layers: {
                 // TODO need to specify which of these are optional
@@ -1317,35 +1428,6 @@ class PictureFrameEditor extends RoleEditor {
                 },
             },
         };
-        this.composite_list = mk('div.gleam-editor-role-pictureframe-composite',
-            mk('div.-layers'),
-            //mk('button', "Add layer"),
-            mk('div.-preview'), 
-        );
-        // TODO this is all a big mess!!
-        let layers = this.composite_list.querySelector('div.-layers');
-        let preview = this.composite_list.querySelector('div.-preview')
-        for (let layername of dummy_composite.order) {
-            let layer = dummy_composite.layers[layername];
-            let variants_el = mk('ul.-variants');
-            let img = this.main_editor.library.load_image(Object.values(layer.variants)[0]);
-            preview.append(img);
-            // TODO how do i indicate optional...?
-            for (let [name, path] of Object.entries(layer.variants)) {
-                let thumb = this.main_editor.library.load_image(path);
-                thumb.classList.add('-asset');
-                let li = mk('li', thumb, name);
-                variants_el.append(li);
-                // TODO i feel like i do "select one of these things and then deselect the other one" a lot, maybe write a helper for this
-                li.addEventListener('click', ev => {
-                    this.main_editor.library.load_image(path, img);
-                });
-            }
-            layers.append(
-                mk('h4', layername),
-                variants_el,
-            );
-        }
 
         this.update_assets();
 
@@ -1357,7 +1439,7 @@ class PictureFrameEditor extends RoleEditor {
 
                 // FIXME what if one of these names already exists?
                 for (let [name, path] of results) {
-                    this.role.add_pose(name, path);
+                    this.role.add_static_pose(name, path);
                 }
 
                 this.update_assets();
@@ -1382,70 +1464,190 @@ class PictureFrameEditor extends RoleEditor {
             }
         });
 
-        let button3 = mk('button', "Create stacked pose");
-        button3.addEventListener('click', ev => {
-            // TODO name
-            //this.role.add_composite_pose('composite', []);
-            new CompositePoseDialog(this).open();
+        // Mostly used for composite poses, to track which variant is visible for each layer
+        this.pose_state = {};
+        for (let [name, pose] of Object.entries(this.role.poses)) {
+            if (pose.type === 'composite') {
+                this.init_composite_state(name, pose);
+            }
+        }
+
+        this.pose_editor_el = mk('div.gleam-editor-role-pictureframe-composite');
+        accept_drop({
+            target: this.pose_editor_el,
+            delegate: '.gleam-editor-role-pictureframe-composite .-variants',
+            mimetype: 'application/x-gleam-asset',
+            ondrop: (asset_path, delegate) => {
+                let pose = this.role.poses[this.pose_selector.selected];
+                let layer = pose.layers[delegate.getAttribute('data-layer-name')];
+
+                let basename = asset_path.replace(/[.][^.]*$/, '').replace(/^.*[/]/, '');
+                let name = basename;
+                let i = 1;
+                while (layer.variants[name]) {
+                    name = `${basename} ${i}`;
+                    i++;
+                }
+
+                layer.variants[name] = asset_path;
+                this.render_pose_editor();
+
+                // No need to sync with role; adding a new variant to a layer can't possible alter
+                // any existing actors
+            },
         });
+        this.render_pose_editor();
 
         this.element.append(
             mk('h3', "Poses ", mk('span.gleam-editor-hint', "(drag and drop into script)")),
             this.pose_list,
-            button3,
             button,
             button2,
-        );
-
-        this.element.append(
-            mk('h3', "Composite poses"),
-            this.composite_list,
+            mk('h3', "Pose editor"),
+            this.pose_editor_el,
         );
 
         // Allow dropping in an asset
-        this.element.addEventListener('dragenter', ev => {
-            let asset_path = ev.dataTransfer.getData('gleam/asset');
-            if (asset_path) {
-               ev.stopPropagation();
-               ev.preventDefault();
-                // TODO react to drag, somehow
-            }
-        });
-        this.element.addEventListener('dragover', ev => {
-            let asset_path = ev.dataTransfer.getData('gleam/asset');
-            if (asset_path) {
-               ev.stopPropagation();
-               ev.preventDefault();
-                // TODO react to drag, somehow
-            }
-        });
-        this.element.addEventListener('drop', ev => {
-            // TODO does this fire if dragenter disallowed the drop?
-            // TODO probably don't allow adding the same asset twice...  except, well, there are reasons you might want that, sigh
-            // TODO should probably allow dropping in a specific place in the asset list
-            let asset_path = ev.dataTransfer.getData('gleam/asset');
-            let name = asset_path.replace(/[.][^.]*$/, '');
-            this.role.add_pose(name, asset_path);
-            this.update_assets();
+        accept_drop({
+            target: this.pose_list,
+            mimetype: 'application/x-gleam-asset',
+            ondrop: asset_path => {
+                // TODO probably don't allow adding the same asset twice...  except, well, there are reasons you might want that, sigh
+                // TODO should probably allow dropping in a specific place in the asset list
+                let name = asset_path.replace(/[.][^.]*$/, '').replace(/^.*[/]/, '');
+                this.role.add_static_pose(name, asset_path);
+                this.update_assets();
 
-            // TODO this seems like it should be part of update_assets, but for ordering reasons it's called explicitly in set_library
-            let director = this.main_editor.player.director;
-            director.role_to_actor.get(this.role).sync_with_role(director);
+                // TODO this seems like it should be part of update_assets, but for ordering reasons it's called explicitly in set_library
+                let director = this.main_editor.player.director;
+                director.role_to_actor.get(this.role).sync_with_role(director);
+            },
         });
     }
 
+    init_composite_state(pose_name, pose) {
+        let state = {};
+        this.pose_state[pose_name] = state;
+        for (let [layername, layer] of Object.entries(pose.layers)) {
+            if (layer.optional) {
+                state[layername] = false;
+            }
+            else {
+                state[layername] = Object.values(layer.variants)[0];
+            }
+        }
+    }
+
+    add_layer(pose_name, pose) {
+        let basename = 'new layer';
+        let name = basename;
+        let i = 1;
+        while (pose.layers[name]) {
+            name = `${basename} ${i}`;
+            i++;
+        }
+
+        pose.order.push(name);
+        pose.layers[name] = {
+            optional: true,
+            variants: {},
+        };
+        this.pose_state[pose_name][name] = false;
+
+        this.render_pose_editor();
+    }
+
     update_assets() {
+        // FIXME no longer necessary now that libraries remember things
         this.pose_list.textContent = '';
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
-            let frame = pose[0];  // FIXME this format is bonkers
-            let li = mk('li');
-            let img = this.main_editor.library.load_image(frame.url);
+            let animation = pose;
+            let path;
+            if (pose.type === 'static') {
+                // FIXME this format is bonkers
+                path = pose.path;
+            }
+            else if (pose.type === 'composite') {
+                let layer = pose.layers[pose.order[0]];
+                // TODO might be optional
+                // TODO get all the layers actually
+                // TODO need a better way to get the first layer
+                // TODO we need to remember a setting per composite pose
+                animation = Object.values(layer.variants)[0];
+                // FIXME inconsistent with plain animation format...!
+                path = animation;
+            }
+            let li = mk('li', {'data-pose-name': pose_name});
+            let img = this.main_editor.library.load_image(path);
             // TODO umm i can't tell from here whether there's actually anything, and i'd like to have a dummy element for stuff that didn't load.
             img.classList.add('-asset');
             li.append(img);
-            li.appendChild(mk('p.-caption', pose_name));
+            li.append(mk('p.-caption', pose_name));
             this.pose_list.appendChild(li);
         }
+    }
+
+    render_pose_editor() {
+        let pose_name = this.pose_selector.selected;
+        let pose = this.role.poses[pose_name];
+        let result;
+        if (! pose) {
+            result = html`<p>Select a pose to edit it.</p>`;
+        }
+        else if (pose.type === 'static') {
+            result = html`<p><button type="button" @click=${ev => this.convert_to_composite(pose_name)}>Convert to composite</button></p>`;
+        }
+        else {
+            result = html`
+                <div class="-layers">
+                ${pose.order.map(name => this._render_composite_layer(pose, name))}
+                <button type="button" @click=${ev => this.add_layer(pose_name, pose)}>Add layer</button>
+                </div>
+                <div class="-preview">
+                ${pose.order.map(name => html`
+                    ${this.main_editor.library.load_image(Object.values(pose.layers[name].variants)[0])}
+                `)}
+                </div>
+            `;
+        }
+        render(result, this.pose_editor_el);
+    }
+
+    _render_composite_layer(pose, layername) {
+        let layer = pose.layers[layername];
+        return html`
+            <h4>${layername}</h4>
+            <ul class="-variants" data-layer-name=${layername}>
+                ${Object.entries(layer.variants).map(([name, path]) => html`
+                    <li>${this.main_editor.library.load_image(path)} ${name}</li>
+                `)}
+            </ul>
+        `;
+    }
+
+    convert_to_composite(pose_name) {
+        let pose = this.role.poses[pose_name];
+        if (pose.type === 'composite')
+            return;
+
+        pose = {
+            type: 'composite',
+            order: ['base'],
+            layers: {
+                base: {
+                    optional: false,
+                    variants: {
+                        // FIXME these should be able to be animations too...!
+                        '': pose.path,
+                    },
+                },
+            },
+        };
+        this.role.poses[pose_name] = pose;
+        this.init_composite_state(pose_name, pose);
+
+        // FIXME also re-render poses
+        this.render_pose_editor();
     }
 }
 PictureFrameEditor.prototype.ROLE_TYPE = Gleam.PictureFrame;
@@ -1602,14 +1804,12 @@ class AssetsPanel extends Panel {
 
             e.stopPropagation();
             e.preventDefault();
-            console.log(e);
 
             this.container.classList.add('gleam-editor-drag-hover');
         });
         this.container.addEventListener('dragover', e => {
             e.stopPropagation();
             e.preventDefault();
-            console.log(e);
         });
         this.container.addEventListener('dragleave', e => {
             // XXX this was fixed in chrome in may 15, 2017; too recent?
@@ -1617,12 +1817,10 @@ class AssetsPanel extends Panel {
                 return;
 
             this.container.classList.remove('gleam-editor-drag-hover');
-            console.log(e);
         });
         this.container.addEventListener('drop', e => {
             e.stopPropagation();
             e.preventDefault();
-            console.log(e);
 
             this.container.classList.remove('gleam-editor-drag-hover');
             console.log(e.dataTransfer);
@@ -1637,7 +1835,7 @@ class AssetsPanel extends Panel {
         // Allow dragging an asset, presumably into a role
         this.list.addEventListener('dragstart', ev => {
             ev.dataTransfer.dropEffect = 'copy';
-            ev.dataTransfer.setData('gleam/asset', ev.target.textContent);
+            ev.dataTransfer.setData('application/x-gleam-asset', ev.target.textContent);
         });
 
         // FIXME this is bad, but given that the Library might have a bunch of stuff happen at once, maybe it's not /that/ bad.
@@ -2500,12 +2698,20 @@ class EditorLauncher {
 ////////////////////////////////////////////////////////////////////////////////
 // Entry point
 
-function attach_editor() {
+export function attach_editor() {
+    document.addEventListener('dragstart', console.log, true);
+    document.addEventListener('dragend', console.log, true);
+    document.addEventListener('dragenter', console.log, true);
+    document.addEventListener('dragleave', console.log, true);
+    document.addEventListener('dragover', console.log, true);
+    document.addEventListener('drop', console.log, true);
+
     let launcher = new EditorLauncher();
     window._gleam_launcher = launcher;
     return launcher;
 }
 
+/*
 return {
     NullAssetLibrary: NullAssetLibrary,
     MutableScript: MutableScript,
@@ -2513,4 +2719,4 @@ return {
     EditorLauncher: EditorLauncher,
     attach_editor: attach_editor,
 };
-})());
+*/
