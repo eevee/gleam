@@ -371,7 +371,7 @@ Curtain.Actor = class CurtainActor extends Actor {
 // FIXME this is very hardcodey but should be in backstage
 // FIXME also less generic, more templated, subclasses or something idk, make it safe
 // FIXME make roll_credits on old things work
-// FIXME "powered by GLEAM"!  i guess
+// FIXME "powered by GLEAM"!  i guess.  but that only makes sense for credits, maybe a mural is useful for something else too
 class Mural extends Role {
     constructor(name, markup) {
         super(name);
@@ -387,6 +387,13 @@ class Mural extends Role {
             <p>command not found</p>
         `;
         this.markup = markup;
+    }
+
+    static from_json(json) {
+        let mural = super.from_json(json);
+        // FIXME this is extremely bad actually
+        mural.markup = json.markup;
+        return mural;
     }
 
     to_json() {
