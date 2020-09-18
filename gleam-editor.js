@@ -796,12 +796,15 @@ class MutableScript extends Gleam.Script {
         }
         for (let [b, beat] of this.beats.entries()) {
             let beat0 = beats[b];
-            if (beat0.first_step_index !== beat.first_step_index ||
+            if (! beat0 ||
+                beat0.first_step_index !== beat.first_step_index ||
                 beat0.last_step_index !== beat.last_step_index ||
                 beat0.states.size !== beat.states.size)
             {
                 console.warn("Expected beat", b, "to match", beat0, beat);
             }
+            if (! beat0)
+                continue;
             for (let [role, state] of beat.states) {
                 if (! beat0.states.has(role)) {
                     console.warn("Beat is missing role", role);
@@ -1274,7 +1277,7 @@ class RoleEditor {
             let arg_element = mk('div.-how');
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
             if (arg_type) {
-                let viewer = arg_type.view(value);
+                let viewer = arg_type.view(value ?? '(null)');
                 viewer.classList.add('gleam-editor-arg');
                 viewer.setAttribute('data-arg-index', i);
                 arg_element.appendChild(viewer);
