@@ -2590,11 +2590,10 @@ class PlayerPauseOverlay extends PlayerOverlay {
 
 class Player {
     constructor(script, library) {
+        this.script = script;
         this.stage_container = mk('div.gleam-stage');
         this.container = mk('div.gleam-player', {tabindex: -1}, this.stage_container);
-        // FIXME this needs updating when the editor changes the script size too
-        this.container.style.width = `${script.width}px`;
-        this.container.style.height = `${script.height}px`;
+        this.update_container_size();
         // TODO indicate focus, and not-focus, but probably not in editor
         this.paused = false;
         this.loaded = false;
@@ -2603,7 +2602,6 @@ class Player {
         // FIXME this should very much be taken from the script and also configurable etc
         //this.set_default_font('Comfortaa');
 
-        this.script = script;
         // TODO what's a reasonable default for a library?  remote based on location of the script (or the calling file), of course, but...?
         this.director = new Director(script, library);
 
@@ -2749,6 +2747,11 @@ class Player {
     detach() {
         this.container.remove();
         this._stop_frame_loop();
+    }
+
+    update_container_size() {
+        this.container.style.width = `${this.script.width}px`;
+        this.container.style.height = `${this.script.height}px`;
     }
 
     // TODO this is not ideal, exactly; figure out a broader styling concept, later

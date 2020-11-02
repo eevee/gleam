@@ -442,15 +442,22 @@ section nav button:hover {
 /* Stage panel */
 #gleam-editor-player {
     background: #303030;
-    max-width: 50vw;
-    max-height: 50vh;
+    max-width: 40vw;
+    max-height: 40vh;
 }
 #gleam-editor-player > .gleam-editor-panel-body {
     flex: 1;
-    overflow: visible;
+    /* Center the player, which will fit it neatly when it's shrunk around its center */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    overflow: hidden;
 }
 #gleam-editor-player .gleam-player {
-    margin: auto;
+    flex: 0 0 auto;
+    --scale: 1;  /* scaling factor to shrink us to fit in our container */
+    transform: scale(var(--scale));
 }
 
 /* Project/metadata panel */

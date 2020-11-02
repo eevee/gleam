@@ -1139,10 +1139,14 @@ class MetadataDialog extends Overlay {
 
         let dialog = mk('form.gleam-editor-dialog',
             mk('header', mk('h1', "Edit title")),
-            // TODO style me, consider a generic dl grid
-            mk('p', "Title: ", mk('input', {type: 'text', name: 'title', value: metadata.title || ''})),
-            mk('p', "Subtitle: ", mk('input', {type: 'text', name: 'subtitle', value: metadata.subtitle || ''})),
-            mk('p', "Author: ", mk('input', {type: 'text', name: 'author', value: metadata.author || ''})),
+            mk('dl.gleam-editor-propmap',
+                mk('dt', "Title: "),
+                mk('dd', mk('input', {type: 'text', name: 'title', value: metadata.title || ''})),
+                mk('dt', "Subtitle: "),
+                mk('dd', mk('input', {type: 'text', name: 'subtitle', value: metadata.subtitle || ''})),
+                mk('dt', "Author: "),
+                mk('dd', mk('input', {type: 'text', name: 'author', value: metadata.author || ''})),
+            ),
             mk('footer',
                 cancel_button,
                 mk('button.-confirm', {type: 'submit'}, "Save"),
@@ -1158,6 +1162,56 @@ class MetadataDialog extends Overlay {
             this.choose(results);
         });
         // Allow pressing Esc on a field to abandon the dialog
+        dialog.addEventListener('keydown', ev => {
+            if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
+                return;
+
+            if (ev.key === 'Escape') {
+                ev.preventDefault();
+                ev.stopPropagation();
+                this.dismiss();
+            }
+        });
+
+        super(dialog, false);
+    }
+}
+
+class StageSizeDialog extends Overlay {
+    constructor(script) {
+        // TODO boy a lot of this is repetitive
+        let cancel_button = mk('button.-cancel', {type: 'button'}, "Cancel");
+        cancel_button.addEventListener('click', ev => {
+            this.dismiss();
+        });
+
+        let dialog = mk('form.gleam-editor-dialog',
+            mk('header', mk('h1', "Change size")),
+            mk('dl.gleam-editor-propmap',
+                mk('dt', "Width"),
+                mk('dd', mk('input', {type: 'number', name: 'width', min: 1, value: script.width || 800})),
+                mk('dt', "Height"),
+                mk('dd', mk('input', {type: 'number', name: 'height', min: 1, value: script.height || 600})),
+            ),
+            // TODO consider a button for using the greatest size of all image assets or something
+            mk('footer',
+                cancel_button,
+                mk('button.-confirm', {type: 'submit'}, "Save"),
+            ),
+        );
+
+        dialog.addEventListener('submit', ev => {
+            // TODO probably worth some validation; 'min' provides some but doesn't enforce it i
+            // think
+            let form = this.element;
+            script.width = form.elements['width'].value;
+            script.height = form.elements['height'].value;
+            // TODO i think i'd like to de-async most of the dialogs, since most of the time the
+            // continuation just does a single obvious thing anyway
+            this.choose();
+        });
+        // Allow pressing Esc on a field to abandon the dialog
+        // TODO ok this is /extremely/ duplicated
         dialog.addEventListener('keydown', ev => {
             if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
                 return;
@@ -2451,6 +2505,11 @@ class Editor {
             button.addEventListener('click', onclick);
             return button;
         };
+        make_button("Change stage size", async ev => {
+            await new StageSizeDialog(this.script).promise;
+            this.player.update_container_size();
+            this.auto_scale_player();
+        });
         make_button("Edit title", ev => {
             new MetadataDialog(this.script).promise.then(metadata => {
                 this.script.title = metadata.title;
@@ -2481,6 +2540,10 @@ class Editor {
             });
         });
 
+        window.addEventListener('resize', ev => {
+            this.auto_scale_player();
+        });
+
         // Start with an empty script
         this.load_script(new MutableScript, new NullAssetLibrary);
     }
@@ -2503,6 +2566,7 @@ class Editor {
         this.player.loading_overlay.hide();
         this.player.container.classList.remove('--loading');
 
+        this.player.update_container_size();
         this.update_script_metadata();
 
         this.assets_panel.refresh_dom();
@@ -2525,6 +2589,21 @@ class Editor {
         // TODO show author?  show slot?
         meta.querySelector('h2').textContent = this.script.title || '(untitled)';
         meta.querySelector('h3').textContent = this.script.subtitle || '';
+    }
+
+    on_reveal() {
+        this.auto_scale_player();
+    }
+
+    auto_scale_player() {
+        // Find a scale that will snugly fit the container within the player panel
+        let player_parent = document.querySelector('#gleam-editor-player .gleam-editor-panel-body');
+        let rect = player_parent.getBoundingClientRect();
+        // A void rect means we're not actually visible, so don't change anything
+        if (rect.width === 0 || rect.height === 0)
+            return;
+        let scale = Math.min(rect.width / this.script.width, rect.height / this.script.height, 1);
+        this.player.container.style.setProperty('--scale', scale);
     }
 
     set_library(library) {
@@ -2607,10 +2686,7 @@ class EditorLauncher {
             button.addEventListener('click', ev => {
                 let script = MutableScript.from_json(JSON.parse(window.localStorage.getItem(slot)));
                 this.editor.load_script(script, new NullAssetLibrary, slot);
-
-                // Reveal the editor
-                this.root.setAttribute('hidden', '');
-                document.getElementById('gleam-editor-main').removeAttribute('hidden');
+                this.switch_to_editor();
             });
             this.projects_ol.append(mk('li', button));
         }
@@ -2628,11 +2704,14 @@ class EditorLauncher {
             let slot = `gleam-${Date.now()}`;
             this.save_script(slot, script);
             this.editor.load_script(script, new NullAssetLibrary, slot);
-
-            // Reveal the editor
-            this.root.setAttribute('hidden', '');
-            document.getElementById('gleam-editor-main').removeAttribute('hidden');
+            this.switch_to_editor();
         });
+    }
+
+    switch_to_editor() {
+        this.root.setAttribute('hidden', '');
+        document.getElementById('gleam-editor-main').removeAttribute('hidden');
+        this.editor.on_reveal();
     }
 
     load_from_url(url) {
@@ -2647,12 +2726,8 @@ class EditorLauncher {
             let script = Gleam.MutableScript.from_legacy_json(JSON.parse(xhr.responseText));
             // FIXME editor doesn't know how to handle something not already in a save slot
             this.editor.load_script(script, library, null);
-
-            // Reveal the editor
             // TODO show some kinda loading indicator
-            // TODO factor this out
-            this.root.setAttribute('hidden', '');
-            document.getElementById('gleam-editor-main').removeAttribute('hidden');
+            this.switch_to_editor();
         });
         // XXX lol
         xhr.open('GET', new URL('script.json', root_url));
