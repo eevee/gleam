@@ -278,7 +278,11 @@ function make_inline_string_editor(initial_value, onchange) {
     });
     el.addEventListener('blur', ev => {
         // On blur, update the value
-        onchange(el.value);
+        let value = onchange(el.value, el.getAttribute('data-saved-value'));
+        // onchange is allowed to forcibly alter the entered value (to, e.g., avoid duplicates)
+        if (value !== undefined) {
+            el.value = value;
+        }
     });
     el.addEventListener('keydown', ev => {
         if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
@@ -513,7 +517,7 @@ class MutableScript extends Gleam.Script {
             new_beat.last_step_index = beat.last_step_index;
 
             for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                this.steps[i].update_beat(new_beat);
+                this.steps[i].update_beat(new_beat, this.beats[step.beat_index - 1]);
             }
 
             // Keep recreating (or updating??) beats until all twiddle changes from the new step
@@ -545,12 +549,14 @@ class MutableScript extends Gleam.Script {
             // one ends with a pause
             new_beat_index = this.beats.length - 1;
             let beat = this.beats[new_beat_index];
+            let previous_beat = this.beats[new_beat_index - 1];
             if (! beat || beat.pause) {
                 new_beat_index++;
+                previous_beat = beat;
                 beat = this._make_fresh_beat(new_beat_index);
                 this.beats.push(beat);
             }
-            new_step.update_beat(beat);
+            new_step.update_beat(beat, previous_beat);
             beat.last_step_index = index;
             // TODO should update_beat do this?
             beat.pause = new_step.kind.pause;
@@ -565,15 +571,16 @@ class MutableScript extends Gleam.Script {
             new_beat_index = beat_index;
             let next_beat_index = beat_index + 1;
             let existing_beat = this.beats[beat_index];
+            let previous_beat = this.beats[beat_index - 1];
 
             // Recreate this beat from scratch
             let new_beat = this.beats[beat_index] = this._make_fresh_beat(beat_index);
             // Update with the steps in the beat, up to the new step's index
             for (let i = new_beat.first_step_index; i < index; i++) {
-                this.steps[i].update_beat(new_beat);
+                this.steps[i].update_beat(new_beat, previous_beat);
             }
             // Update with the new step
-            new_step.update_beat(new_beat);
+            new_step.update_beat(new_beat, previous_beat);
 
             if (new_step.kind.pause) {
                 // The new step pauses, so it splits this beat in half
@@ -614,7 +621,7 @@ class MutableScript extends Gleam.Script {
             // new beat containing everything else split off from the beat.)
             new_beat.last_step_index = existing_beat.last_step_index + 1;
             for (let i = index + 1; i <= new_beat.last_step_index; i++) {
-                this.steps[i].update_beat(new_beat);
+                this.steps[i].update_beat(new_beat, previous_beat);
                 twiddle_change.overwrite_with(this.steps[i]);
             }
 
@@ -628,10 +635,11 @@ class MutableScript extends Gleam.Script {
                 beat.last_step_index++;
 
                 if (! twiddle_change.completely_overwritten) {
-                    let new_beat = this.beats[b - 1].create_next();
+                    previous_beat = this.beats[b - 1];
+                    let new_beat = previous_beat.create_next();
                     new_beat.last_step_index = beat.last_step_index;
                     for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                        this.steps[i].update_beat(new_beat);
+                        this.steps[i].update_beat(new_beat, previous_beat);
                         twiddle_change.overwrite_with(this.steps[i]);
                     }
                     this.beats[b] = new_beat;
@@ -667,12 +675,13 @@ class MutableScript extends Gleam.Script {
         {
             let next_beat_index = beat_index + 1;
             let beat = this.beats[beat_index];
+            let previous_beat = this.beats[beat_index - 1];
 
             // Recreate this beat from scratch
             let new_beat = this.beats[beat_index] = this._make_fresh_beat(beat_index);
             // Update with the steps in the beat, up to the new step's index
             for (let i = new_beat.first_step_index; i < index; i++) {
-                this.steps[i].update_beat(new_beat);
+                this.steps[i].update_beat(new_beat, previous_beat);
             }
 
             if (step.kind.pause && beat_index < this.beats.length - 1) {
@@ -709,7 +718,7 @@ class MutableScript extends Gleam.Script {
             // new beat containing everything else split off from the beat.)
             new_beat.last_step_index = beat.last_step_index - 1;
             for (let i = index; i <= new_beat.last_step_index; i++) {
-                this.steps[i].update_beat(new_beat);
+                this.steps[i].update_beat(new_beat, previous_beat);
                 twiddle_change.overwrite_with(this.steps[i]);
             }
 
@@ -723,10 +732,11 @@ class MutableScript extends Gleam.Script {
                 beat.last_step_index--;
 
                 if (! twiddle_change.completely_overwritten) {
-                    let new_beat = this.beats[b - 1].create_next();
+                    previous_beat = this.beats[b - 1];
+                    let new_beat = previous_beat.create_next();
                     new_beat.last_step_index = beat.last_step_index;
                     for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                        this.steps[i].update_beat(new_beat);
+                        this.steps[i].update_beat(new_beat, previous_beat);
                         twiddle_change.overwrite_with(this.steps[i]);
                     }
                     this.beats[b] = new_beat;
@@ -1655,6 +1665,7 @@ class PictureFrameEditor extends RoleEditor {
             result = html`<p><button type="button" @click=${ev => this.convert_to_composite(pose_name)}>Convert to composite</button></p>`;
         }
         else {
+            // TODO don't show a layer if there's no variant
             result = html`
                 <div class="-layers">
                 ${pose.order.map(name => this._render_composite_layer(pose, name))}
@@ -1672,8 +1683,30 @@ class PictureFrameEditor extends RoleEditor {
 
     _render_composite_layer(pose, layername) {
         let layer = pose.layers[layername];
+        let rename_layer = (newname, oldname) => {
+            if (newname === oldname)
+                return;
+            let name = newname;
+            let n = 0;
+            while (pose.layers[name]) {
+                n++;
+                name = `${newname} ${n}`;
+            }
+
+            pose.layers[name] = pose.layers[layername];
+            delete pose.layers[layername];
+            for (let [i, ordername] of pose.order) {
+                if (ordername === layername) {
+                    pose.order[i] = name;
+                }
+            }
+            // FIXME should also update all steps in the script??
+
+            layername = name;
+            return name;
+        };
         return html`
-            <h4>${layername}</h4>
+            <h4>${make_inline_string_editor(layername, rename_layer)}</h4>
             <ul class="-variants" data-layer-name=${layername}>
                 ${Object.entries(layer.variants).map(([name, path]) => html`
                     <li>${this.main_editor.library.load_image(path)} ${name}</li>

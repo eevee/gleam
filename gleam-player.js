@@ -178,7 +178,12 @@ class Role {
     generate_initial_state() {
         let state = {};
         for (let [key, twiddle] of Object.entries(this.TWIDDLES)) {
-            state[key] = twiddle.initial;
+            if (twiddle.initial instanceof Function) {
+                state[key] = twiddle.initial(this);
+            }
+            else {
+                state[key] = twiddle.initial;
+            }
         }
         return state;
     }
@@ -257,7 +262,7 @@ class Step {
         this.beat_index = null;
     }
 
-    update_beat(beat) {
+    update_beat(beat, previous_beat = null) {
         for (let twiddle_change of this.kind.twiddles) {
             let role = this.role;
             if (twiddle_change.delegate) {
@@ -273,6 +278,10 @@ class Step {
             }
             else if (twiddle_change.prop !== undefined) {
                 value = this.role[twiddle_change.prop];
+            }
+
+            if (twiddle_change.apply_to_beat !== undefined) {
+                value = twiddle_change.apply_to_beat(value, beat.get(this.role)[twiddle_change.key], this);
             }
 
             beat.set_twiddle(role, twiddle_change.key, value);
@@ -1436,6 +1445,35 @@ PictureFrame.prototype.TWIDDLES = {
             }
         }
     },
+    composites: {
+        // Map of pose => { layer => variant }
+        initial(role) {
+            let value = {};
+            for (let [pose_name, pose] of Object.entries(role.poses)) {
+                if (pose.type !== 'composite')
+                    continue;
+
+                value[pose_name] = {};
+                for (let layername of pose.order) {
+                    value[pose_name][layername] = false;  // TODO default
+                }
+            }
+            return value;
+        },
+        check() {
+            // TODO!!!!
+        },
+        propagate(prev_value) {
+            let value = {};
+            for (let [pose_name, variants] of Object.entries(prev_value)) {
+                value[pose_name] = {};
+                for (let [layername, variant] of Object.entries(variants)) {
+                    value[pose_name][layername] = variant;
+                }
+            }
+            return value;
+        },
+    },
 };
 // TODO ok so the thing here, is, that, uh, um
 // - i need conversion from "legacy" json actions
@@ -1451,10 +1489,38 @@ PictureFrame.STEP_TYPES = {
             // TODO am i using this stuff or what
             //type: 'key',
             type_key_prop: 'poses',
+        }, {
+            display_name: 'layers',
         }],
         twiddles: [{
             key: 'pose',
             arg: 0,
+        }, {
+            key: 'composites',
+            arg: 1,
+            // TODO i begin to wonder if this is too complex and each step should just be a function!
+            apply_to_beat(new_variants, current_value, step) {
+                let pose_name = step.args[0];
+                let variants = current_value[pose_name];
+                let pose = step.role.poses[pose_name];
+                if (! variants) {
+                    variants = [];
+                    // Initialize the default variant for each layer
+                    for (let layername of pose.order) {
+                        // TODO not for non-optional ones!
+                        variants.push(false);
+                    }
+                    current_value[pose_name] = variants;
+                }
+                for (let layername of pose.order) {
+                    if (new_variants[layername] !== undefined) {
+                        variants[layername] = new_variants[layername];
+                    }
+                }
+
+                console.log(new_variants, current_value);
+                return current_value;
+            },
         }],
     },
     hide: {
@@ -1475,21 +1541,42 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
     constructor(role, director) {
         super(role);
 
-        let element = make_element('div', 'gleam-actor-pictureframe');
+        let element = mk('div.gleam-actor-pictureframe');
         // FIXME add position class
         this.element = element;
 
         this.pose_elements = {};
+        this.pose_toplevel_elements = {};
+        this.visible_pose_variants = {};
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
             let frame_elements = this.pose_elements[pose_name] = [];
             if (pose.type === 'static') {
                 let image = director.library.load_image(pose.path);
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
-                element.appendChild(image);
+                element.append(image);
                 frame_elements.push(image);
+                this.pose_toplevel_elements[pose_name] = image;
             }
-            // FIXME else if ...
+            else if (pose.type === 'composite') {
+                let frame_elements = this.pose_elements[pose_name] = {};
+                let visible_variants = this.visible_pose_variants[pose_name] = {};
+                for (let layername of pose.order) {
+                    let layer = pose.layers[layername];
+                    frame_elements[layername] = {};
+                    visible_variants[layername] = false;
+                    let container = mk('div.gleam-actor-pictureframe-layer');
+                    element.append(container);
+                    this.pose_toplevel_elements[pose_name] = container;
+
+                    for (let [name, path] of Object.entries(layer.variants)) {
+                        let image = director.library.load_image(path);
+                        container.append(image);
+                        frame_elements[layername][name] = image;
+                    }
+                }
+            }
         }
+        console.log("role:", this);
 
         // FIXME why am i using event delegation here i Do Not get it
         //$element.on 'cutscene:change' + NS, @_change
@@ -1517,6 +1604,11 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
     // right thing or if i should just ditch the actor and create a new one, or
     // what.  maybe if this were how the constructor worked it'd be ok
     sync_with_role(director) {
+        // FIXME not necessary to recreate now since images auto reload
+        // themselves; just need to add/remove any images that changed
+        // (including renaming layers and poses and stuff, ack...)
+        return;
+
         for (let [pose_name, frames] of Object.entries(this.role.poses)) {
             if (this.pose_elements[pose_name]) {
                 // FIXME hacky as hell
@@ -1543,6 +1635,28 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
     apply_state(state) {
         let old_state = super.apply_state(state);
 
+        // Update the new pose's visible layers before showing it
+        let pose = this.role.poses[state.pose];
+        if (pose.type === 'composite') {
+            let visible_variants = this.visible_pose_variants[state.pose];
+            let elements = this.pose_elements[state.pose];
+            let new_variants = state.composites[state.pose];
+            for (let [i, layername] of pose.order.entries()) {
+                let layer = pose.layers[layername];
+                let old_variant = visible_variants[layername];
+                let new_variant = new_variants[layername];
+                if (old_variant !== new_variant) {
+                    if (old_variant) {
+                        elements[layername][old_variant].classList.remove('--visible');
+                    }
+                    if (new_variant) {
+                        elements[layername][new_variant].classList.add('--visible');
+                    }
+                    visible_variants[layername] = new_variant;
+                }
+            }
+        }
+
         if (state.pose !== old_state.pose) {
             if (state.pose === null) {
                 this.disable();
@@ -1566,11 +1680,10 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         if (pose_name === old_pose_name)
             return;
         if (old_pose_name) {
-            // FIXME do every frame's element i guess
-            this.pose_elements[old_pose_name][0].classList.remove('--visible');
+            this.pose_toplevel_elements[old_pose_name].classList.remove('--visible');
         }
 
-        let child = this.pose_elements[pose_name][0];
+        let child = this.pose_toplevel_elements[pose_name];
         if (child.classList.contains('--visible'))
             return;
 
@@ -1749,6 +1862,10 @@ class Beat {
                 if (twiddle.propagate === undefined) {
                     // Keep using the current value
                     state[key] = prev_state[key];
+                }
+                else if (twiddle.propagate instanceof Function) {
+                    // Custom propagation (probably a deep clone)
+                    state[key] = twiddle.propagate(prev_state[key]);
                 }
                 else {
                     // Revert to the given propagate value
@@ -2146,13 +2263,14 @@ class Script {
             return;
 
         let beat = Beat.create_first(this.roles);
+        let previous_beat = null;
         this.beats.push(beat);
 
         // Iterate through steps and fold them into beats
         for (let [i, step] of this.steps.entries()) {
             step.index = i;
             step.beat_index = this.beats.length - 1;
-            step.update_beat(beat);
+            step.update_beat(beat, previous_beat);
             beat.last_step_index = i;
 
             // If this step pauses, the next step goes in a new beat
@@ -2163,8 +2281,8 @@ class Script {
                 if (i === this.steps.length - 1)
                     break;
 
-                let prev_beat = beat;
-                beat = prev_beat.create_next();
+                previous_beat = beat;
+                beat = previous_beat.create_next();
                 this.beats.push(beat);
             }
 
