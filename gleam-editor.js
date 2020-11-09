@@ -19,51 +19,88 @@ function human_friendly_sort(filenames) {
 function accept_drop(args) {
     let target = args.target;
     let delegate_selector = args.delegate ?? null;
-    let mimetype = args.mimetype;
+    let effect = args.effect ?? 'copy';
+
+    let mimetype = args.mimetype ?? null;
+    let filter = args.filter ?? (ev => true);
+
+    let dropzone_class = args.dropzone_class ?? null;
     let ondrop = args.ondrop;
 
-    target.addEventListener('dragenter', ev => {
-        let data = ev.dataTransfer.getData(mimetype);
-        if (! data)
-            return;
-
-        if (delegate_selector) {
-            let delegate_el = ev.target.closest(delegate_selector);
-            if (! delegate_el || ! target.contains(delegate_el))
+    let is_valid = ev => {
+        let data;
+        if (mimetype !== null) {
+            data = ev.dataTransfer.getData(mimetype);
+            if (! data)
                 return;
         }
+
+        let el;
+        if (delegate_selector) {
+            el = ev.target.closest(delegate_selector);
+            if (! el || ! target.contains(el))
+                return;
+        }
+        else {
+            el = target;
+        }
+
+        if (! filter(ev))
+            return;
+
+        return el;
+    };
+
+    let end_drop = () => {
+        if (dropzone_class !== null) {
+            target.classList.remove(dropzone_class);
+        }
+    };
+
+    target.addEventListener('dragenter', ev => {
+        if (! is_valid(ev))
+            return;
+
         ev.stopPropagation();
         ev.preventDefault();
-        // TODO react to drag, somehow
+
+        ev.dataTransfer.dropEffect = effect;
+
+        if (dropzone_class !== null) {
+            target.classList.add(dropzone_class);
+        }
     });
     target.addEventListener('dragover', ev => {
-        let data = ev.dataTransfer.getData(mimetype);
-        if (! data)
+        if (! is_valid(ev))
             return;
 
-        if (delegate_selector) {
-            let delegate_el = ev.target.closest(delegate_selector);
-            if (! delegate_el || ! target.contains(delegate_el))
-                return;
-        }
         ev.stopPropagation();
         ev.preventDefault();
-        // TODO react to drag, somehow
+
+        ev.dataTransfer.dropEffect = effect;
     });
-    target.addEventListener('drop', ev => {
-        // TODO can this ever fire without this data?
-        let data = ev.dataTransfer.getData(mimetype);
-        if (! data)
+    target.addEventListener('dragleave', ev => {
+        if (ev.relatedTarget && target.contains(ev.relatedTarget))
             return;
 
-        let delegate_el = null;
-        if (delegate_selector) {
-            delegate_el = ev.target.closest(delegate_selector);
-            if (! delegate_el || ! target.contains(delegate_el))
-                return;
+        end_drop();
+    });
+    target.addEventListener('drop', ev => {
+        let el = is_valid(ev);
+        if (! el)
+            return;
+
+        ev.stopPropagation();
+        ev.preventDefault();
+
+        // TODO duping is_valid, hrmm
+        let data;
+        if (mimetype !== null) {
+            data = ev.dataTransfer.getData(mimetype);
         }
 
-        ondrop(data, delegate_el);
+        ondrop(data, ev, el);
+        end_drop();
     });
 };
 
@@ -1214,8 +1251,8 @@ class StageSizeDialog extends Overlay {
             // TODO probably worth some validation; 'min' provides some but doesn't enforce it i
             // think
             let form = this.element;
-            script.width = form.elements['width'].value;
-            script.height = form.elements['height'].value;
+            script.width = parseInt(form.elements['width'].value, 10);
+            script.height = parseInt(form.elements['height'].value, 10);
             // TODO i think i'd like to de-async most of the dialogs, since most of the time the
             // continuation just does a single obvious thing anyway
             this.choose();
@@ -1540,27 +1577,39 @@ class PictureFrameEditor extends RoleEditor {
         }
 
         this.pose_editor_el = mk('div.gleam-editor-role-pictureframe-composite');
+        // TODO feedback on this, but it should know whether we're adding or replacing, augh
         accept_drop({
             target: this.pose_editor_el,
             delegate: '.gleam-editor-role-pictureframe-composite .-variants',
             mimetype: 'application/x-gleam-asset',
-            ondrop: (asset_path, delegate) => {
+            ondrop: (asset_path, ev, delegate) => {
                 let pose = this.role.poses[this.pose_selector.selected];
                 let layer = pose.layers[delegate.getAttribute('data-layer-name')];
 
-                let basename = asset_path.replace(/[.][^.]*$/, '').replace(/^.*[/]/, '');
-                let name = basename;
-                let i = 1;
-                while (layer.variants[name]) {
-                    name = `${basename} ${i}`;
-                    i++;
+                let existing_pose_el = ev.target.closest('.gleam-editor-role-pictureframe-composite .-variants li');
+                if (! existing_pose_el || existing_pose_el.classList.contains('-add')) {
+                    // If dropping in empty space, add a new pose
+                    let basename = asset_path.replace(/[.][^.]*$/, '').replace(/^.*[/]/, '');
+                    let name = basename;
+                    let i = 1;
+                    while (layer.variants[name]) {
+                        name = `${basename} ${i}`;
+                        i++;
+                    }
+
+                    layer.variants[name] = asset_path;
+
+                    // No need to sync with role; adding a new variant to a layer can't possibly alter
+                    // any existing actors
                 }
+                else {
+                    // Otherwise, replace the asset for an existing pose
+                    let name = existing_pose_el.getAttribute('data-variant-name');
+                    layer.variants[name] = asset_path;
 
-                layer.variants[name] = asset_path;
+                    // TODO sync with role??
+                }
                 this.render_pose_editor();
-
-                // No need to sync with role; adding a new variant to a layer can't possible alter
-                // any existing actors
             },
         });
         this.render_pose_editor();
@@ -1709,8 +1758,9 @@ class PictureFrameEditor extends RoleEditor {
             <h4>${make_inline_string_editor(layername, rename_layer)}</h4>
             <ul class="-variants" data-layer-name=${layername}>
                 ${Object.entries(layer.variants).map(([name, path]) => html`
-                    <li>${this.main_editor.library.load_image(path)} ${name}</li>
+                    <li data-variant-name=${name}>${this.main_editor.library.load_image(path)} ${name}</li>
                 `)}
+                <li class="-add"></li>
             </ul>
         `;
     }
@@ -1886,40 +1936,30 @@ class AssetsPanel extends Panel {
         // FIXME this should only accept an actual directory drag
         // FIXME should have some other way to get a directory.  file upload control?
         // FIXME should indicate where the files are coming from, the source of the directory
-        this.container.addEventListener('dragenter', e => {
-            // FIXME well this isn't. right. the enter might go directly to a child
-            //if (e.target !== this.container) {
-            //    return;
-            //}
+        accept_drop({
+            target: this.container,
+            effect: 'link',
+            mimetype: null,
+            dropzone_class: 'gleam-editor-drag-hover',
+            filter: ev => {
+                let item = ev.dataTransfer.items[0];
+                if (! item || item.kind !== 'file')
+                    return false;
 
-            e.stopPropagation();
-            e.preventDefault();
-
-            this.container.classList.add('gleam-editor-drag-hover');
-        });
-        this.container.addEventListener('dragover', e => {
-            e.stopPropagation();
-            e.preventDefault();
-        });
-        this.container.addEventListener('dragleave', e => {
-            // XXX this was fixed in chrome in may 15, 2017; too recent?
-            if (e.relatedTarget && this.container.contains(e.relatedTarget))
-                return;
-
-            this.container.classList.remove('gleam-editor-drag-hover');
-        });
-        this.container.addEventListener('drop', e => {
-            e.stopPropagation();
-            e.preventDefault();
-
-            this.container.classList.remove('gleam-editor-drag-hover');
-            console.log(e.dataTransfer);
-            let item = e.dataTransfer.items[0];
-            console.log(item);
-            let entry = item.webkitGetAsEntry();
-            console.log(entry);
-            // FIXME should this...  change the library entirely?  or what?  needs to update //everything//
-            this.editor.set_library(new EntryAssetLibrary(entry));
+                // We can only get the entry when the user actually drops, so we can't check for a
+                // directory outside of the drop handler
+                if (ev.type === 'drop') {
+                    let entry = item.webkitGetAsEntry();
+                    return entry && entry.isDirectory;
+                }
+                else {
+                    return true;
+                }
+            },
+            ondrop: (_, ev) => {
+                let entry = ev.dataTransfer.items[0].webkitGetAsEntry();
+                this.editor.set_library(new EntryAssetLibrary(entry));
+            },
         });
 
         // Allow dragging an asset, presumably into a role
@@ -1968,7 +2008,7 @@ class AssetsPanel extends Panel {
 
         for (let path of paths) {
             let asset = library.assets[path];
-            let li = mk('li', {draggable: 'true'}, path);
+            let li = mk('li', {draggable: 'true', title: path}, path);
             if (! asset.exists) {
                 li.classList.add('--missing');
             }

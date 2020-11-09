@@ -306,7 +306,7 @@ dl#gleam-editor-new-form > dd {
          * using minmax(0, ...) will force the script column to shrink if
          * necessary (which it is, because the twiddle debug panel HAS to
          * scroll horizontally) */
-        / fit-content(10%) minmax(0, 1fr) min-content
+        / 15% minmax(0, 1fr) min-content
     ;
     gap: 0.5em;
     box-sizing: border-box;  /* needed so padding eats into the 100vw/vh size */
@@ -582,13 +582,34 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
     border-top: 1px solid #606060;
 }
 .gleam-editor-role-pictureframe-composite .-layers .-variants {
-    display: flex;
-    flex-wrap: wrap;
+    /* TODO duplicated from ul.gleam-editor-role-pictureframe-poses */
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 0.25em;
+
+    min-height: 100px;
+    margin: 0.5em;
 }
 .gleam-editor-role-pictureframe-composite .-layers .-variants li {
     width: 100px;
     font-family: monospace;
     text-align: center;
+}
+.gleam-editor-role-pictureframe-composite .-layers .-variants li.-add {
+    /* center the + */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    box-sizing: border-box;
+    border: 4px dashed #ccc;
+    color: #ccc;
+}
+.gleam-editor-role-pictureframe-composite .-layers .-variants li.-add::before {
+    content: '+';
+    display: inline;
+    font-size: 3em;
+    font-weight: bold;
 }
 .gleam-editor-role-pictureframe-composite .-layers img {
     display: block;
@@ -624,6 +645,15 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
 
 .gleam-editor-assets li {
     padding: 0.25em 0.5em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    /* This makes the ellipsis appear on the LEFT side, so the suffix is visible */
+    direction: rtl;
+    cursor: grab;
+}
+.gleam-editor-assets li:hover {
+    background: #333;
 }
 .gleam-editor-assets li.--unused {
     color: #c0c0c0;
