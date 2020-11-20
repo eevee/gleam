@@ -453,32 +453,18 @@ class MutableScript extends Gleam.Script {
     }
 
     // Call to indicate one or more Steps have been altered
-    // FIXME also update bookmarks, both here and below
     update_steps(...steps) {
         if (steps.length === 0)
             return;
 
-        // FIXME could be way more clever about this, but it's a start
+        let first_index = steps[0].index;
         for (let step of steps) {
             this._assert_own_step(step);
-
-            let beat = this.beats[step.beat_index];
-            // Recreate the Beat in question
-            let new_beat = this.beats[step.beat_index] = this._make_fresh_beat(step.beat_index);
-            new_beat.last_step_index = beat.last_step_index;
-
-            for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                this.steps[i].update_beat(new_beat, this.beats[step.beat_index - 1]);
+            if (step.index < first_index) {
+                first_index = step.index;
             }
-
-            // Keep recreating (or updating??) beats until all twiddle changes from the new step
-            // have been overwritten by later steps
-            // FIXME do that
-
-            // FIXME yeah nope, need to know if later steps in the beat have the twiddle.  could track which twiddles are affected by which steps (!!!!!), or just recreate the whole thing, it's only a handful of steps
         }
-
-        this._check_constraints();
+        this._refresh_beats(first_index);
 
         this.intercom.dispatchEvent(new CustomEvent('gleam-steps-updated', {
             detail: {
@@ -488,123 +474,25 @@ class MutableScript extends Gleam.Script {
     }
 
     insert_step(new_step, index) {
-        // FIXME bomb if new_step is already in here
-        // This step either goes in the middle of an existing beat, splits an
-        // existing beat, or becomes a new beat at the very end of the script
+        // FIXME bomb if new_step is already in here?
         let split_beat = false;
-        let new_beat_index;
         if (index >= this.steps.length) {
             index = this.steps.length;
             this.steps.push(new_step);
-            // Add to the end of the last beat, or create a new beat if that
-            // one ends with a pause
-            new_beat_index = this.beats.length - 1;
-            let beat = this.beats[new_beat_index];
-            let previous_beat = this.beats[new_beat_index - 1];
-            if (! beat || beat.pause) {
-                new_beat_index++;
-                previous_beat = beat;
-                beat = this._make_fresh_beat(new_beat_index);
-                this.beats.push(beat);
-            }
-            new_step.update_beat(beat, previous_beat);
-            beat.last_step_index = index;
-            // TODO should update_beat do this?
-            beat.pause = new_step.kind.pause;
-
-            new_step.index = index;
-            new_step.beat_index = new_beat_index;
         }
         else {
-            // The affected beat must be the one that contains the step
-            // currently in the position being inserted into
-            let beat_index = this.steps[index].beat_index;
-            new_beat_index = beat_index;
-            let next_beat_index = beat_index + 1;
-            let existing_beat = this.beats[beat_index];
-            let previous_beat = this.beats[beat_index - 1];
-
-            // Recreate this beat from scratch
-            let new_beat = this.beats[beat_index] = this._make_fresh_beat(beat_index);
-            // Update with the steps in the beat, up to the new step's index
-            for (let i = new_beat.first_step_index; i < index; i++) {
-                this.steps[i].update_beat(new_beat, previous_beat);
-            }
-            // Update with the new step
-            new_step.update_beat(new_beat, previous_beat);
-
-            if (new_step.kind.pause) {
-                // The new step pauses, so it splits this beat in half
-                new_beat.pause = new_step.kind.pause;
-                new_beat.last_step_index = index;
-                // TODO mark this in the event, somehow
-                new_beat = new_beat.create_next();
-                this.beats.splice(beat_index + 1, 0, new_beat);
-                next_beat_index++;
-                split_beat = true;
-            }
-
-            // Update metadata for later steps
-            for (let step of this.steps) {
-                if (step.index >= index) {
-                    step.index++;
-                    if (split_beat) {
-                        step.beat_index++;
-                    }
-                }
-            }
-            // Add metadata for this step
-            new_step.index = index;
-            new_step.beat_index = beat_index;
-
-            // Now that previous stuff is dealt with, actually insert the step
+            let step_at_position = this.steps[index];
             this.steps.splice(index, 0, new_step);
-
-            // Track all the twiddles altered by this new Step, and keep
-            // recreating beats after it until its changes have been erased by
-            // later steps.
-            // Note that a step can affect other roles, or even multiple roles,
-            // so this is a Map of Role => Set of twiddles
-            let twiddle_change = new TwiddleChangeTracker(new_step);
-
-            // Update with the steps through the end of the beat.  (This might
-            // be the same beat as the new step, or if the new step pauses, a
-            // new beat containing everything else split off from the beat.)
-            new_beat.last_step_index = existing_beat.last_step_index + 1;
-            for (let i = index + 1; i <= new_beat.last_step_index; i++) {
-                this.steps[i].update_beat(new_beat, previous_beat);
-                twiddle_change.overwrite_with(this.steps[i]);
-            }
-
-            // Keep recreating future beats until all of this new step's
-            // twiddle changes have been overwritten by later steps.  Inserting
-            // a step will bump the positions of all future steps, too, so
-            // update some beat metadata at the same time
-            for (let b = next_beat_index; b < this.beats.length; b++) {
-                let beat = this.beats[b];
-                beat.first_step_index++;
-                beat.last_step_index++;
-
-                if (! twiddle_change.completely_overwritten) {
-                    previous_beat = this.beats[b - 1];
-                    let new_beat = previous_beat.create_next();
-                    new_beat.last_step_index = beat.last_step_index;
-                    for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                        this.steps[i].update_beat(new_beat, previous_beat);
-                        twiddle_change.overwrite_with(this.steps[i]);
-                    }
-                    this.beats[b] = new_beat;
-                }
-            }
+            split_beat = new_step.beat_index !== step_at_position.beat_index;
         }
 
-        this._check_constraints();
+        this._refresh_beats(index);
 
         this.intercom.dispatchEvent(new CustomEvent('gleam-step-inserted', {
             detail: {
                 step: new_step,
                 index: index,
-                beat_index: new_beat_index,
+                beat_index: new_step.beat_index,
                 split_beat: split_beat,
             },
         }));
@@ -612,176 +500,18 @@ class MutableScript extends Gleam.Script {
 
     delete_step(step) {
         this._assert_own_step(step);
-        // FIXME if this step pauses, may need to fuse this beat with next one and adjust numbering
-        // FIXME need to recreate this beat and future ones, twiddle change, etc etc.
-        // FIXME fire event of course
 
-        // This step may be in the middle of a beat, may be the pause at the
-        // end of a beat, or may be the ONLY step in a beat (in which case the
-        // beat is also deleted)
-        let merged_beat = false;
-        let deleted_beat = false;
-        let index = step.index;
-        let beat_index = step.beat_index;
-        {
-            let next_beat_index = beat_index + 1;
-            let beat = this.beats[beat_index];
-            let previous_beat = this.beats[beat_index - 1];
+        this.steps.splice(step.index, 1);
 
-            // Recreate this beat from scratch
-            let new_beat = this.beats[beat_index] = this._make_fresh_beat(beat_index);
-            // Update with the steps in the beat, up to the new step's index
-            for (let i = new_beat.first_step_index; i < index; i++) {
-                this.steps[i].update_beat(new_beat, previous_beat);
-            }
-
-            if (step.kind.pause && beat_index < this.beats.length - 1) {
-                // The step pauses, so we need to merge with the next beat --
-                // or, if it's the only step, just delete the beat
-                beat = this.beats[beat_index + 1];
-                new_beat.pause = beat.pause;
-                this.beats.splice(beat_index + 1, 1);
-                merged_beat = true;
-            }
-
-            // Now that previous stuff is dealt with, actually delete the step
-            this.steps.splice(step.index, 1);
-            step.index = null;
-            step.beat_index = null;
-
-            // Update metadata for later steps
-            for (let step of this.steps) {
-                if (step.index >= index) {
-                    step.index--;
-                    if (merged_beat) {
-                        step.beat_index--;
-                    }
-                }
-            }
-
-            // Track all the twiddles altered by the deleted Step, and keep
-            // recreating beats after it until its changes have been erased by
-            // later steps.
-            let twiddle_change = new TwiddleChangeTracker(step);
-
-            // Update with the steps through the end of the beat.  (This might
-            // be the same beat as the new step, or if the new step pauses, a
-            // new beat containing everything else split off from the beat.)
-            new_beat.last_step_index = beat.last_step_index - 1;
-            for (let i = index; i <= new_beat.last_step_index; i++) {
-                this.steps[i].update_beat(new_beat, previous_beat);
-                twiddle_change.overwrite_with(this.steps[i]);
-            }
-
-            // Keep recreating future beats until all of this new step's
-            // twiddle changes have been overwritten by later steps.  Inserting
-            // a step will bump the positions of all future steps, too, so
-            // update some beat metadata at the same time
-            for (let b = next_beat_index; b < this.beats.length; b++) {
-                let beat = this.beats[b];
-                beat.first_step_index--;
-                beat.last_step_index--;
-
-                if (! twiddle_change.completely_overwritten) {
-                    previous_beat = this.beats[b - 1];
-                    let new_beat = previous_beat.create_next();
-                    new_beat.last_step_index = beat.last_step_index;
-                    for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                        this.steps[i].update_beat(new_beat, previous_beat);
-                        twiddle_change.overwrite_with(this.steps[i]);
-                    }
-                    this.beats[b] = new_beat;
-                }
-            }
-        }
-
-        this._check_constraints();
+        this._refresh_beats(step.index);
 
         this.intercom.dispatchEvent(new CustomEvent('gleam-step-deleted', {
             detail: {
                 step: step,
-                index: index,
-                beat_index: beat_index,
-                merged_beat: merged_beat,
+                index: step.index,
+                beat_index: step.beat_index,
             },
         }));
-    }
-
-    // Debugging helper to ensure constraints are still met after messing with
-    // the step or beat lists
-    // FIXME check bookmarks, both existence and order
-    _check_constraints() {
-        console.log("checking Script constraints...");
-
-        // Every step should be in the step metadata list; they should be the
-        // only steps in the step metadata list; and the meta index should be
-        // correct
-        let expected_meta_count = this.steps.length;
-        for (let [i, step] of this.steps.entries()) {
-            if (step.index !== i) {
-                console.warn("Step", i, "claims it's at", step.index);
-            }
-        }
-
-        // Beats should not overlap, they should cover exactly the range of
-        // steps, and step metadata should point to the right beat
-        let expected_first_index = 0;
-        for (let [b, beat] of this.beats.entries()) {
-            if (beat.first_step_index !== expected_first_index) {
-                console.warn("Expected beat", b, "to start from step", expected_first_index, "but instead found", beat.first_step_index, ":", beat);
-            }
-            expected_first_index = beat.last_step_index + 1;
-
-            for (let i = beat.first_step_index; i <= beat.last_step_index; i++) {
-                let step = this.steps[i];
-                if (step.beat_index !== b) {
-                    console.warn("Expected step", i, "to belong to beat", b, "but instead it claims to belong to beat", step.beat_index);
-                }
-            }
-        }
-        if (expected_first_index !== this.steps.length) {
-            console.warn("Expected last beat to end on step", this.steps.length - 1, "but instead found", expected_first_index - 1);
-        }
-
-        // And finally, just fuckin' brute force it: act like we manually
-        // replaced all the steps and ensure the results are the same
-        let steps = this.steps;
-        let beats = this.beats;
-
-        this._set_steps(steps);
-        for (let [i, step] of this.steps.entries()) {
-            let step0 = steps[i];
-            if (step !== step0) {
-                console.warn("Expected step", i, "to be identical", step0, step);
-            }
-        }
-        for (let [b, beat] of this.beats.entries()) {
-            let beat0 = beats[b];
-            if (! beat0 ||
-                beat0.first_step_index !== beat.first_step_index ||
-                beat0.last_step_index !== beat.last_step_index ||
-                beat0.states.size !== beat.states.size)
-            {
-                console.warn("Expected beat", b, "to match", beat0, beat);
-            }
-            if (! beat0)
-                continue;
-            for (let [role, state] of beat.states) {
-                if (! beat0.states.has(role)) {
-                    console.warn("Beat is missing role", role);
-                    continue;
-                }
-                let state0 = beat0.states.get(role);
-                for (let [key, value] of Object.entries(state)) {
-                    if (value !== state0[key]) {
-                        console.warn("Role", role, "expected twiddle:", key, "to have value:", value, "but got:", state0[key]);
-                    }
-                }
-            }
-        }
-
-        this.steps = steps;
-        this.beats = beats;
     }
 }
 
@@ -1275,7 +1005,7 @@ class RoleEditor {
         this.element.append(header);
 
         // Add step templates
-        for (let [step_kind_name, step_kind] of Object.entries(this.ROLE_TYPE.STEP_TYPES)) {
+        for (let [step_kind_name, step_kind] of Object.entries(this.ROLE_TYPE.STEP_KINDS)) {
             let el = this.make_sample_step_element(step_kind);
             el.setAttribute('data-step-kind', step_kind_name);
             this.element.appendChild(el);
@@ -1287,7 +1017,7 @@ class RoleEditor {
             e.dataTransfer.dropEffect = 'copy';
             e.dataTransfer.setData('text/plain', null);
             let step_kind_name = e.target.getAttribute('data-step-kind');
-            let step_kind = this.role.constructor.STEP_TYPES[step_kind_name];
+            let step_kind = this.role.constructor.STEP_KINDS[step_kind_name];
             let args = [];
             for (let arg_def of step_kind.args) {
                 // TODO?
@@ -2830,12 +2560,14 @@ class EditorLauncher {
 // Entry point
 
 export function attach_editor() {
+    /*
     document.addEventListener('dragstart', console.log, true);
     document.addEventListener('dragend', console.log, true);
     document.addEventListener('dragenter', console.log, true);
     document.addEventListener('dragleave', console.log, true);
     document.addEventListener('dragover', console.log, true);
     document.addEventListener('drop', console.log, true);
+    */
 
     let launcher = new EditorLauncher();
     window._gleam_launcher = launcher;

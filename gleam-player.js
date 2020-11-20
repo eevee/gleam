@@ -242,7 +242,7 @@ class Actor {
 }
 Actor.prototype.TWIDDLES = {};
 // Must also be defined on subclasses:
-Actor.STEP_TYPES = null;
+Actor.STEP_KINDS = null;
 Actor.LEGACY_JSON_ACTIONS = null;
 
 
@@ -253,7 +253,7 @@ class Step {
         this.kind_name = kind_name;
         this.args = args;
 
-        this.kind = role.constructor.STEP_TYPES[kind_name];
+        this.kind = role.constructor.STEP_KINDS[kind_name];
         if (! this.kind) {
             throw new Error(`No such step '${kind_name}' for role '${role}'`);
         }
@@ -263,41 +263,8 @@ class Step {
         this.beat_index = null;
     }
 
-    update_beat(beat, previous_beat = null) {
-        for (let twiddle_change of this.kind.twiddles) {
-            let role = this.role;
-            if (twiddle_change.delegate) {
-                role = role[twiddle_change.delegate];
-                // TODO this happens with Characters whose dialogue_box is unassigned; what should happen here?
-                if (! role)
-                    continue;
-            }
-
-            let value = twiddle_change.value;
-            if (twiddle_change.arg !== undefined) {
-                value = this.args[twiddle_change.arg];
-            }
-            else if (twiddle_change.prop !== undefined) {
-                value = this.role[twiddle_change.prop];
-            }
-
-            if (twiddle_change.apply_to_beat !== undefined) {
-                value = twiddle_change.apply_to_beat(value, beat.get(this.role)[twiddle_change.key], this);
-            }
-
-            beat.set_twiddle(role, twiddle_change.key, value);
-        }
-    }
-
-    *get_affected_twiddles() {
-        for (let twiddle_change of this.kind.twiddles) {
-            let role = this.role;
-            if (twiddle_change.delegate) {
-                role = role[twiddle_change.delegate];
-            }
-
-            yield [role, twiddle_change.key];
-        }
+    update_beat(beat) {
+        this.kind.apply(this.role, beat, beat.get(this.role), ...this.args);
     }
 }
 
@@ -306,13 +273,14 @@ class Stage extends Role {
 }
 Stage.register('stage');
 Stage.prototype.TWIDDLES = {};
-Stage.STEP_TYPES = {
+Stage.STEP_KINDS = {
     pause: {
         display_name: "pause",
         hint: "pause and wait for a click",
         pause: true,
         args: [],
-        twiddles: [],
+        check() {},
+        apply() {},
     },
     bookmark: {
         display_name: "bookmark",
@@ -321,7 +289,8 @@ Stage.STEP_TYPES = {
             display_name: "label",
             type: 'string',
         }],
-        twiddles: [],
+        check() {},
+        apply() {},
     },
 };
 // TODO from legacy json, and target any actorless actions at us?
@@ -341,17 +310,17 @@ Curtain.prototype.TWIDDLES = {
         propagate: false,
     },
 };
-Curtain.STEP_TYPES = {
+Curtain.STEP_KINDS = {
     lower: {
         display_name: 'lower',
         pause: 'wait',
         // TODO this is very...  heuristic, and there's no way to override it, hm.
         is_major_transition: true,
         args: [],
-        twiddles: [{
-            key: 'lowered',
-            value: true,
-        }],
+        check() {},
+        apply(role, beat, state) {
+            state.lowered = true;
+        },
     },
 };
 Curtain.LEGACY_JSON_ACTIONS = {
@@ -420,15 +389,15 @@ Mural.prototype.TWIDDLES = {
         propagate: false,
     },
 };
-Mural.STEP_TYPES = {
+Mural.STEP_KINDS = {
     show: {
         display_name: 'show',
         pause: true,
         args: [],
-        twiddles: [{
-            key: 'visible',
-            value: true,
-        }],
+        check() {},
+        apply(role, beat, state) {
+            state.visible = true;
+        },
     },
 };
 Mural.LEGACY_JSON_ACTIONS = {
@@ -543,7 +512,7 @@ DialogueBox.prototype.TWIDDLES = {
         initial: null,
     },
 };
-DialogueBox.STEP_TYPES = {};
+DialogueBox.STEP_KINDS = {};
 DialogueBox.LEGACY_JSON_ACTIONS = {};
 DialogueBox.Actor = class DialogueBoxActor extends Actor {
     constructor(role) {
@@ -1169,7 +1138,7 @@ Jukebox.prototype.TWIDDLES = {
         // XXX type?  index into Jukebox.tracks
     },
 };
-Jukebox.STEP_TYPES = {
+Jukebox.STEP_KINDS = {
     play: {
         display_name: "play",
         hint: "start playing a given track",
@@ -1179,19 +1148,23 @@ Jukebox.STEP_TYPES = {
             // FIXME type: 'key',
             type_key_prop: 'tracks',
         }],
-        twiddles: [{
-            key: 'track',
-            arg: 0,
-        }],
+        check(role, track_name) {
+            if (role.tracks[track_name] === undefined) {
+                return ["No such track!"];
+            }
+        },
+        apply(role, beat, state, track_name) {
+            state.track = track_name;
+        },
     },
     stop: {
         display_name: "stop",
         hint: "stop playing",
         args: [],
-        twiddles: [{
-            key: 'track',
-            value: null,
-        }],
+        check() {},
+        apply(role, beat, state) {
+            state.track = null;
+        },
     },
 };
 Jukebox.LEGACY_JSON_ACTIONS = {
@@ -1480,7 +1453,7 @@ PictureFrame.prototype.TWIDDLES = {
 // - i need conversion from "legacy" json actions
 // - i need to know what to show in the ui
 // - if i save stuff as twiddle changes, i need to know how to convert those back to ui steps too, but maybe that's the same problem
-PictureFrame.STEP_TYPES = {
+PictureFrame.STEP_KINDS = {
     show: {
         display_name: "show",
         hint: "switch to another pose",
@@ -1494,18 +1467,14 @@ PictureFrame.STEP_TYPES = {
             display_name: 'layers',
             type: 'pose_composite',
         }],
-        twiddles: [{
-            key: 'pose',
-            arg: 0,
-        }, {
-            key: 'composites',
-            arg: 1,
-            // TODO i begin to wonder if this is too complex and each step should just be a function!
-            apply_to_beat(new_variants, current_value, step) {
-                let pose_name = step.args[0];
-                let variants = current_value[pose_name];
-                let pose = step.role.poses[pose_name];
-                console.log(step, pose_name, pose);
+        check(role, ...args) {
+        },
+        apply(role, beat, state, pose_name, composites) {
+            state.pose = pose_name;
+
+            let pose = role.poses[pose_name];
+            if (pose.type === 'composite' && composites) {
+                let variants = state.composites[pose_name];
                 if (! variants) {
                     variants = [];
                     // Initialize the default variant for each layer
@@ -1513,27 +1482,24 @@ PictureFrame.STEP_TYPES = {
                         // TODO not for non-optional ones!
                         variants.push(false);
                     }
-                    current_value[pose_name] = variants;
+                    state.composites[pose_name] = variants;
                 }
-                for (let layername of pose.order) {
-                    if (new_variants[layername] !== undefined) {
-                        variants[layername] = new_variants[layername];
+                for (let [i, layername] of pose.order.entries()) {
+                    if (composites[layername] !== undefined) {
+                        variants[i] = composites[layername];
                     }
                 }
-
-                console.log(new_variants, current_value);
-                return current_value;
-            },
-        }],
+            }
+        },
     },
     hide: {
         display_name: 'hide',
         hint: "hide",
         args: [],
-        twiddles: [{
-            key: 'pose',
-            value: null,
-        }],
+        check() {},
+        apply(role, beat, state) {
+            state.pose = null;
+        },
     },
 }
 PictureFrame.LEGACY_JSON_ACTIONS = {
@@ -1791,9 +1757,9 @@ Character.register('character');
 // in the old code (by which i mean, round two), the character even OWNS the pictureframe...
 // so "Character:say" is really two twiddle updates on the dialogue box: the phrase AND the speaker whose style to use.  hrm.
 //Character.prototype.TWIDDLES = {};
-Character.STEP_TYPES = {
-    pose: PictureFrame.STEP_TYPES.show,
-    leave: PictureFrame.STEP_TYPES.hide,
+Character.STEP_KINDS = {
+    pose: PictureFrame.STEP_KINDS.show,
+    leave: PictureFrame.STEP_KINDS.hide,
     say: {
         display_name: 'say',
         pause: true,
@@ -1820,6 +1786,22 @@ Character.STEP_TYPES = {
             key: 'position',
             prop: 'dialogue_position',
         }],
+        check() {
+            // TODO check it's a string?  check for dialogue box?
+        },
+        apply(role, beat, state, phrase) {
+            let dbox = role.dialogue_box;
+            if (! dbox) {
+                console.warn("No dialogue box configured");
+                return;
+            }
+
+            let dstate = beat.get(dbox);
+            dstate.color = role.dialogue_color;
+            dstate.speaker = role.dialogue_name;
+            dstate.color = role.dialogue_color;
+            dstate.phrase = phrase;
+        },
     },
 };
 Character.LEGACY_JSON_ACTIONS = {
@@ -2256,43 +2238,77 @@ class Script {
         return json;
     }
 
+    // TODO allow recreating beats only from a particular start point?
     _set_steps(steps) {
         this.steps = steps;
+        this._refresh_beats(0);
+    }
+
+    // Recreate beats, starting from the given step.  Called both when initializing the script and
+    // when making step edits in the editor.
+    _refresh_beats(initial_step_index) {
+        // Figure out the first beat that needs recreating.  This step might be part of that beat,
+        // so look one step back and start recreating from that beat
+        let first_beat_index;
+        if (! this.beats || initial_step_index <= 1) {
+            first_beat_index = 0;
+        }
+        else {
+            first_beat_index = this.steps[initial_step_index - 1].beat_index;
+        }
 
         // Consolidate steps into beats -- maps of role => state
-        this.beats = [];
         this.bookmarks = [];
-        if (steps.length === 0)
+        if (this.steps.length === 0) {
+            this.beats = [];
             return;
+        }
 
-        let beat = Beat.create_first(this.roles);
-        let previous_beat = null;
-        this.beats.push(beat);
+        let beat;
+        if (first_beat_index === 0) {
+            beat = Beat.create_first(this.roles);
+            this.beats = [beat];
+        }
+        else {
+            this.beats.length = first_beat_index;
+            beat = this.beats[first_beat_index - 1].create_next();
+        }
 
         // Iterate through steps and fold them into beats
+        let beat_index = 0;
         for (let [i, step] of this.steps.entries()) {
             step.index = i;
-            step.beat_index = this.beats.length - 1;
-            step.update_beat(beat, previous_beat);
-            beat.last_step_index = i;
-
-            // If this step pauses, the next step goes in a new beat
-            if (step.kind.pause) {
-                beat.pause = step.kind.pause;
-
-                // If this is the last step, there is no next beat
-                if (i === this.steps.length - 1)
-                    break;
-
-                previous_beat = beat;
-                beat = previous_beat.create_next();
-                this.beats.push(beat);
-            }
+            step.beat_index = beat_index;
 
             // Make note of labels and bookmarks
             // TODO seems hacky, is this the right way to identify the stage
             if (step.role instanceof Stage && step.kind_name === 'bookmark') {
-                this.bookmarks.push([this.beats.length - 1, step.args[0]]);
+                this.bookmarks.push([beat_index, step.args[0]]);
+            }
+
+            // Construct the beat
+            if (beat_index >= first_beat_index) {
+                step.update_beat(beat);
+                beat.last_step_index = i;
+
+                // If this step pauses, the next step goes in a new beat
+                if (step.kind.pause) {
+                    beat.pause = step.kind.pause;
+
+                    // If this is the last step, there is no next beat
+                    if (i === this.steps.length - 1)
+                        break;
+
+                    beat = beat.create_next();
+                    this.beats.push(beat);
+                    beat_index++;
+                }
+            }
+            else {
+                // Not yet at the update point, so do a softer version of the above
+                if (step.kind.pause) {
+                    beat_index++;
+                }
             }
         }
     }
