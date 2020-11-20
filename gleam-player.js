@@ -34,6 +34,7 @@ function make_element(tag, cls, text) {
     return element;
 }
 
+// NOTE: copied from util.js
 function mk(tag_selector, ...children) {
     let [tag, ...classes] = tag_selector.split('.');
     let el = document.createElement(tag);
@@ -1491,6 +1492,7 @@ PictureFrame.STEP_TYPES = {
             type_key_prop: 'poses',
         }, {
             display_name: 'layers',
+            type: 'pose_composite',
         }],
         twiddles: [{
             key: 'pose',
@@ -1503,6 +1505,7 @@ PictureFrame.STEP_TYPES = {
                 let pose_name = step.args[0];
                 let variants = current_value[pose_name];
                 let pose = step.role.poses[pose_name];
+                console.log(step, pose_name, pose);
                 if (! variants) {
                     variants = [];
                     // Initialize the default variant for each layer

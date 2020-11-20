@@ -134,6 +134,63 @@ dl.gleam-editor-propmap > dd {
     text-shadow: 0 0 1px black, 0 0 4px white;
 }
 
+/* Overlay styling */
+.overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff4;
+}
+.dialog {
+    display: flex;
+    flex-direction: column;
+
+    min-width: 33%;
+    max-width: 75%;
+    max-height: 75%;
+    border: 1px solid black;
+    color: black;
+    background: #f4f4f4;
+    box-shadow: 0 1px 3px #000c;
+}
+.dialog > header {
+    padding: 0.5em;
+    line-height: 1;
+    background: hsl(225, 20%, 40%);
+    color: white;
+}
+.dialog > header h1 {
+    font-size: 1em;
+}
+.dialog > footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5em;
+
+    padding: 0.5em;
+    background: #d0d0d0;
+}
+.dialog > header:empty,
+.dialog > footer:empty {
+    display: none;
+}
+.dialog > section {
+    overflow: auto;
+    padding: 1em;
+}
+.dialog pre.error {
+    color: #400000;
+    background: #f0d0d0;
+    padding: 0.5em 1em;
+}
+
+
 /******************************************************************************/
 /* Landing */
 

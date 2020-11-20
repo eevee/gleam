@@ -1,11 +1,13 @@
 import {html, render} from 'https://unpkg.com/lit-html?module';
 import {repeat} from 'https://unpkg.com/lit-html/directives/repeat.js?module';
 
+import {Overlay as Overlay2, DialogOverlay, accept_drop} from './js/ui.js';
+import {mk} from './js/util.js';
+
 if (! window.Gleam) {
     throw new Error("Gleam player must be loaded first!");
 }
 
-let mk = Gleam.mk;
 let svg_icon_from_path = Gleam.svg_icon_from_path;
 
 function human_friendly_sort(filenames) {
@@ -15,94 +17,6 @@ function human_friendly_sort(filenames) {
         return a.localeCompare(b, undefined, { numeric: true });
     });
 }
-
-function accept_drop(args) {
-    let target = args.target;
-    let delegate_selector = args.delegate ?? null;
-    let effect = args.effect ?? 'copy';
-
-    let mimetype = args.mimetype ?? null;
-    let filter = args.filter ?? (ev => true);
-
-    let dropzone_class = args.dropzone_class ?? null;
-    let ondrop = args.ondrop;
-
-    let is_valid = ev => {
-        let data;
-        if (mimetype !== null) {
-            data = ev.dataTransfer.getData(mimetype);
-            if (! data)
-                return;
-        }
-
-        let el;
-        if (delegate_selector) {
-            el = ev.target.closest(delegate_selector);
-            if (! el || ! target.contains(el))
-                return;
-        }
-        else {
-            el = target;
-        }
-
-        if (! filter(ev))
-            return;
-
-        return el;
-    };
-
-    let end_drop = () => {
-        if (dropzone_class !== null) {
-            target.classList.remove(dropzone_class);
-        }
-    };
-
-    target.addEventListener('dragenter', ev => {
-        if (! is_valid(ev))
-            return;
-
-        ev.stopPropagation();
-        ev.preventDefault();
-
-        ev.dataTransfer.dropEffect = effect;
-
-        if (dropzone_class !== null) {
-            target.classList.add(dropzone_class);
-        }
-    });
-    target.addEventListener('dragover', ev => {
-        if (! is_valid(ev))
-            return;
-
-        ev.stopPropagation();
-        ev.preventDefault();
-
-        ev.dataTransfer.dropEffect = effect;
-    });
-    target.addEventListener('dragleave', ev => {
-        if (ev.relatedTarget && target.contains(ev.relatedTarget))
-            return;
-
-        end_drop();
-    });
-    target.addEventListener('drop', ev => {
-        let el = is_valid(ev);
-        if (! el)
-            return;
-
-        ev.stopPropagation();
-        ev.preventDefault();
-
-        // TODO duping is_valid, hrmm
-        let data;
-        if (mimetype !== null) {
-            data = ev.dataTransfer.getData(mimetype);
-        }
-
-        ondrop(data, ev, el);
-        end_drop();
-    });
-};
 
 class FauxRadioSet {
     constructor(args) {
@@ -874,6 +788,49 @@ class MutableScript extends Gleam.Script {
 // -----------------------------------------------------------------------------
 // Step argument configuration
 
+class CompositeArgEditorDialog extends DialogOverlay {
+    constructor(step, onfinish) {
+        super();
+        this.step = step;
+        this.onfinish = onfinish;
+
+        this.set_title('Adjust pose');
+
+        let posename = step.args[0];
+        let pose = step.role.poses[posename];
+        if (pose.type !== 'composite') {
+            // FIXME
+            reject();
+            return;
+        }
+
+        console.log(pose);
+        for (let layername of pose.order) {
+            this.main.append(mk('h2', layername));
+            for (let variant of Object.keys(pose.layers[layername].variants)) {
+                let radio = mk('input', {type: 'radio', name: layername, value: variant});
+                if (step.args[1][layername] === variant) {
+                    radio.checked = true;
+                }
+                this.main.append(mk('p', mk('label', radio, variant)));
+            }
+        }
+
+        this.add_button('Save', ev => {
+            let ret = {};
+            let form = this.root;
+            for (let layername of pose.order) {
+                ret[layername] = form.elements[layername].value;
+            }
+            this.close();
+            onfinish(ret);
+        });
+        this.add_button('Cancel', ev => {
+            this.close();
+        });
+    }
+}
+
 // FIXME these are un-tabbable.  maybe they should just be regular textboxes all the time?  would still need to do something to the popup ones though
 const STEP_ARGUMENT_TYPES = {
     string: {
@@ -973,6 +930,28 @@ const STEP_ARGUMENT_TYPES = {
                 overlay.addEventListener('click', ev => {
                     reject();
                 });
+            });
+        },
+    },
+
+    pose_composite: {
+        _stringize(value) {
+            let parts = [];
+            // TODO this is random order but i don't have the order available from here
+            for (let [key, val] of Object.entries(value)) {
+                parts.push(`${key}/${val}`);
+            }
+            return parts.join(" ");
+        },
+        view(value) {
+            return mk('div.gleam-editor-arg-composites', this._stringize(value));
+        },
+        update(element, value) {
+            element.textContent = this._stringize(value);
+        },
+        edit(element, value, step, mouse_event) {
+            return new Promise((resolve, reject) => {
+                new CompositeArgEditorDialog(step, resolve).open();
             });
         },
     },
@@ -1744,12 +1723,13 @@ class PictureFrameEditor extends RoleEditor {
 
             pose.layers[name] = pose.layers[layername];
             delete pose.layers[layername];
-            for (let [i, ordername] of pose.order) {
-                if (ordername === layername) {
+            for (let [i, ordername] of pose.order.entries()) {
+                if (ordername === oldname) {
                     pose.order[i] = name;
                 }
             }
             // FIXME should also update all steps in the script??
+            // FIXME need to update the data-layer-name on the element too
 
             layername = name;
             return name;
