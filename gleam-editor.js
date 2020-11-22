@@ -1174,41 +1174,6 @@ class PictureFrameEditor extends RoleEditor {
             identifier: 'data-pose-name',
             onselect: () => this.render_pose_editor(),
         });
-        this.dummy_composite = {
-            type: 'composite',
-            order: ['fire', 'body', 'annoyance', 'eye'],
-            layers: {
-                // TODO need to specify which of these are optional
-                body: {
-                    optional: false,
-                    variants: {
-                        normal: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/normal.PNG',
-                        tea: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/tea.PNG',
-                    },
-                },
-                eye: {
-                    optional: false,
-                    variants: {
-                        // TODO 'front' is baked in, these other have a 'base'; i don't think that's sensible to support though?
-                        down: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/eye/down.PNG',
-                        right: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/eye/right.PNG',
-                        upper: 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/eye/upper.PNG',
-                    },
-                },
-                annoyance: {
-                    optional: true,
-                    variants: {
-                        '': 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/extra/annoyance lines.PNG',
-                    },
-                },
-                fire: {
-                    optional: true,
-                    variants: {
-                        '': 'pentaclesinterview/Folder1/HOTHEAD/hothead pose 1/extra/fire.PNG',
-                    },
-                },
-            },
-        };
 
         this.update_assets();
 
