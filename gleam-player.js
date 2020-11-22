@@ -200,11 +200,11 @@ Role.Actor = null;
 
 
 class Actor {
-    constructor(role) {
+    constructor(role, element) {
         this.role = role;
         this.state = role.generate_initial_state();
 
-        this.element = null;
+        this.element = element;
     }
 
     make_initial_state() {
@@ -296,6 +296,9 @@ Stage.STEP_KINDS = {
 // TODO from legacy json, and target any actorless actions at us?
 
 Stage.Actor = class StageActor extends Actor {
+    constructor(role) {
+        super(role, mk('div'));
+    }
 };
 
 
@@ -329,10 +332,9 @@ Curtain.LEGACY_JSON_ACTIONS = {
 
 Curtain.Actor = class CurtainActor extends Actor {
     constructor(role) {
-        super(role);
         // TODO color?
 
-        this.element = mk('div.gleam-actor-curtain');
+        super(role, mk('div.gleam-actor-curtain'));
     }
 
     apply_state(state) {
@@ -406,9 +408,8 @@ Mural.LEGACY_JSON_ACTIONS = {
 
 Mural.Actor = class MuralActor extends Actor {
     constructor(role) {
-        super(role);
+        super(role, mk('div.gleam-actor-mural'));
 
-        this.element = mk('div.gleam-actor-mural');
         this.element.innerHTML = role.markup;
     }
 
@@ -516,12 +517,10 @@ DialogueBox.STEP_KINDS = {};
 DialogueBox.LEGACY_JSON_ACTIONS = {};
 DialogueBox.Actor = class DialogueBoxActor extends Actor {
     constructor(role) {
-        super(role);
-
-        this.element = make_element('div', 'gleam-actor-dialoguebox');
+        super(role, mk('div.gleam-actor-dialoguebox'));
 
         // Toss in a background element
-        this.element.appendChild(make_element('div', '-background'));
+        this.element.appendChild(mk('div.-background'));
 
         this.scroll_timeout = null;
         this.speaker_element = null;
@@ -1173,10 +1172,9 @@ Jukebox.LEGACY_JSON_ACTIONS = {
 };
 Jukebox.Actor = class JukeboxActor extends Actor {
     constructor(role, director) {
-        super(role);
+        super(role, mk('div.gleam-actor-jukebox'));
 
         this.master_volume = director.master_volume;
-        this.element = mk('div.gleam-actor-jukebox');
         this.track_fades = {};
         this.track_elements = {};
 
@@ -1467,26 +1465,24 @@ PictureFrame.STEP_KINDS = {
             display_name: 'layers',
             type: 'pose_composite',
         }],
-        check(role, ...args) {
+        check(role, pose_name, composites) {
+            if (! role.poses[pose_name]) {
+                return ["No such pose!"];
+            }
         },
         apply(role, beat, state, pose_name, composites) {
             state.pose = pose_name;
 
             let pose = role.poses[pose_name];
+            if (! pose) {
+                console.warn("No such pose", pose, "for role", role);
+                return;
+            }
             if (pose.type === 'composite' && composites) {
                 let variants = state.composites[pose_name];
-                if (! variants) {
-                    variants = [];
-                    // Initialize the default variant for each layer
-                    for (let layername of pose.order) {
-                        // TODO not for non-optional ones!
-                        variants.push(false);
-                    }
-                    state.composites[pose_name] = variants;
-                }
-                for (let [i, layername] of pose.order.entries()) {
+                for (let layername of pose.order) {
                     if (composites[layername] !== undefined) {
-                        variants[i] = composites[layername];
+                        variants[layername] = composites[layername];
                     }
                 }
             }
@@ -1508,44 +1504,52 @@ PictureFrame.LEGACY_JSON_ACTIONS = {
 };
 PictureFrame.Actor = class PictureFrameActor extends Actor {
     constructor(role, director) {
-        super(role);
-
-        let element = mk('div.gleam-actor-pictureframe');
+        super(role, mk('div.gleam-actor-pictureframe'));
         // FIXME add position class
-        this.element = element;
 
-        this.pose_elements = {};
-        this.pose_toplevel_elements = {};
-        this.visible_pose_variants = {};
+        // Mapping of pose name to a dict of...
+        //   element: top-level container for this pose
+        // Composite only:
+        //   visible_variants: map of layer name to which variant is visible
+        //   layers: map of layer name to...
+        //     element: container element
+        //     variants: map of variant name to <img>
+        //     visible: which variant is currently visible
+        this.pose_status = {};
         for (let [pose_name, pose] of Object.entries(this.role.poses)) {
-            let frame_elements = this.pose_elements[pose_name] = [];
+            let pose_status = this.pose_status[pose_name] = {
+                element: null,
+            };
+
             if (pose.type === 'static') {
                 let image = director.library.load_image(pose.path);
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
-                element.append(image);
-                frame_elements.push(image);
-                this.pose_toplevel_elements[pose_name] = image;
+                this.element.append(image);
+                pose_status.element = image;
             }
             else if (pose.type === 'composite') {
-                let frame_elements = this.pose_elements[pose_name] = {};
-                let visible_variants = this.visible_pose_variants[pose_name] = {};
+                pose_status.layers = {};
+                let container = pose_status.element = mk('div.gleam-actor-pictureframe-pose');
+                this.element.append(container);
                 for (let layername of pose.order) {
+                    let layer_el = mk('div.gleam-actor-pictureframe-layer');
+                    container.append(layer_el);
+
                     let layer = pose.layers[layername];
-                    frame_elements[layername] = {};
-                    visible_variants[layername] = false;
-                    let container = mk('div.gleam-actor-pictureframe-layer');
-                    element.append(container);
-                    this.pose_toplevel_elements[pose_name] = container;
+                    let layer_status = pose_status.layers[layername] = {
+                        element: layer_el,
+                        variants: {},
+                        visible: false,
+                    };
 
                     for (let [name, path] of Object.entries(layer.variants)) {
                         let image = director.library.load_image(path);
-                        container.append(image);
-                        frame_elements[layername][name] = image;
+                        layer_el.append(image);
+                        layer_status.variants[name] = image;
                     }
                 }
             }
         }
-        console.log("role:", this);
 
         // FIXME why am i using event delegation here i Do Not get it
         //$element.on 'cutscene:change' + NS, @_change
@@ -1605,23 +1609,28 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         let old_state = super.apply_state(state);
 
         // Update the new pose's visible layers before showing it
-        let pose = this.role.poses[state.pose];
-        if (pose.type === 'composite') {
-            let visible_variants = this.visible_pose_variants[state.pose];
-            let elements = this.pose_elements[state.pose];
-            let new_variants = state.composites[state.pose];
-            for (let [i, layername] of pose.order.entries()) {
-                let layer = pose.layers[layername];
-                let old_variant = visible_variants[layername];
-                let new_variant = new_variants[layername];
-                if (old_variant !== new_variant) {
-                    if (old_variant) {
-                        elements[layername][old_variant].classList.remove('--visible');
+        if (state.pose !== null) {
+            let pose = this.role.poses[state.pose];
+            if (! pose) {
+                console.warn("No such pose", state.pose);
+            }
+            else if (pose.type === 'composite') {
+                let pose_status = this.pose_status[state.pose];
+                let new_variants = state.composites[state.pose];
+                for (let [i, layername] of pose.order.entries()) {
+                    let layer = pose.layers[layername];
+                    let layer_status = pose_status.layers[layername];
+                    let old_variant = layer_status.visible;
+                    let new_variant = new_variants[layername];
+                    if (old_variant !== new_variant) {
+                        if (old_variant !== false) {
+                            layer_status.variants[old_variant].classList.remove('--visible');
+                        }
+                        if (new_variant !== false) {
+                            layer_status.variants[new_variant].classList.add('--visible');
+                        }
+                        layer_status.visible = new_variant;
                     }
-                    if (new_variant) {
-                        elements[layername][new_variant].classList.add('--visible');
-                    }
-                    visible_variants[layername] = new_variant;
                 }
             }
         }
@@ -1649,10 +1658,10 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         if (pose_name === old_pose_name)
             return;
         if (old_pose_name) {
-            this.pose_toplevel_elements[old_pose_name].classList.remove('--visible');
+            this.pose_status[old_pose_name].element.classList.remove('--visible');
         }
 
-        let child = this.pose_toplevel_elements[pose_name];
+        let child = this.pose_status[pose_name].element;
         if (child.classList.contains('--visible'))
             return;
 
@@ -2780,18 +2789,14 @@ class Player {
             // construct elements themselves?  standard property on Actor
             // maybe?  worst case, stuff loaded in the background already,
             // right?
-            if (actor.element) {
-                this.stage_container.append(actor.element);
-            }
+            this.stage_container.append(actor.element);
         }
 
         this.script.intercom.addEventListener('gleam-role-added', ev => {
             let role = ev.detail.role;
             let actor = this.director.role_to_actor.get(role);
             // FIXME what if roles are reordered?
-            if (actor && actor.element) {
-                this.container.append(actor.element);
-            }
+            this.stage_container.append(actor.element);
         });
 
         // Bind some useful user input event handlers

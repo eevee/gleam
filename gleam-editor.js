@@ -534,7 +534,6 @@ class CompositeArgEditorDialog extends DialogOverlay {
             return;
         }
 
-        console.log(pose);
         for (let layername of pose.order) {
             this.main.append(mk('h2', layername));
             for (let variant of Object.keys(pose.layers[layername].variants)) {
@@ -565,10 +564,10 @@ class CompositeArgEditorDialog extends DialogOverlay {
 const STEP_ARGUMENT_TYPES = {
     string: {
         view(value) {
-            return mk('div.gleam-editor-arg-string', value);
+            return mk('div.gleam-editor-arg-string', value ?? '(null)');
         },
         update(element, value) {
-            element.textContent = value;
+            element.textContent = value ?? '(null)';
         },
         edit(element, value) {
             let editor_element = mk('input.gleam-editor-inline', {type: 'text'});
@@ -605,14 +604,14 @@ const STEP_ARGUMENT_TYPES = {
     prose: {
         view(value) {
             // TODO null should probably not be allowed, but, there's no real validation on these
-            return mk('div.gleam-editor-arg-prose', value || '');
+            return mk('div.gleam-editor-arg-prose', value ?? '(null)');
         },
         update(element, value) {
-            element.textContent = value;
+            element.textContent = value ?? '(null)';
         },
         edit(element, value) {
             return new Promise((resolve, reject) => {
-                let editor_element = mk('textarea.gleam-editor-arg-prose', value || '');
+                let editor_element = mk('textarea.gleam-editor-arg-prose', value ?? '(null)');
                 // FIXME having to click outside (and thus likely activate something else) kind of sucks
                 // TODO but then, i'd love to have an editor that uses the appropriate styling, anyway
                 editor_element.addEventListener('blur', ev => {
@@ -628,10 +627,10 @@ const STEP_ARGUMENT_TYPES = {
 
     pose: {
         view(value) {
-            return mk('div.gleam-editor-arg-enum', value);
+            return mk('div.gleam-editor-arg-enum', value ?? '(null)');
         },
         update(element, value) {
-            element.textContent = value;
+            element.textContent = value ?? '(null)';
         },
         edit(element, value, step, mouse_event) {
             return new Promise((resolve, reject) => {
@@ -666,6 +665,9 @@ const STEP_ARGUMENT_TYPES = {
 
     pose_composite: {
         _stringize(value) {
+            if (! value)
+                return '';
+
             let parts = [];
             // TODO this is random order but i don't have the order available from here
             for (let [key, val] of Object.entries(value)) {
@@ -1013,10 +1015,13 @@ class RoleEditor {
 
         // Enable dragging steps into the script
         // FIXME doesn't check it's hitting a step
-        this.element.addEventListener('dragstart', e => {
-            e.dataTransfer.dropEffect = 'copy';
-            e.dataTransfer.setData('text/plain', null);
-            let step_kind_name = e.target.getAttribute('data-step-kind');
+        this.element.addEventListener('dragstart', ev => {
+            let step_template = ev.target.closest('.gleam-editor-step');
+            if (! step_template)
+                return;
+            ev.dataTransfer.dropEffect = 'copy';
+            ev.dataTransfer.setData('text/plain', null);
+            let step_kind_name = step_template.getAttribute('data-step-kind');
             let step_kind = this.role.constructor.STEP_KINDS[step_kind_name];
             let args = [];
             for (let arg_def of step_kind.args) {
@@ -1087,7 +1092,7 @@ class RoleEditor {
             let arg_element = mk('div.-how');
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
             if (arg_type) {
-                let viewer = arg_type.view(value ?? '(null)');
+                let viewer = arg_type.view(value);
                 viewer.classList.add('gleam-editor-arg');
                 viewer.setAttribute('data-arg-index', i);
                 arg_element.appendChild(viewer);
@@ -1740,6 +1745,22 @@ class RolesPanel extends Panel {
         this.role_editors = [];
         this.role_to_editor = new Map();
 
+        this.sortable = new Sortable(this.list, {
+            group: 'roles',
+            handle: 'h2',
+            onEnd: ev => {
+                // Rearrange the role list in the script
+                let role = this.editor.script.roles[ev.oldIndex];
+                this.editor.script.roles.splice(ev.oldIndex, 1);
+                this.editor.script.roles.splice(ev.newIndex, 0, role);
+
+                // Rearrange the corresponding actor elements on the stage
+                let actor = this.editor.player.director.role_to_actor.get(role);
+                let container = this.editor.player.stage_container;
+                container.insertBefore(actor.element, container.childNodes[ev.newIndex]);
+            },
+        });
+
         // Add the toolbar
         // Add role
         let button = mk('button', {type: 'button'});
@@ -1890,7 +1911,6 @@ class ScriptPanel extends Panel {
             let i = parseInt(arg.getAttribute('data-arg-index'), 10);
             let arg_def = step.kind.args[i];
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
-            console.log(step, arg_def, arg_type);
             let promise = arg_type.edit(arg, step.args[i], step, ev);
             // FIXME ahh you could conceivably double-click on the same element again if it edits inline, like prose does...
             promise.then(new_value => {
