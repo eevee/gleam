@@ -1504,7 +1504,7 @@ PictureFrame.LEGACY_JSON_ACTIONS = {
 };
 PictureFrame.Actor = class PictureFrameActor extends Actor {
     constructor(role, director) {
-        super(role, mk('div.gleam-actor-pictureframe'));
+        super(role, mk('div.gleam-actor-pictureframe', {'data-name': role.name}));
         // FIXME add position class
 
         // Mapping of pose name to a dict of...
@@ -1523,16 +1523,17 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
 
             if (pose.type === 'static') {
                 let image = director.library.load_image(pose.path);
+                image.classList.add('-pose');
                 // FIXME animation stuff $img.data 'delay', frame.delay or 0
                 this.element.append(image);
                 pose_status.element = image;
             }
             else if (pose.type === 'composite') {
                 pose_status.layers = {};
-                let container = pose_status.element = mk('div.gleam-actor-pictureframe-pose');
+                let container = pose_status.element = mk('div.-pose');
                 this.element.append(container);
                 for (let layername of pose.order) {
-                    let layer_el = mk('div.gleam-actor-pictureframe-layer');
+                    let layer_el = mk('div.gleam-actor-pictureframe-layer', {'data-layer': layername});
                     container.append(layer_el);
 
                     let layer = pose.layers[layername];
@@ -1617,11 +1618,13 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
             else if (pose.type === 'composite') {
                 let pose_status = this.pose_status[state.pose];
                 let new_variants = state.composites[state.pose];
+                console.log("-- updating composite state --");
                 for (let [i, layername] of pose.order.entries()) {
                     let layer = pose.layers[layername];
                     let layer_status = pose_status.layers[layername];
                     let old_variant = layer_status.visible;
                     let new_variant = new_variants[layername];
+                    console.log(i, layername, old_variant, new_variant);
                     if (old_variant !== new_variant) {
                         if (old_variant !== false) {
                             layer_status.variants[old_variant].classList.remove('--visible');
@@ -2247,7 +2250,6 @@ class Script {
         return json;
     }
 
-    // TODO allow recreating beats only from a particular start point?
     _set_steps(steps) {
         this.steps = steps;
         this._refresh_beats(0);
@@ -2256,8 +2258,12 @@ class Script {
     // Recreate beats, starting from the given step.  Called both when initializing the script and
     // when making step edits in the editor.
     _refresh_beats(initial_step_index) {
-        // Figure out the first beat that needs recreating.  This step might be part of that beat,
-        // so look one step back and start recreating from that beat
+        if (this.steps.length === 0) {
+            this.beats = [];
+            this.bookmarks = [];
+            return;
+        }
+
         let first_beat_index;
         if (! this.beats || initial_step_index <= 1) {
             first_beat_index = 0;
@@ -2265,22 +2271,21 @@ class Script {
         else {
             first_beat_index = this.steps[initial_step_index - 1].beat_index;
         }
+        console.log("rebeating from", initial_step_index, first_beat_index);
 
         // Consolidate steps into beats -- maps of role => state
-        this.bookmarks = [];
-        if (this.steps.length === 0) {
-            this.beats = [];
-            return;
-        }
-
         let beat;
         if (first_beat_index === 0) {
             beat = Beat.create_first(this.roles);
             this.beats = [beat];
+            this.bookmarks = [];
         }
         else {
             this.beats.length = first_beat_index;
             beat = this.beats[first_beat_index - 1].create_next();
+            this.beats.push(beat);
+            // TODO could partial-reconstruct this and start the loop below at a later point!
+            this.bookmarks = [];
         }
 
         // Iterate through steps and fold them into beats
@@ -2384,6 +2389,7 @@ class Director {
             }
 
             // If a beat was added or removed, adjust the cursor
+            // FIXME these no longer exist
             if (this.cursor > beat_index) {
                 if (ev.detail.split_beat) {
                     this.jump(this.cursor + 1);

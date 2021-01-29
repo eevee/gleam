@@ -438,7 +438,6 @@ class MutableScript extends Gleam.Script {
 
     insert_step(new_step, index) {
         // FIXME bomb if new_step is already in here?
-        let split_beat = false;
         if (index >= this.steps.length) {
             index = this.steps.length;
             this.steps.push(new_step);
@@ -446,7 +445,6 @@ class MutableScript extends Gleam.Script {
         else {
             let step_at_position = this.steps[index];
             this.steps.splice(index, 0, new_step);
-            split_beat = new_step.beat_index !== step_at_position.beat_index;
         }
 
         this._refresh_beats(index);
@@ -456,7 +454,6 @@ class MutableScript extends Gleam.Script {
                 step: new_step,
                 index: index,
                 beat_index: new_step.beat_index,
-                split_beat: split_beat,
             },
         }));
     }
@@ -497,14 +494,27 @@ class CompositeArgEditorDialog extends DialogOverlay {
             return;
         }
 
+        let composites = step.args[1] ?? {};
         for (let layername of pose.order) {
-            this.main.append(mk('h2', layername));
-            for (let variant of Object.keys(pose.layers[layername].variants)) {
+            let layer = pose.layers[layername];
+            let list = mk('ul.composite-arg-variants');
+            this.main.append(mk('h2', layername), list);
+
+            // FIXME don't like having special names here, still risk of conflict
+            let radio0 = mk('input', {type: 'radio', name: layername, value: '##inherit'});
+            radio0.checked = (composites[layername] === undefined);
+            list.append(mk('li.nonliteral', mk('label', radio0, " (no change)")));
+            if (layer.optional) {
+                let radio1 = mk('input', {type: 'radio', name: layername, value: '##hide'});
+                radio1.checked = (composites[layername] === false);
+                list.append(mk('li.nonliteral', mk('label', radio1, " (hide)")));
+            }
+            for (let variant of Object.keys(layer.variants)) {
                 let radio = mk('input', {type: 'radio', name: layername, value: variant});
-                if (step.args[1][layername] === variant) {
+                if (composites[layername] === variant) {
                     radio.checked = true;
                 }
-                this.main.append(mk('p', mk('label', radio, variant)));
+                list.append(mk('li', mk('label', radio, " ", variant)));
             }
         }
 
@@ -512,7 +522,16 @@ class CompositeArgEditorDialog extends DialogOverlay {
             let ret = {};
             let form = this.root;
             for (let layername of pose.order) {
-                ret[layername] = form.elements[layername].value;
+                let val = form.elements[layername].value;
+                if (val === '##inherit') {
+                    // Leave undefined
+                }
+                else if (val === '##hide') {
+                    ret[layername] = false;
+                }
+                else {
+                    ret[layername] = val;
+                }
             }
             this.close();
             onfinish(ret);
@@ -627,9 +646,10 @@ const STEP_ARGUMENT_TYPES = {
     },
 
     pose_composite: {
+        // FIXME if this is a composite pose then a null value should be impossible; it should be an empty object at LEAST, and really should be populated with required default bits
         _stringize(value) {
             if (! value)
-                return '';
+                return '(none)';
 
             let parts = [];
             // TODO this is random order but i don't have the order available from here
@@ -958,6 +978,7 @@ class RoleEditor {
         this.role = role;
 
         this.element = mk('li');
+        this.element.classList.add(this.CLASS_NAME);
         this.container = this.element;
 
         // Header
@@ -966,7 +987,6 @@ class RoleEditor {
             // FIXME actually change the role name in relevant places.  (where is that?  script step elements; other roles that refer to this one; does anything else use name instead of reference?)
         });
         let header = mk('header', mk('h2', this.h2_editor));
-        header.classList.add(this.CLASS_NAME);
         this.element.append(header);
 
         // Add step templates
@@ -1020,7 +1040,7 @@ class RoleEditor {
         // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
         el.appendChild(mk('div.-what', handle, step_kind.display_name));
         if (step_kind.hint) {
-            el.append(mk('div.-how', mk('div.gleam-editor-arg-hint', step_kind.hint)));
+            el.append(mk('div.gleam-editor-arg.gleam-editor-arg-hint', step_kind.hint));
         }
         return el;
     }
@@ -1028,6 +1048,7 @@ class RoleEditor {
     // FIXME i changed my mind and this should go on ScriptPanel.  only trouble is this.CLASS_NAME
     make_step_element(step) {
         let el = mk('div.gleam-editor-step');
+        el.classList.add(this.CLASS_NAME);
 
         let handle = mk('div.-handle', '⠿');
 
@@ -1046,24 +1067,21 @@ class RoleEditor {
 
         // FIXME how does name update?  does the role editor keep a list, or do these things like listen for an event on us?
         let role_tag = mk('div.-who', handle, step.role.name);
-        role_tag.classList.add(this.CLASS_NAME);
         el.appendChild(role_tag);
         el.appendChild(mk('div.-what', step.kind.display_name));
 
         for (let [i, arg_def] of step.kind.args.entries()) {
             let value = step.args[i];
-            let arg_element = mk('div.-how');
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
             if (arg_type) {
                 let viewer = arg_type.view(value);
                 viewer.classList.add('gleam-editor-arg');
                 viewer.setAttribute('data-arg-index', i);
-                arg_element.appendChild(viewer);
+                el.append(viewer);
             }
             else {
-                arg_element.appendChild(mk('span', value));
+                el.append(mk('span.gleam-editor-arg', value));
             }
-            el.appendChild(arg_element);
         }
         return el;
     }
@@ -1846,7 +1864,7 @@ class ScriptPanel extends Panel {
                 arg_type.update(arg, new_value);
                 // FIXME above could be a step-updated event handler?
                 this.editor.script.update_steps(step);
-            }, () => {
+            //}, () => {
                 // Smother rejection so it doesn't go to the console
             });
         });
@@ -1955,16 +1973,24 @@ class ScriptPanel extends Panel {
 
             let caret_y;
             let caret_mid_beat = false;
+            let sum_offset_top = (el, ref) => {
+                let y = 0;
+                while (el && el !== ref && ref.contains(el)) {
+                    y += el.offsetTop;
+                    el = el.offsetParent;
+                }
+                return y;
+            };
             if (this.step_elements.length === 0) {
                 caret_y = 0;
             }
             else if (position >= this.step_elements.length) {
                 let last_step_element = this.step_elements[this.step_elements.length - 1];
-                caret_y = last_step_element.offsetTop + last_step_element.offsetHeight;
+                caret_y = sum_offset_top(last_step_element, this.beats_list) + last_step_element.offsetHeight;
             }
             else {
                 // Position it at the top of the step it would be replacing
-                caret_y = this.step_elements[position].offsetTop;
+                caret_y = sum_offset_top(this.step_elements[position], this.beats_list);
                 // If this new step would pause, and the step /behind/ it
                 // already pauses, then the caret will be at the end of a beat
                 // gap.  Move it up to appear in the middle of the beat.
@@ -1975,7 +2001,7 @@ class ScriptPanel extends Panel {
                     caret_mid_beat = true;
                 }
             }
-            caret.style.top = `${caret_y + this.beats_list.offsetTop}px`;
+            caret.style.top = `${caret_y}px`;
             caret.classList.toggle('--mid-beat', caret_mid_beat);
         });
         // Fires when leaving a valid drop target (but actually when leaving
@@ -2019,6 +2045,7 @@ class ScriptPanel extends Panel {
                 if (position > step.index) {
                     position--;
                 }
+                // FIXME more efficient to move it so we don't rewrite the beats list twice and also rebuild the entire dom lol
                 this.editor.script.delete_step(step);
             }
 
@@ -2069,29 +2096,10 @@ class ScriptPanel extends Panel {
 
         // Attach to the Script
         script.intercom.addEventListener('gleam-step-inserted', ev => {
-            this._insert_step_element(ev.detail.step, ev.detail.split_beat);
+            this._insert_step_element(ev.detail.step);
         });
         script.intercom.addEventListener('gleam-step-deleted', ev => {
-            // TODO need to ensure, somehow, that this one happens /before/ the editor one (which doesn't exist yet)
-            let step = ev.detail.step;
-            let element = this.step_to_element.get(step);
-            this.step_to_element.delete(step);
-            this.element_to_step.delete(element);
-            this.step_elements.splice(ev.detail.index, 1);
-
-            let group = element.parentNode;
-            element.remove();
-            if (group.children.length === 0) {
-                group.remove();
-            }
-            else if (ev.detail.merged_beat) {
-                let beat0 = this.beats_list.children[ev.detail.beat_index];
-                let beat1 = this.beats_list.children[ev.detail.beat_index + 1];
-                while (beat1.firstChild) {
-                    beat0.appendChild(beat1.firstChild);
-                }
-                beat1.remove();
-            }
+            this._delete_step_element(ev.detail.step);
         });
     }
 
@@ -2103,11 +2111,12 @@ class ScriptPanel extends Panel {
         // TODO need to update this when a role is added too, god christ ass.  or when a script is loaded, though it happens to work here
         for (let role_editor of this.editor.roles_panel.role_editors) {
             let box = mk('div.gleam-editor-script-role-state');
+            box.classList.add(role_editor.CLASS_NAME);
             this.footer.append(box);
 
             let dl = mk('dl');
             box.append(
-                mk('h2', {'class': role_editor.CLASS_NAME}, role_editor.role.name),
+                mk('h2', role_editor.role.name),
                 dl);
             let dd_map = {};
             for (let key of Object.keys(role_editor.role.TWIDDLES)) {
@@ -2149,7 +2158,7 @@ class ScriptPanel extends Panel {
         }
     }
 
-    _insert_step_element(step, split_beat) {
+    _insert_step_element(step) {
         let element = this.step_to_element.get(step);
         if (! element) {
             let role_editor = this.editor.roles_panel.role_to_editor.get(step.role);
@@ -2174,13 +2183,45 @@ class ScriptPanel extends Panel {
             // and this becomes an append
             group.insertBefore(element, bumped_element);
 
-            if (split_beat) {
+            if (step.index < this.editor.script.steps.length - 1 &&
+                step.beat_index !== this.editor.script.steps[step.index + 1].beat_index)
+            {
                 let new_group = mk('li');
                 this.beats_list.insertBefore(new_group, group.nextSibling);
                 while (element.nextSibling) {
                     new_group.appendChild(element.nextSibling);
                 }
             }
+        }
+    }
+
+    _delete_step_element(step) {
+        // TODO need to ensure, somehow, that this one happens /before/ the editor one (which doesn't exist yet)
+        let element = this.step_to_element.get(step);
+        this.step_to_element.delete(step);
+        this.element_to_step.delete(element);
+        this.step_elements.splice(step.index, 1);
+
+        let script = this.editor.script;
+        let group = element.parentNode;
+        let was_last_step = (element === group.lastChild);
+        element.remove();
+
+        // Deal with beat elements; several possibilities.
+        // If there's nothing left in the group, then this was the only step in the beat; remove it.
+        // This also neatly handles the case of this step being the last one, which the following
+        // code won't deal with correctly
+        if (group.children.length === 0) {
+            group.remove();
+        }
+        // If this was the last step in a beat, and it wasn't the last beat, then merge the next
+        // beat into this one
+        else if (was_last_step && group.nextElementSibling) {
+            let next_group = group.nextElementSibling;
+            while (next_group.firstChild) {
+                group.appendChild(next_group.firstChild);
+            }
+            next_group.remove();
         }
     }
 

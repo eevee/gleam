@@ -310,7 +310,7 @@
     left: 0;
     right: 0;
 }
-.gleam-actor-pictureframe img {
+.gleam-actor-pictureframe .-pose {
     position: absolute;
     opacity: 0;
     visibility: hidden;
@@ -335,7 +335,7 @@
     transition-delay: calc(2 * var(--transition-time)), var(--transition-time);
     transition-timing-function: linear;
 }
-.gleam-actor-pictureframe img.--visible {
+.gleam-actor-pictureframe .-pose.--visible {
     visibility: visible;
     opacity: 1;
     pointer-events: initial;
@@ -345,6 +345,16 @@
 
     /* Transition used when fading IN -- switch visibility on immediately */
     transition-delay: 0s;
+}
+/* For composite images, variants default to off, similar to above, but with no transition */
+.gleam-actor-pictureframe-layer img {
+    visibility: hidden;
+    pointer-events: none;
+    position: absolute;
+}
+.gleam-actor-pictureframe-layer img.--visible {
+    visibility: visible;
+    pointer-events: initial;
 }
 
 /* The dialogue box has the following hierarchy:

@@ -19,6 +19,8 @@ body {
     font-size: 16px;
     line-height: 1.33;
     margin: 0;
+
+    --role-color: #ccc;
 }
 
 main {
@@ -190,6 +192,11 @@ dl.gleam-editor-propmap > dd {
     padding: 0.5em 1em;
 }
 
+
+.nonliteral {
+    font-style: italic;
+    color: #666;
+}
 
 /******************************************************************************/
 /* Landing */
@@ -540,6 +547,11 @@ ol.gleam-editor-roles > li header {
     padding: 0.25em 0.5em;
     margin: 0;
     font-size: 1.25em;
+    background: var(--role-color);
+}
+ol.gleam-editor-roles > li header::before {
+    content: var(--role-icon);
+    margin-right: 0.25em;
 }
 ol.gleam-editor-roles > li header h2 {
     flex: 1 0 auto;
@@ -726,14 +738,15 @@ ul.gleam-editor-role-pictureframe-poses .-caption {
     position: relative;
 }
 ol.gleam-editor-beats-list {
-    /* Need this for positioning the numbers */
-    position: relative;
-
     /* make room for numbers */
     padding-left: 1.5em;
     counter-reset: beat;
+
+    margin: 0.5em;
 }
 ol.gleam-editor-beats-list > li {
+    position: relative;
+    margin-top: 0.25em;
     border: 1px solid #202020;
 }
 ol.gleam-editor-beats-list > li::before {
@@ -741,6 +754,8 @@ ol.gleam-editor-beats-list > li::before {
     content: counter(beat);
     display: block;
     position: absolute;
+    top: 0;
+    bottom: 0;
     width: 1.5rem;
     margin-left: -1.5rem;
     text-align: center;
@@ -827,6 +842,11 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     font-size: 1em;
     margin: 0;
     padding: 0.33em;
+    background: var(--role-color);
+}
+.gleam-editor-script-role-state h2::before {
+    content: var(--role-icon);
+    margin-right: 0.25em;
 }
 .gleam-editor-script-role-state dl {
     font-size: 0.83em;
@@ -863,7 +883,7 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
     opacity: 0.5;
 }
 .gleam-editor-step + .gleam-editor-step {
-    border-top: 1px solid #ccc;
+    border-top: 1px solid #999;
 }
 .gleam-editor-step .-handle {
     display: inline-block;
@@ -875,28 +895,33 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
 }
 .gleam-editor-step > .-who {
     z-index: 1;
+    position: relative;
     padding: 0.25em 0.5em;
+    background: var(--role-color);
+    /* This makes an arrow edge on the right side, with a consistent width */
+    /* 110% is used to fix a missing row of pixels on the bottom due to subpixel rounding */
     padding-right: 1em;
-    border-top-right-radius: 0.75em 1em;
-    border-bottom-right-radius: 0.75em 1em;
+    clip-path: polygon(0 0, calc(100% - 0.5em) 0, 100% 50%, calc(100% - 0.5em) 110%, 0 110%);
+}
+.gleam-editor-step > .-who::before {
+    content: var(--role-icon);
+    margin-right: 0.25em;
 }
 .gleam-editor-step > .-what {
     padding: 0.25em 0.5em;
-    padding-right: 1em;
     background: hsl(0, 0%, 82.5%);
-    border-top-right-radius: 0.75em 1em;
-    border-bottom-right-radius: 0.75em 1em;
+    /* Same as with -who */
+    padding-right: 1em;
+    clip-path: polygon(0 0, calc(100% - 0.5em) 0, 100% 50%, calc(100% - 0.5em) 110%, 0 110%);
 }
 .gleam-editor-step > .-who + .-what {
     padding-left: 1.5em;
     margin-left: -1em;
 }
-.gleam-editor-step > .-how {
+.gleam-editor-step > .gleam-editor-arg {
     flex: 1;
     display: flex;
     flex-direction: column;
-}
-.gleam-editor-step > .-how > * {
     padding: 0.25em 0.5em;
 }
 .gleam-editor-step > .-error {
@@ -911,6 +936,8 @@ ol.gleam-editor-beats-list > li.--current .gleam-editor-step {
 
 /* Step arguments */
 /* FIXME consistent hover and "is being edited" effect? */
+.gleam-editor-arg {
+}
 .gleam-editor-arg-hint {
     color: #999;
 }
@@ -952,7 +979,7 @@ textarea.gleam-editor-arg-prose {
     display: block;
     position: absolute;
     font-size: 2em;
-    top: -0.25em;  /* rough alignment for Big Quote */
+    top: 0;
     left: -0.5rem;
 }
 .gleam-editor-arg-prose::after {
@@ -960,8 +987,11 @@ textarea.gleam-editor-arg-prose {
     display: block;
     position: absolute;
     font-size: 2em;
-    bottom: -0.5em;  /* rough alignment for Big Quote */
+    bottom: 0;
     right: -0.5rem;
+}
+ul.composite-arg-variants label {
+    display: block;
 }
 
 
@@ -1046,43 +1076,23 @@ textarea.gleam-editor-arg-prose {
 
 /* Special styling for particular role types; applies to steps and to the
  * headers of their properties in the role list */
-/* Stage */
 .gleam-editor-role-stage {
-    background: hsl(0, 80%, 80%);
+    --role-color: hsl(0, 80%, 70%);
+    --role-icon: '📻';
 }
-.gleam-editor-role-stage::before {
-    content: '📻';
-    margin-right: 0.25em;
-}
-/* Jukebox */
 .gleam-editor-role-jukebox {
-    background: hsl(270, 80%, 80%);
+    --role-color: hsl(270, 80%, 70%);
+    --role-icon: '📻';
 }
-.gleam-editor-role-jukebox::before {
-    content: '📻';
-    margin-right: 0.25em;
-}
-/* Picture frame */
 .gleam-editor-role-pictureframe {
-    background: hsl(330, 80%, 80%);
+    --role-color: hsl(330, 80%, 70%);
+    --role-icon: '🖼️';
 }
-.gleam-editor-role-pictureframe::before {
-    content: '🖼️';
-    margin-right: 0.25em;
-}
-/* Dialogue box */
 .gleam-editor-role-dialoguebox {
-    background: hsl(60, 80%, 80%);
+    --role-color: hsl(60, 80%, 70%);
+    --role-icon: '💬️';
 }
-.gleam-editor-role-dialoguebox::before {
-    content: '💬️';
-    margin-right: 0.25em;
-}
-/* Character */
 .gleam-editor-role-character {
-    background: hsl(210, 80%, 80%);
-}
-.gleam-editor-role-character::before {
-    content: '🗣️';
-    margin-right: 0.25em;
+    --role-color: hsl(210, 80%, 70%);
+    --role-icon: '🗣️';
 }
