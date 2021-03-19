@@ -23,17 +23,6 @@ const CAN_PLAY_AUDIO = (function() {
     return dummy_audio.canPlayType && dummy_audio.canPlayType('audio/ogg; codecs="vorbis"');
 })();
 
-function make_element(tag, cls, text) {
-    let element = document.createElement(tag);
-    if (cls) {
-        element.className = cls;
-    }
-    if (text) {
-        element.textContent = text;
-    }
-    return element;
-}
-
 // NOTE: copied from util.js
 function mk(tag_selector, ...children) {
     let [tag, ...classes] = tag_selector.split('.');
@@ -600,7 +589,7 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
 
         // If there's meant to be a speaker now, add a tag
         if (state.speaker !== null && ! this.speaker_element) {
-            this.speaker_element = make_element('div', '-speaker --hidden', state.speaker);
+            this.speaker_element = mk('div.-speaker.--hidden', {}, state.speaker);
             this.element.appendChild(this.speaker_element);
 
             // Force layout recomputation, then remove the class so the
@@ -716,11 +705,11 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
 
         // And finally add it all to the DOM
         // TODO do something with old one...?  caller does atm, but
-        this.phrase_element = make_element('div', '-phrase');
+        this.phrase_element = mk('div.-phrase');
         this.phrase_element.appendChild(target);
-        this.phrase_viewport_element = make_element('div', '-phrase-viewport');
+        this.phrase_viewport_element = mk('div.-phrase-viewport');
         this.phrase_viewport_element.appendChild(this.phrase_element);
-        this.phrase_wrapper_element = make_element('div', '-phrase-wrapper');
+        this.phrase_wrapper_element = mk('div.-phrase-wrapper');
         this.phrase_wrapper_element.appendChild(this.phrase_viewport_element);
         this.element.appendChild(this.phrase_wrapper_element);
         this.letter_elements = letters;
@@ -2719,7 +2708,7 @@ class PlayerPauseOverlay extends PlayerOverlay {
         let number_next_beat = false;
         let bm = 0;
         for (let [i, beat] of script.beats.entries()) {
-            let li = make_element('li');
+            let li = mk('li');
             let b = i + 1;
             if (bm < script.bookmarks.length && i === script.bookmarks[bm][0]) {
                 li.textContent = `${b} — ${script.bookmarks[bm][1]}`;
@@ -2738,7 +2727,7 @@ class PlayerPauseOverlay extends PlayerOverlay {
 
             if (script.steps[beat.last_step_index].kind.is_major_transition) {
                 // TODO ok this is extremely hokey to put in an <ol>
-                fragment.append(make_element('hr'));
+                fragment.append(mk('hr'));
                 number_next_beat = true;
             }
         }
@@ -2784,7 +2773,7 @@ class Player {
         // explicitly DO NOT want it to receive focus -- if the audience clicks
         // it to unpause and then presses spacebar to advance, it'll just
         // activate the pause button again!
-        this.pause_button = make_element('div', 'gleam-pause-button');
+        this.pause_button = mk('div.gleam-pause-button');
         this.pause_button.innerHTML = svg_icon_from_path("M 5,1 V 14 M 11,1 V 14");
         this.pause_button.addEventListener('click', ev => {
             // Block counting this as an advancement click
@@ -2795,7 +2784,7 @@ class Player {
         this.container.appendChild(this.pause_button);
 
         // Playback progress ticker
-        this.progress_element = make_element('div', 'gleam-progress');
+        this.progress_element = mk('div.gleam-progress');
         // FIXME it is not entirely clear how this should be updated
         this.container.appendChild(this.progress_element);
 
@@ -3024,7 +3013,6 @@ let ret = {
 };
 for (let obj of [
     mk,
-    make_element,
     svg_icon_from_path,
 
     Step,
