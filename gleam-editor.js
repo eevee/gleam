@@ -103,7 +103,7 @@ function close_overlay(element) {
 // TODO maybe it shouldn't?
 // TODO unsure about ergonomics
 // FIXME this very poorly handles a very long list, i think?
-// FIXME convert other overlays to use this
+// FIXME remove this in favor of the one from LL
 class Overlay {
     constructor(element, is_transient) {
         this.is_transient = is_transient;
@@ -965,6 +965,105 @@ class StageSizeDialog extends Overlay {
         });
 
         super(dialog, false);
+    }
+}
+
+class ImportDialogueDialog extends DialogOverlay {
+    constructor(editor) {
+        super();
+        this.editor = editor;
+
+        this.set_title("Import dialogue");
+
+        this.textarea = mk('textarea');
+        this.results = mk('div');
+        this.root.classList.add('dialog-import-dialogue');
+        this.main.append(this.textarea, this.results);
+
+        this.role_index = {};
+        for (let role of this.editor.script.roles) {
+            this.role_index[this.normalize_role_name(role.name)] = role;
+        }
+
+        this.parsed_steps = null;
+        this.textarea.addEventListener('input', ev => {
+            let text = this.textarea.value;
+            let paragraphs = text.split(/(?:\r|\n|\r\n){2,}/);
+            this.results.textContent = '';
+            let script = this.editor.script;
+            // FIXME this will break if they rename stage oops
+            let stage = script.role_index['stage'];
+            this.parsed_steps = [];
+            let add_step = step => {
+                this.parsed_steps.push(step);
+                let role_editor = this.editor.roles_panel.role_to_editor.get(step.role);
+                let el = role_editor.make_step_element(step);
+                this.results.append(el);
+                return el;
+            };
+            for (let paragraph of paragraphs) {
+                paragraph = paragraph.trim();
+                if (! paragraph)
+                    continue;
+
+                let m = paragraph.match(/^(\w+):\s*(.+)/s);
+                let fail_reason;
+                if (m) {
+                    // FIXME no guarantee that the role names are lowercase
+                    let [_, speaker, phrase] = m;
+                    let role = this.role_index[this.normalize_role_name(speaker)];
+                    if (role) {
+                        // TODO this should be optional
+                        // FIXME it's also technically invalid, fool
+                        add_step(new Gleam.Step(role, 'pose', []));
+                        add_step(new Gleam.Step(role, 'say', [phrase]));
+                        continue;
+                    }
+                    else {
+                        fail_reason = `couldn't find a speaker named '${speaker}'`;
+                    }
+                }
+                else {
+                    fail_reason = "couldn't find a speaker name";
+                }
+
+                // Fallback case
+                if (fail_reason) {
+                    let el = add_step(new Gleam.Step(stage, 'note', [`[${fail_reason}] ${paragraph}`]));
+                    el.classList.add('-import-dialogue-error');
+                }
+            }
+        });
+
+        this.root.addEventListener('submit', ev => {
+            this.add_to_script();
+            this.close();
+        });
+
+        this.add_button("Cancel", ev => {
+            this.close();
+        });
+        this.add_button("Add to end of script", ev => {
+            this.add_to_script();
+            this.close();
+        });
+    }
+
+    normalize_role_name(name) {
+        return name.toLowerCase().replace(/ +/g, '_');
+    }
+
+    add_to_script() {
+        let steps = this.parsed_steps;
+        if (! steps || ! steps.length)
+            return;
+
+        // FIXME support multiple insert, finally; this is currently quadratic!!  adjust comic mode button too
+        // TODO default to appending also
+        let script = this.editor.script;
+        for (let step of steps) {
+            script.insert_step(step, script.steps.length);
+        }
     }
 }
 
@@ -2289,6 +2388,9 @@ class Editor {
                 this.script.author = metadata.author;
                 this.update_script_metadata();
             }, () => {});
+        });
+        make_button("Import dialogue", ev => {
+            new ImportDialogueDialog(this).open();
         });
         make_button("Save", ev => {
             // TODO some kinda feedback, probably do this automatically, etc

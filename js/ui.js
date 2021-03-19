@@ -98,6 +98,20 @@ export class Overlay {
         this.root.addEventListener('click', ev => {
             ev.stopPropagation();
         });
+
+        // Allow pressing Esc on a field to abandon the dialog
+        // TODO this should really bind to the body and only work when the dialog is visible, OR add
+        // tabindex to the root itself
+        this.root.addEventListener('keydown', ev => {
+            if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
+                return;
+
+            if (ev.key === 'Escape') {
+                ev.preventDefault();
+                ev.stopPropagation();
+                this.close();
+            }
+        });
     }
 
     open() {

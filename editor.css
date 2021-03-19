@@ -191,6 +191,22 @@ dl.gleam-editor-propmap > dd {
     background: #f0d0d0;
     padding: 0.5em 1em;
 }
+.dialog-import-dialogue > section {
+    display: flex;
+    width: 60vw;
+    height: 60vh;
+    flex-direction: row;
+    gap: 1em;
+}
+.dialog-import-dialogue > section > * {
+    flex: 1;
+}
+.dialog-import-dialogue > section > div {
+    overflow-y: auto;
+}
+.dialog-import-dialogue .gleam-editor-step.-import-dialogue-error {
+    background: #ffe0e0;
+}
 
 
 .nonliteral {
@@ -987,7 +1003,7 @@ textarea.gleam-editor-arg-prose {
     display: block;
     position: absolute;
     font-size: 2em;
-    bottom: 0;
+    bottom: -0.5rem;
     right: -0.5rem;
 }
 ul.composite-arg-variants label {
@@ -1077,22 +1093,22 @@ ul.composite-arg-variants label {
 /* Special styling for particular role types; applies to steps and to the
  * headers of their properties in the role list */
 .gleam-editor-role-stage {
-    --role-color: hsl(0, 80%, 70%);
+    --role-color: hsl(0, 50%, 75%);
     --role-icon: '📻';
 }
 .gleam-editor-role-jukebox {
-    --role-color: hsl(270, 80%, 70%);
+    --role-color: hsl(270, 50%, 75%);
     --role-icon: '📻';
 }
 .gleam-editor-role-pictureframe {
-    --role-color: hsl(330, 80%, 70%);
+    --role-color: hsl(330, 50%, 75%);
     --role-icon: '🖼️';
 }
 .gleam-editor-role-dialoguebox {
-    --role-color: hsl(60, 80%, 70%);
+    --role-color: hsl(60, 50%, 75%);
     --role-icon: '💬️';
 }
 .gleam-editor-role-character {
-    --role-color: hsl(210, 80%, 70%);
+    --role-color: hsl(210, 50%, 75%);
     --role-icon: '🗣️';
 }

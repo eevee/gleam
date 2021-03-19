@@ -292,6 +292,16 @@ Stage.STEP_KINDS = {
         check() {},
         apply() {},
     },
+    note: {
+        display_name: "note",
+        hint: "leave a note to yourself without affecting the script",
+        args: [{
+            display_name: "comment",
+            type: 'string',
+        }],
+        check() {},
+        apply() {},
+    },
 };
 // TODO from legacy json, and target any actorless actions at us?
 
