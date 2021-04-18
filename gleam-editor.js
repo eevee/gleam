@@ -384,6 +384,58 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
     }
 }
 
+class FileAssetLibrary extends Gleam.AssetLibrary {
+    constructor(files) {
+        super();
+        for (let file of files) {
+            // The given path includes the parent directory; strip that off
+            let path = (file.webkitRelativePath ?? file.name).replace(/^[^/]*[/]/, '');
+            let asset = this.asset(path);
+            asset.exists = true;
+            asset.file = file;
+        }
+    }
+
+    async get_url_for_path(path) {
+        let asset = this.asset(path);
+        asset.used = true;
+        if (! asset.file) {
+            // If there's no associated file, this can't possibly work
+            asset.exists = false;
+            throw new Error(`No such local file: ${path}`);
+        }
+
+        // TODO revoke this sometime...?
+        return URL.createObjectURL(asset.file);
+    }
+
+    // TODO this is conspicuously exactly the same as EntryAssetLibrary
+    load_image(path, element) {
+        element = element || mk('img');
+        element.classList.add('--missing');
+        element.setAttribute('data-path', path);
+        // TODO handle failure somehow?
+        this.get_url_for_path(path).then(url => {
+            element.src = url;
+            element.classList.remove('--missing');
+        }, err => {console.error(err, element)});
+
+        this.images.set(element, path);
+        return element;
+    }
+
+    load_audio(path, element) {
+        element = element || mk('audio', {preload: 'auto'});
+        element.setAttribute('data-path', path);
+        // TODO handle failure somehow?
+        this.get_url_for_path(path).then(url => {
+            element.src = url;
+        });
+
+        return element;
+    }
+}
+
 // Subclass of Script that knows how to edit itself
 class MutableScript extends Gleam.Script {
     add_role(role) {
@@ -1744,6 +1796,21 @@ class AssetsPanel extends Panel {
         this.list = this.body.querySelector('.gleam-editor-assets');
         this.item_index = {};  // filename => <li>
 
+        let button = this.body.querySelector('#assets-directory-button');
+        let dir_control = this.body.querySelector('#assets-directory-file');
+        button.addEventListener('click', ev => {
+            dir_control.click();
+        });
+        dir_control.addEventListener('change', ev => {
+            // The directory selector populates 'files' with every single file, recursively, which
+            // is kind of wild but also /much/ easier to deal with than the Entry interface
+            let files = ev.target.files;
+            if (files.length > 4096)
+                throw new Error("Got way too many files; did you upload the right directory?");
+
+            this.editor.set_library(new FileAssetLibrary(files));
+        });
+
         // DOM stuff: allow dragging a local directory onto us, via the WebKit
         // file entry interface
         // FIXME? this always takes a moment to register, not sure why...
@@ -1805,6 +1872,9 @@ class AssetsPanel extends Panel {
             this.source_text.textContent = 'no assets';
         }
         else if (library instanceof EntryAssetLibrary) {
+            this.source_text.textContent = 'local files';
+        }
+        else if (library instanceof FileAssetLibrary) {
             this.source_text.textContent = 'local files';
         }
         else if (library instanceof Gleam.RemoteAssetLibrary) {
