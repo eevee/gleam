@@ -309,6 +309,7 @@
     z-index: 0;
     left: 0;
     right: 0;
+    bottom: 0;
 }
 .gleam-actor-pictureframe .-pose {
     position: absolute;
@@ -316,10 +317,8 @@
     visibility: hidden;
     pointer-events: none;
 
-    /* TODO this will center horizontally, but not...  vertically?  maybe?  there's an intrinsic size so maybe that'd work actually, idk find out */
     left: 0;
-    right: 0;
-    margin: 0 auto;
+    bottom: 0;
 
     /* Transition used when fading OUT -- switch visibility to off at the end */
     /* Note that visibility is first so that transition-property can be extended */
@@ -346,11 +345,22 @@
     /* Transition used when fading IN -- switch visibility on immediately */
     transition-delay: 0s;
 }
+.gleam-actor-pictureframe[data-position=default] {
+    /* Vars used for default position */
+    --anchor: middle;
+    --offset: 0.0;
+}
+.gleam-actor-pictureframe[data-position=default] .-pose {
+    /* TODO document */
+    left: calc(var(--offset) * 100%);
+    transform: translateX(calc(var(--offset) * -100%));
+}
 /* For composite images, variants default to off, similar to above, but with no transition */
 .gleam-actor-pictureframe-layer img {
     visibility: hidden;
     pointer-events: none;
     position: absolute;
+    bottom: 0;
 }
 .gleam-actor-pictureframe-layer img.--visible {
     visibility: visible;

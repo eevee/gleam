@@ -673,7 +673,7 @@ const STEP_ARGUMENT_TYPES = {
 
     track: {
         view(value) {
-            return mk('div.gleam-editor-arg-enum', value);
+            return mk('div.gleam-editor-arg-enum', value ?? '(null)');
         },
         update(element, value) {
             element.textContent = value;
@@ -1456,8 +1456,28 @@ class PictureFrameEditor extends RoleEditor {
             let img = this.main_editor.library.load_image(path);
             // TODO umm i can't tell from here whether there's actually anything, and i'd like to have a dummy element for stuff that didn't load.
             img.classList.add('-asset');
-            li.append(img);
-            li.append(mk('p.-caption', pose_name));
+            let name_el = mk('p.-caption', make_inline_string_editor(pose_name, new_pose_name => {
+                this.role._rename_pose(pose_name, new_pose_name);
+                let actor = this.main_editor.player.director.role_to_actor.get(this.role);
+                actor._rename_pose(pose_name, new_pose_name);
+                // Update steps
+                // TODO should role do this?  can it be done somewhat automatically?
+                for (let step of this.main_editor.script.steps) {
+                    if (step.role !== this.role)
+                        continue;
+
+                    if (step.kind_name === 'pose' && step.args[0] === pose_name) {
+                        step.args[0] = new_pose_name;
+                    }
+                }
+
+                // TODO need to update beats
+                // TODO need to update the script panel
+
+                li.setAttribute('data-pose-name', new_pose_name);
+                pose_name = new_pose_name;
+            }));
+            li.append(img, name_el);
             this.pose_list.appendChild(li);
         }
     }
@@ -1509,7 +1529,7 @@ class PictureFrameEditor extends RoleEditor {
                 }
             }
             // FIXME should also update all steps in the script??
-            // FIXME need to update the data-layer-name on the element too
+            // FIXME need to update the data-layer-name on the element too but i don't know how to get it or rerender
 
             layername = name;
             return name;
@@ -1565,11 +1585,45 @@ class CharacterEditor extends PictureFrameEditor {
         before.parentNode.insertBefore(propmap, before);
 
         // FIXME make this all less ugly
+        let dd;
+        {
+        propmap.append(mk('dt', 'Anchor'));
+        dd = mk('dd');
+        let input = mk('input');
+        input.type = 'text';
+        input.value = this.role.anchor;
+        input.addEventListener('change', ev => {
+            this.role.anchor = input.value;
+            // FIXME have to update actor
+            // XXX ???
+            this.main_editor.script.update_steps(...this.main_editor.script.steps.filter(step => step.role === this.role));
+        });
+        dd.append(input);
+        propmap.append(dd);
+        }
+
+        {
+        propmap.append(mk('dt', 'Offset'));
+        dd = mk('dd');
+        let input = mk('input', {type: 'range', min: -1, max: 1, step: 0.01, value: this.role.offset});
+        input.addEventListener('change', ev => {
+            this.role.offset = parseFloat(input.value);
+            // XXX does this affect steps??  if you can change it later then i guess it does since it's a default
+            // FIXME update actor better, this is invasive
+            let actor = this.main_editor.get_actor_for_role(this.role);
+            if (actor) {
+                actor.element.style.setProperty('--offset', input.value);
+            }
+        });
+        dd.append(input);
+        propmap.append(dd);
+        }
+
         propmap.append(mk('dt', 'Dialogue box'));
         // TODO update this if the dialogue box is deleted?
         // TODO ...or renamed?
         // TODO use a default?
-        let dd = mk('dd');
+        dd = mk('dd');
         let prop_editor = mk('div.gleam-editor-role-dialoguebox.gleam-editor-propmap-role');
         if (this.role.dialogue_box) {
             prop_editor.textContent = this.role.dialogue_box.name;
@@ -2503,6 +2557,10 @@ class Editor {
             actor.sync_with_role(this.player.director);
         }
         //this.main_editor.player.director.role_to_actor.get(this.role).sync_with_role(this.main_editor.player.director);
+    }
+
+    get_actor_for_role(role) {
+        return this.player.director.role_to_actor.get(role);
     }
 }
 

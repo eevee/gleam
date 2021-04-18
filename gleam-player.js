@@ -364,7 +364,7 @@ class Mural extends Role {
             </dl>
             <p><a href="https://floraverse.com/">Floraverse</a></p>
             <p><a href="https://floraverse.bandcamp.com/">Bandcamp</a></p>
-            <p>command not found</p>
+            <p>🙚 <em>fin</em> 🙘</p>
         `;
         this.markup = markup;
     }
@@ -1342,13 +1342,17 @@ Jukebox.Actor = class JukeboxActor extends Actor {
 // - { type: 'animated', frames: [{path, duration}] },
 // - { type: 'composite', order: [ layer names... ], layers: { optional?, variants: { name: animation } } }
 class PictureFrame extends Role {
-    constructor(name, position) {
+    // TODO feels a bit weird to do this when 'anchor' and 'offset' are really, like, attributes of the position
+    constructor(name, position = 'default', anchor = 'middle', offset = 0) {
         super(name);
         this.poses = {};
+        this.position = position;
+        this.anchor = anchor;
+        this.offset = offset;
     }
 
     static from_legacy_json(name, json) {
-        let pf = new this(name, json.position);
+        let pf = new this(name, json.position ?? 'default');
         for (let [key, value] of Object.entries(json.views)) {
             pf.poses[key] = this.inflate_pose(value);
         }
@@ -1356,7 +1360,7 @@ class PictureFrame extends Role {
     }
 
     static from_json(json) {
-        let pf = new this(json.name, json.position);
+        let pf = new this(json.name, json.position, json.anchor, json.offset);
         for (let [key, value] of Object.entries(json.poses)) {
             pf.poses[key] = this.inflate_pose(value);
         }
@@ -1378,6 +1382,9 @@ class PictureFrame extends Role {
 
     to_json() {
         let json = super.to_json();
+        json.position = this.position;
+        json.anchor = this.anchor;
+        json.offset = this.offset;
         json.poses = {};
         for (let [name, pose] of Object.entries(this.poses)) {
             // Deflate the pose
@@ -1403,6 +1410,18 @@ class PictureFrame extends Role {
             type: 'static',
             path: path,
         };
+    }
+
+    // -- Editor mutation --
+
+    _rename_pose(old_pose_name, new_pose_name) {
+        if (! (old_pose_name in this.poses))
+            throw new Error(`No such pose '${new_pose_name}'`);
+        if (new_pose_name in this.poses)
+            throw new Error(`Pose '${new_pose_name}' already exists`);
+
+        this.poses[new_pose_name] = this.poses[old_pose_name];
+        delete this.poses[old_pose_name];
     }
 }
 PictureFrame.register('picture-frame');
@@ -1503,8 +1522,12 @@ PictureFrame.LEGACY_JSON_ACTIONS = {
 };
 PictureFrame.Actor = class PictureFrameActor extends Actor {
     constructor(role, director) {
-        super(role, mk('div.gleam-actor-pictureframe', {'data-name': role.name}));
-        // FIXME add position class
+        super(role, mk('div.gleam-actor-pictureframe', {
+            'data-name': role.name,
+            'data-position': role.position,
+        }));
+        this.element.style.setProperty('--anchor', role.anchor);
+        this.element.style.setProperty('--offset', role.offset);
 
         // Mapping of pose name to a dict of...
         //   element: top-level container for this pose
@@ -1716,13 +1739,26 @@ PictureFrame.Actor = class PictureFrameActor extends Actor {
         if delay
             setTimeout (=> @_advance $el, pose_name, next_index), delay
     */
+
+    // -- Editor mutation --
+
+    _rename_pose(old_pose_name, new_pose_name) {
+        // No error checking; assuming the role did it
+        if (this.state && this.state.pose === old_pose_name) {
+            // XXX wait is mutating this bad, will it impact the step
+            this.state.pose = new_pose_name;
+        }
+
+        this.pose_status[new_pose_name] = this.pose_status[old_pose_name];
+        delete this.pose_status[old_pose_name];
+    }
 };
 
 
 // FIXME do not love this hierarchy, the picture frame should very be its own thing
 class Character extends PictureFrame {
-    constructor(name, position) {
-        super(name, position);
+    constructor(...args) {
+        super(...args);
 
         // Character delegates to a dialogue box, which must be assigned here, ASAP
         // TODO need editor ui for this!
@@ -1757,7 +1793,6 @@ class Character extends PictureFrame {
         json.dialogue_box = this.dialogue_box.name;
         json.dialogue_name = this.dialogue_name;
         json.dialogue_color = this.dialogue_color;
-        // TODO position/style?
         return json;
     }
 
