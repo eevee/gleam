@@ -19,11 +19,15 @@ const SWIPE_THRESHOLD = 10;
 const SWIPE_VELOCITY = 0.3;
 
 const CAN_PLAY_AUDIO = (function() {
-    let dummy_audio = document.createElement('audio');
+    const dummy_audio = document.createElement('audio');
     return dummy_audio.canPlayType && dummy_audio.canPlayType('audio/ogg; codecs="vorbis"');
 })();
 
-// NOTE: copied from util.js
+/**
+ * NOTE: copied from util.js
+ * @param {string} tag_selector
+ * @return {HTMLElement}
+ */
 function mk(tag_selector, ...children) {
     let [tag, ...classes] = tag_selector.split('.');
     let el = document.createElement(tag);
@@ -40,6 +44,10 @@ function mk(tag_selector, ...children) {
     return el;
 }
 
+/**
+ * @param {string} d
+ * @return {string}
+ */
 function svg_icon_from_path(d) {
     return `<svg width="1em" height="1em" viewBox="0 0 16 16"><path d="${d}" stroke-width="2" stroke-linecap="round" stroke="white" fill="none"></svg>`;
 }
@@ -51,6 +59,9 @@ function svg_icon_from_path(d) {
 // list of event names) fires.
 // Optionally, the Promise will be rejected when the named failure event fires.
 // Either way, the value will be the fired event.
+/**
+ * @param {HTMLElement} element
+ */
 function promise_event(element, success_event, failure_event) {
     let resolve, reject;
     let promise = new Promise((res, rej) => {
@@ -134,16 +145,27 @@ const GOOGLE_FONT_LOADER = new GoogleFontLoader;
 // The definition of an actor, independent of the actor itself.  Holds initial
 // configuration.
 class Role {
+    /**
+     * @param {string} name
+     */
     constructor(name) {
         this.name = name;
     }
 
-    // Call me after creating a Role subclass to make it loadable.
+    /**
+     * Call me after creating a Role subclass to make it loadable.
+     * @param {string} type_name
+     */
     static register(type_name) {
         this.type_name = type_name;
         Role._ROLE_TYPES[type_name] = this;
     }
 
+    /**
+     * @param {string} name
+     * @param {{}} json
+     * @returns {Role}
+     */
     static from_legacy_json(name, json) {
         if (this.type_name !== json.type) {
             throw new Error(`Role class ${this.name} can't load a role of type '${json.type}'`);
@@ -151,6 +173,10 @@ class Role {
         return new this(name);
     }
 
+    /**
+     * @param {{}} json
+     * @returns {Role}
+     */
     static from_json(json) {
         return new this(json.name);
     }
@@ -158,6 +184,9 @@ class Role {
     // Called after all roles are loaded, for restoring cross-references
     post_load(script) {}
 
+    /**
+     * @returns {{}}
+     */
     to_json() {
         return {
             name: this.name,
@@ -189,6 +218,10 @@ Role.Actor = null;
 
 
 class Actor {
+    /**
+     * @param role {Role}
+     * @param element {HTMLElement}
+     */
     constructor(role, element) {
         this.role = role;
         this.state = role.generate_initial_state();
@@ -196,6 +229,9 @@ class Actor {
         this.element = element;
     }
 
+    /**
+     * @returns {{}}
+     */
     make_initial_state() {
         let state = {};
         for (let [key, twiddle] of Object.entries(this.TWIDDLES)) {
@@ -222,6 +258,9 @@ class Actor {
     }
 
     // TODO figure this out.
+    /**
+     * @param {Director} director
+     */
     sync_with_role(director) {}
 
     // TODO? kind of a state issue here: what happens if you apply_state while paused?  that can happen in the editor, and also when jumping around from the pause screen, though it seems to incidentally work out alright, and anyway only jukebox is affected
@@ -237,6 +276,9 @@ Actor.LEGACY_JSON_ACTIONS = null;
 
 // Roles are choreographed by Steps, which are then applied to Actors
 class Step {
+    /**
+     * @param {Role} role
+     */
     constructor(role, kind_name, args) {
         this.role = role;
         this.kind_name = kind_name;
@@ -252,6 +294,9 @@ class Step {
         this.beat_index = null;
     }
 
+    /**
+     * @param {Beat} beat
+     */
     update_beat(beat) {
         this.kind.apply(this.role, beat, beat.get(this.role), ...this.args);
     }
@@ -353,6 +398,9 @@ Curtain.Actor = class CurtainActor extends Actor {
 // FIXME make roll_credits on old things work
 // FIXME "powered by GLEAM"!  i guess.  but that only makes sense for credits, maybe a mural is useful for something else too
 class Mural extends Role {
+    /**
+     * @param {string} name
+     */
     constructor(name, markup) {
         super(name);
         markup = `
@@ -406,6 +454,9 @@ Mural.LEGACY_JSON_ACTIONS = {
 };
 
 Mural.Actor = class MuralActor extends Actor {
+    /**
+     * @param {Role} role
+     */
     constructor(role) {
         super(role, mk('div.gleam-actor-mural'));
 
@@ -420,6 +471,9 @@ Mural.Actor = class MuralActor extends Actor {
 
 
 class CreditsMural extends Mural {
+    /**
+     * @param {string} name
+     */
     constructor(name, credits) {
         let markup = mk('div');
 
@@ -484,6 +538,9 @@ CreditsMural.register('creditsmural');
 
 
 class DialogueBox extends Role {
+    /**
+     * @param {string} name
+     */
     constructor(name) {
         super(name);
 
@@ -1094,6 +1151,9 @@ DialogueBox.Actor = class DialogueBoxActor extends Actor {
 
 
 class Jukebox extends Role {
+    /**
+     * @param {string} name
+     */
     constructor(name) {
         super(name);
         this.tracks = {};
@@ -1122,6 +1182,11 @@ class Jukebox extends Role {
         return json;
     }
 
+    /**
+     * @param {string} track_name
+     * @param {string} path
+     * @param {boolean} loop
+     */
     add_track(track_name, path, loop = true) {
         this.tracks[track_name] = {
             path: path,
@@ -1170,6 +1235,10 @@ Jukebox.LEGACY_JSON_ACTIONS = {
     stop: ["stop"],
 };
 Jukebox.Actor = class JukeboxActor extends Actor {
+    /**
+     * @param {Role} role
+     * @param {Director} director
+     */
     constructor(role, director) {
         super(role, mk('div.gleam-actor-jukebox'));
 
@@ -1521,6 +1590,10 @@ PictureFrame.LEGACY_JSON_ACTIONS = {
     hide: ["hide"],
 };
 PictureFrame.Actor = class PictureFrameActor extends Actor {
+    /**
+     * @param {Role} role
+     * @param {Director} director
+     */
     constructor(role, director) {
         super(role, mk('div.gleam-actor-pictureframe', {
             'data-name': role.name,
@@ -1862,6 +1935,9 @@ Character.LEGACY_JSON_ACTIONS = {
 // Script and playback
 
 class Beat {
+    /**
+     * @param {number} first_step_index
+     */
     constructor(states, first_step_index) {
         // The interesting bit!  Map of Role to a twiddle state
         this.states = states;
@@ -1883,7 +1959,10 @@ class Beat {
         return new this(states, 0);
     }
 
-    // Create the next beat, as a duplicate of this one
+    /**
+     * Create the next beat, as a duplicate of this one
+     * @returns {Beat}
+     */
     create_next() {
         // Eagerly-clone, in case of propagation
         let states = new Map();
@@ -1935,6 +2014,10 @@ class AssetLibrary {
         this.images = new Map;
     }
 
+    /**
+     * @param {string} path
+     * @returns {{}}
+     */
     asset(path) {
         let asset = this.assets[path];
         if (asset) {
@@ -1946,6 +2029,9 @@ class AssetLibrary {
         }
     }
 
+    /**
+     * @param {AssetLibrary} library
+     */
     inherit_uses(library) {
         for (let [path, asset] of Object.entries(library.assets)) {
             if (asset.used) {
@@ -2079,6 +2165,7 @@ class RemoteAssetLibrary extends AssetLibrary {
 }
 
 class Script {
+    subtitle = null;
     // A Script describes the entirety of a play (VN).  It has some number of
     // Actors (dialogue boxes, picture frames, etc.), and is defined by some
     // number of Steps -- discrete commands which control those actors.  The
@@ -2090,7 +2177,6 @@ class Script {
     constructor() {
         // Metadata
         this.title = null;
-        this.subtitle = null;
         this.author = null;
         this.created_date = Date.now();
         this.modified_date = Date.now();
@@ -2113,17 +2199,29 @@ class Script {
         this.intercom = mk('i');
     }
 
+    /**
+     * @param {Role} role
+     */
     _add_role(role) {
         // Internal only!
         this.roles.push(role);
         this.role_index[role.name] = role;
     }
 
+    /**
+     * @param {{}} json
+     * @returns {Script}
+     */
     static from_legacy_json(json) {
         let script = new this();
         script._load_legacy_json(json);
         return script;
     }
+
+    /**
+     * @param {{}} json
+     * @returns {Script}
+     */
     _load_legacy_json(json) {
         // Metadata
         this.title = json.title || null;
@@ -2209,6 +2307,10 @@ class Script {
         return this;
     }
 
+    /**
+     * @param {{}} json
+     * @returns {Script}
+     */
     static from_json(json) {
         let script = new this();
         // TODO check validity
@@ -2289,8 +2391,11 @@ class Script {
         this._refresh_beats(0);
     }
 
-    // Recreate beats, starting from the given step.  Called both when initializing the script and
-    // when making step edits in the editor.
+    /**
+     * Recreate beats, starting from the given step.  Called both when initializing the script and
+     * when making step edits in the editor.
+     * @param {number} initial_step_index
+     */
     _refresh_beats(initial_step_index) {
         if (this.steps.length === 0) {
             this.beats = [];
@@ -2377,6 +2482,10 @@ class Script {
 // The Director handles playback of a Script (including, of course, casting an
 // Actor for each Role).
 class Director {
+    /**
+     * @param {Script} script
+     * @param {AssetLibrary} library
+     */
     constructor(script, library = null) {
         this.script = script;
         // TODO what is a reasonable default for this?
@@ -2532,6 +2641,9 @@ class Director {
         this.jump(cursor);
     }
 
+    /**
+     * @param {number} dt
+     */
     update(dt) {
         for (let [name, actor] of Object.entries(this.actors)) {
             actor.update(dt);
@@ -2560,6 +2672,9 @@ class Director {
 }
 
 class PlayerOverlay {
+    /**
+     * @param {Player} player
+     */
     constructor(player) {
         this.player = player;
         this.body = mk('div.-body');
@@ -2588,6 +2703,9 @@ class PlayerOverlay {
 }
 
 class PlayerLoadingOverlay extends PlayerOverlay {
+    /**
+     * @param {Player} player
+     */
     constructor(player) {
         super(player);
         this.element.classList.add('gleam-overlay-loading');
@@ -2669,6 +2787,9 @@ class PlayerLoadingOverlay extends PlayerOverlay {
 }
 
 class PlayerPauseOverlay extends PlayerOverlay {
+    /**
+     * @param {Player} player
+     */
     constructor(player) {
         super(player);
         this.element.classList.add('gleam-overlay-pause');
@@ -2948,6 +3069,9 @@ class Player {
     // ------------------------------------------------------------------------
     // Running stuff
 
+    /**
+     * @param {number} dt
+     */
     update(dt) {
         this.director.update(dt);
         // FIXME Oh this is very bad, probably replace with events the director fires
