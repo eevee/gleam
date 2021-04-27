@@ -2467,7 +2467,7 @@ class Script {
     }
 
     /**
-     * @param {Strep} step
+     * @param {Step} step
      */
     _assert_own_step(step) {
         if (this.steps[step.index] !== step) {
@@ -2903,6 +2903,10 @@ class PlayerPauseOverlay extends PlayerOverlay {
 }
 
 class Player {
+    /**
+     * @param {Script} script
+     * @param {AssetLibrary} library
+     */
     constructor(script, library) {
         this.script = script;
         this.stage_container = mk('div.gleam-stage');
@@ -3064,7 +3068,10 @@ class Player {
         this.container.style.height = `${this.script.height}px`;
     }
 
-    // TODO this is not ideal, exactly; figure out a broader styling concept, later
+    /**
+     * TODO this is not ideal, exactly; figure out a broader styling concept, later
+     * @param {string} family
+     */
     set_default_font(family) {
         // TODO add this to the loading progress?  which...  is part of the director, hmmm
         // TODO what if the name is bogus?
@@ -3140,6 +3147,9 @@ class Player {
         this.container.classList.remove('--paused');
     }
 
+    /**
+     * @param {number} timestamp
+     */
     on_frame(timestamp) {
         // If our container leaves the document, stop the loop
         if (! this.container.isConnected) {
