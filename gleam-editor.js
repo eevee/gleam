@@ -369,6 +369,10 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
         read_directory(this.directory_entry, '');
     }
 
+    /**
+     * @param {string} path
+     * @return {URL}
+     */
     async get_url_for_path(path) {
         // Have to finish reading the directory first
         await this.done_reading_promise;
@@ -387,8 +391,13 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
         return asset.url;
     }
 
-    // FIXME the caller never explicitly knows if this is a bogus image
-    // FIXME this seems to have different semantics from Remote, especially wrt asset.url and asset.promise
+    /**
+     * FIXME the caller never explicitly knows if this is a bogus image
+     * FIXME this seems to have different semantics from Remote, especially wrt asset.url and asset.promise
+     * @param {string} path
+     * @param {HTMLElement} element
+     * @return {HTMLElement}
+     */
     load_image(path, element) {
         element = element || mk('img');
         element.classList.add('--missing');
@@ -403,6 +412,11 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
         return element;
     }
 
+    /**
+     * @param {string} path
+     * @param {HTMLElement} element
+     * @return {HTMLElement}
+     */
     load_audio(path, element) {
         element = element || mk('audio', {preload: 'auto'});
         element.setAttribute('data-path', path);
