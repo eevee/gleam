@@ -2466,6 +2466,9 @@ class Script {
         }
     }
 
+    /**
+     * @param {Strep} step
+     */
     _assert_own_step(step) {
         if (this.steps[step.index] !== step) {
             console.error(step);
@@ -2473,6 +2476,10 @@ class Script {
         }
     }
 
+    /**
+     * @param {Step} step
+     * @return {Beat}
+     */
     get_beat_for_step(step) {
         this._assert_own_step(step);
         return this.beats[step.beat_index];

@@ -22,12 +22,20 @@ function human_friendly_sort(filenames) {
 }
 
 class FauxRadioSet {
-    constructor(args) {
-        this.root = args.root;
-        this.selector = args.selector;
-        this.selected_class = args.selected_class;
-        this.identifier = args.identifier;
-        this.onselect = args.onselect;
+
+    /**
+     * @param {HTMLElement} root
+     * @param {string} selector
+     * @param {string} identifier
+     * @param {function} onselect
+     * @param {string} selected_class
+     */
+    constructor({root, selector, identifier, onselect, selected_class}) {
+        this.root = root;
+        this.selector = selector;
+        this.selected_class = selected_class;
+        this.identifier = identifier;
+        this.onselect = onselect;
         this.selected = null;
         this.selected_node = null;
 
@@ -215,14 +223,12 @@ class PopupMenuOverlay extends Overlay {
 
     /**
      * Align the popup, presumably to a parent element
-     * @param {{}} args
+     * @param {MouseEvent} event
+     * @param {HTMLElement} parent_element
      */
-    position(args) {
-        let ev = args.event;
-        let relto = args.parent_element;
-
-        if (relto) {
-            let rect = relto.getBoundingClientRect();
+    position({event, parent_element}) {
+        if (parent_element) {
+            let rect = parent_element.getBoundingClientRect();
             this.element.style.left = `${rect.left}px`;
             this.element.style.width = `${rect.width}px`;
             if (document.body.clientHeight - rect.bottom > 96) {
@@ -232,9 +238,9 @@ class PopupMenuOverlay extends Overlay {
                 this.element.style.bottom = `${document.body.clientHeight - rect.top + 2}px`;
             }
         }
-        else if (ev) {
-            this.element.style.left = `${Math.min(ev.clientX, document.body.clientWidth - this.element.offsetWidth)}px`;
-            this.element.style.top = `${Math.min(ev.clientY, document.body.clientHeight - this.element.offsetHeight)}px`;
+        else if (event) {
+            this.element.style.left = `${Math.min(event.clientX, document.body.clientWidth - this.element.offsetWidth)}px`;
+            this.element.style.top = `${Math.min(event.clientY, document.body.clientHeight - this.element.offsetHeight)}px`;
         }
     }
 }
@@ -2028,6 +2034,7 @@ class RolesPanel extends Panel {
     }
 
     /**
+     * @param {Script} script
      * @param {Director} director
      */
     load_script(script, director) {
@@ -2626,8 +2633,13 @@ class Editor {
         this.load_script(new MutableScript, new NullAssetLibrary);
     }
 
-    // TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
-    // TODO this /has/ to be a MutableScript passed in, but boy that's awkward?  should enforce here?  can i cast it, change the prototype???
+    /**
+     * TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
+     * TODO this /has/ to be a MutableScript passed in, but boy that's awkward?  should enforce here?  can i cast it, change the prototype???
+     * @param {MutableScript} script
+     * @param {AssetLibrary} library
+     * @param {string} slot
+     */
     load_script(script, library, slot) {
         if (this.player) {
             // TODO explicitly ask it to destroy itself?  dunno what that would do though
@@ -2684,6 +2696,9 @@ class Editor {
         this.player.container.style.setProperty('--scale', scale);
     }
 
+    /**
+     * @param {AssetLibrary} library
+     */
     set_library(library) {
         let old_library = this.library;
         this.library = library;
@@ -2709,6 +2724,10 @@ class Editor {
         //this.main_editor.player.director.role_to_actor.get(this.role).sync_with_role(this.main_editor.player.director);
     }
 
+    /**
+     * @param {Role} role
+     * @return {Actor}
+     */
     get_actor_for_role(role) {
         return this.player.director.role_to_actor.get(role);
     }
@@ -2816,6 +2835,10 @@ class EditorLauncher {
         xhr.send();
     }
 
+    /**
+     * @param {string|number} slot
+     * @param {Script} script
+     */
     save_script(slot, script) {
         let json = script.to_json();
         json.meta._editor = {
