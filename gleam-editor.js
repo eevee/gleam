@@ -1,7 +1,7 @@
 import {html, render} from 'https://unpkg.com/lit-html?module';
 import {repeat} from 'https://unpkg.com/lit-html/directives/repeat.js?module';
 
-import {Overlay as Overlay2, DialogOverlay, accept_drop} from './js/ui.js';
+import {Overlay as Overlay2, DialogOverlay, PopupListOverlay, accept_drop} from './js/ui.js';
 import {mk} from './js/util.js';
 
 if (! window.Gleam) {
@@ -11,15 +11,15 @@ if (! window.Gleam) {
 let svg_icon_from_path = Gleam.svg_icon_from_path;
 
 /**
- * @param {string[]} filenames
+ * @param {string} a
+ * @param {string} b
  */
-function human_friendly_sort(filenames) {
-    filenames.sort((a, b) => {
-        // By some fucking miracle, JavaScript can do
-        // human-friendly number sorting already, hallelujah
-        return a.localeCompare(b, undefined, { numeric: true });
-    });
+function human_friendly_sort(a, b) {
+    // By some fucking miracle, JavaScript can do human-friendly number sorting
+    // already, hallelujah
+    return a.localeCompare(b, undefined, { numeric: true });
 }
+const filename_sort = human_friendly_sort;
 
 class FauxRadioSet {
 
@@ -74,44 +74,6 @@ class FauxRadioSet {
         if (this.onselect) {
             this.onselect(this.selected_node, this.selected);
         }
-    }
-}
-
-// TODO maybe the overlay should be an object.
-// TODO maybe the overlay should be able to operate as a promise
-// TODO the overlay should be able to position itself by the mouse cursor, if opened in response to a click
-// TODO a transient overlay should probably disappear on document blur?
-/**
- * Very basic overlay handling
- * @param {HTMLElement} element
- */
-function open_overlay(element) {
-    let overlay = mk('div.gleam-editor-overlay');
-    overlay.appendChild(element);
-    document.body.appendChild(overlay);
-
-    // Remove the overlay when clicking outside the element
-    overlay.addEventListener('click', ev => {
-        close_overlay(overlay);
-    });
-    // But ignore any click on the element itself
-    element.addEventListener('click', ev => {
-        ev.stopPropagation();
-    });
-
-    return overlay;
-}
-
-/**
- * @param {EventTarget} element
- */
-function close_overlay(element) {
-    let overlay = element.closest('.gleam-editor-overlay');
-    if (overlay) {
-        // Let things respond to the closing
-        overlay.dispatchEvent(new CustomEvent('gleam-overlay-closed'));
-        overlay.remove();
-        return overlay;
     }
 }
 
@@ -174,74 +136,6 @@ class Overlay {
     // Close and destroy the overlay, WITHOUT touching the Promise
     _close() {
         this.container.remove();
-    }
-}
-
-class PopupMenuOverlay extends Overlay {
-    /**
-     * @param {{}} options
-     * @param {function} make_label
-     * @param {MouseEvent} mouse_event
-     */
-    constructor(options, make_label, mouse_event = null) {
-        // FIXME genericize this class
-        let list = mk('ol.gleam-editor-arg-enum-poses');
-        for (let [i, option] of options.entries()) {
-            let label = make_label(option);
-            if (label === null || label === undefined)
-                continue;
-
-            let li = mk('li', {'data-index': i});
-            if (label instanceof Array) {
-                li.append(...label);
-            }
-            else {
-                li.append(label);
-            }
-            list.append(li);
-        }
-
-        super(list, true);
-        this.options = options;
-
-        list.addEventListener('click', ev => {
-            let li = ev.target.closest('li');
-            if (! li)
-                return;
-
-            // TODO resolve(li.getAttribute('data-pose'));
-            this.choose(this.options[parseInt(li.getAttribute('data-index'), 10)]);
-        });
-
-        // TODO should probably scroll to and/or highlight the current selection, if any?
-        // TODO try to align with some particular text??
-        // TODO finer positioning control would be nice i guess
-        if (mouse_event) {
-            this.position({event: mouse_event});
-        }
-    }
-
-    /**
-     * Align the popup, presumably to a parent element
-     * @param {MouseEvent} event
-     * @param {HTMLElement} parent_element
-     */
-    position({event, parent_element}) {
-        if (parent_element) {
-            let rect = parent_element.getBoundingClientRect();
-            this.element.style.left = `${rect.left}px`;
-            this.element.style.width = `${rect.width}px`;
-            if (document.body.clientHeight - rect.bottom > 96) {
-                this.element.style.top = `${rect.bottom + 2}px`;
-            }
-            else {
-                this.element.style.bottom = `${document.body.clientHeight - rect.top + 2}px`;
-            }
-        }
-        else if (event) {
-            this.element.style.left = `${Math.min(event.clientX, document.body.clientWidth - this.element.offsetWidth)}px`;
-            this.element.style.top = `${Math.min(event.clientY, document.body.clientHeight - this.element.offsetHeight)}px`;
-        }
     }
 }
 
@@ -713,31 +607,16 @@ const STEP_ARGUMENT_TYPES = {
         },
         edit(element, value, step, mouse_event) {
             return new Promise((resolve, reject) => {
-                // FIXME this very poorly handles a very long list, and doesn't preview or anything
-                let editor_element = mk('ol.gleam-editor-arg-enum-poses');
-                for (let pose of Object.keys(step.role.poses)) {
-                    let li = mk('li', pose);
-                    li.setAttribute('data-pose', pose);
-                    editor_element.appendChild(li);
-                }
-                // Save on clicking a pose
-                editor_element.addEventListener('click', ev => {
-                    let li = ev.target.closest('li');
-                    if (! li)
-                        return;
-
-                    resolve(li.getAttribute('data-pose'));
-                    close_overlay(ev.target);
+                // FIXME this doesn't preview or anything; maybe a more tailor-made popup?
+                let pose_names = Object.keys(step.role.poses).sort(human_friendly_sort);
+                let overlay = new PopupListOverlay({
+                    items: pose_names,
+                    make_label: pose_name => pose_name,
+                    on_select: pose_name => resolve(pose_name),
+                    current: value,
                 });
-
-                // TODO should probably scroll to and/or highlight the current pose, if any
-                let overlay = open_overlay(editor_element);
-                editor_element.style.left = `${Math.min(mouse_event.clientX, document.body.clientWidth - editor_element.offsetWidth)}px`;
-                editor_element.style.top = `${Math.min(mouse_event.clientY, document.body.clientHeight - editor_element.offsetHeight)}px`;
-                // Clicking the overlay to close the menu means cancel
-                overlay.addEventListener('click', ev => {
-                    reject();
-                });
+                overlay.open();
+                overlay.set_position(element);
             });
         },
     },
@@ -776,35 +655,16 @@ const STEP_ARGUMENT_TYPES = {
             element.textContent = value;
         },
         edit(element, value, step, mouse_event) {
-            // FIXME this is very nearly identical to the poses code
             return new Promise((resolve, reject) => {
-                // FIXME this very poorly handles a very long list, and doesn't preview or anything
-                // FIXME this ain't poses either
-                let editor_element = mk('ol.gleam-editor-arg-enum-poses');
-                for (let track_name of Object.keys(step.role.tracks)) {
-                    let li = mk('li', track_name);
-                    li.setAttribute('data-track', track_name);
-                    editor_element.appendChild(li);
-                }
-                // Save on clicking a track
-                editor_element.addEventListener('click', ev => {
-                    let li = ev.target.closest('li');
-                    if (! li)
-                        return;
-
-                    resolve(li.getAttribute('data-track'));
-                    close_overlay(ev.target);
+                let pose_names = Object.keys(step.role.tracks).sort(human_friendly_sort);
+                let overlay = new PopupListOverlay({
+                    items: pose_names,
+                    make_label: pose_name => pose_name,
+                    on_select: pose_name => resolve(pose_name),
+                    current: value,
                 });
-
-                // FIXME better...  aiming?  don't go off the screen etc
-                // FIXME getting this passed in feels hacky but it's the only place to get the cursor position
-                editor_element.style.left = `${mouse_event.clientX}px`;
-                editor_element.style.top = `${mouse_event.clientY}px`;
-                let overlay = open_overlay(editor_element);
-                // Clicking the overlay to close the menu means cancel
-                overlay.addEventListener('click', ev => {
-                    reject();
-                });
+                overlay.open();
+                overlay.set_position(element);
             });
         },
     },
@@ -816,31 +676,39 @@ const STEP_ARGUMENT_TYPES = {
 
 // TODO i wonder if this would make more sense as a feature on the assets panel?  filter files by wildcard, then select all and drag them over.  i don't know how to do multi drag though
 // FIXME this is inappropriate for jukebox
-class AddByWildcardDialog {
+class AddByWildcardDialog extends DialogOverlay {
     /**
      * @param {RoleEditor} role_editor
      * @param {AssetLibrary} library
+     * @param {function} on_ok
      */
-    constructor(role_editor, library) {
+    constructor(role_editor, library, on_ok) {
+        super();
         this.role_editor = role_editor;
         this.library = library;
         this.results = [];
 
-        this.element = mk('div.gleam-editor-dialog');
         // TODO initialize wildcard?
-        this.element.innerHTML = `
-            <header><h1>Add poses in bulk</h1></header>
-            <p>Filename pattern: <input type="text" class="-wildcard" placeholder="*.png"></p>
-            <ul class="-files"></ul>
-            <footer><button type="button" class="-cancel">Cancel</button><button disabled type="button" class="-confirm">Add 0</button></footer>
-        `;
+        this.root.classList.add('dialog-add-by-wildcard');
+        this.set_title("Add poses in bulk");
 
-        this.textbox = this.element.querySelector('.-wildcard');
-        this.result_list = this.element.querySelector('.-files');
-        this.cancel_button = this.element.querySelector('.-cancel');
-        this.ok_button = this.element.querySelector('.-confirm');
+        this.textbox = mk('input.-wildcard', {type: 'text', placeholder: "*.png"});
+        this.result_list = mk('ul.-files');
+
+        this.main.append(
+            mk('p', "Filename pattern: ", this.textbox),
+            this.result_list,
+        );
+        this.ok_button = this.add_button("Add 0", ev => {
+            on_ok(this.results);
+            this.close();
+        });
+        this.add_button("Cancel", ev => {
+            this.close();
+        });
 
         this.textbox.addEventListener('input', ev => {
+            // TODO oh hey, lodash has a wrapper for this nonsense
             if (this.text_timeout) {
                 clearTimeout(this.text_timeout);
             }
@@ -850,33 +718,6 @@ class AddByWildcardDialog {
                 this.update_matches();
             }, 500);
         });
-
-        this.cancel_button.addEventListener('click', ev => {
-            close_overlay(this.element);
-        });
-
-        this.ok_button.addEventListener('click', ev => {
-            this._resolve(this.results);
-            // FIXME can't use close_overlay here because it'll get back to us and try to reject, lol whoops
-            this.element.closest('.gleam-editor-overlay').remove();
-        });
-    }
-
-    open() {
-        let overlay = open_overlay(this.element);
-        // Force reflow so the modal transition happens
-        // TODO this is ugly, maybe idk use an animation instead
-        overlay.offsetTop;
-        overlay.classList.add('--modal');
-        // TODO hm, state that assumes this method is only called once but that's not actually guaranteed.  maybe should have another function that actually opens the overlay (or even just do this from open_overlay!), but then how does this thing get at the resolve/reject?
-        this._promise = new Promise((resolve, reject) => {
-            this._resolve = resolve;
-            this._reject = reject;
-        });
-        overlay.addEventListener('gleam-overlay-closed', ev => {
-            this._reject();
-        });
-        return this._promise;
     }
 
     compile_regex(wildcard) {
@@ -917,7 +758,7 @@ class AddByWildcardDialog {
         let list = this.result_list;
 
         let library_paths = Object.keys(lib.assets);
-        human_friendly_sort(library_paths);
+        library_paths.sort(filename_sort);
 
         this.results = [];
         this.result_list.textContent = '';
@@ -948,27 +789,6 @@ class AddByWildcardDialog {
             this.ok_button.disabled = false;
         }
         this.ok_button.textContent = `Add ${this.results.length}`;
-    }
-
-    finish() {
-        // FIXME what if one of these names already exists?
-        for (let [name, path] of this.results) {
-            this.role_editor.role.add_static_pose(name, path);
-            // FIXME overt c/p job; also kind of invasive; also should there be sorting i wonder
-            // FIXME why not just use update_assets for this?
-            let li = mk('li');
-            let img = this.library.load_image(path);
-            img.classList.add('-asset');
-            li.append(img);
-            li.appendChild(mk('p.-caption', name));
-            this.role_editor.pose_list.appendChild(li);
-        }
-
-        // FIXME invasive...
-        // FIXME how do i update the existing actor, then?
-        this.role_editor.main_editor.player.director.role_to_actor.get(this.role_editor.role).sync_with_role(this.role_editor.main_editor.player.director);
-
-        close_overlay(this.element);
     }
 }
 
@@ -1332,11 +1152,8 @@ class JukeboxEditor extends RoleEditor {
         this.update_assets();
 
         let button = mk('button', "Add tracks in bulk");
-        button.addEventListener('click', async ev => {
-            // FIXME Well this is awkward
-            try {
-                let results = await new AddByWildcardDialog(this, this.main_editor.library).open();
-
+        button.addEventListener('click', ev => {
+            new AddByWildcardDialog(this, this.main_editor.library, results => {
                 // FIXME what if one of these names already exists?
                 for (let [name, path] of results) {
                     // TODO loop?
@@ -1358,8 +1175,7 @@ class JukeboxEditor extends RoleEditor {
                 // TODO this seems like it should be part of update_assets, but for ordering reasons it's called explicitly in set_library
                 let director = this.main_editor.player.director;
                 director.role_to_actor.get(this.role).sync_with_role(director);
-            }
-            catch (e) {}
+            }).open();
         });
 
         this.element.append(
@@ -1406,11 +1222,8 @@ class PictureFrameEditor extends RoleEditor {
         this.update_assets();
 
         let button = mk('button', "Add poses in bulk");
-        button.addEventListener('click', async ev => {
-            // FIXME Well this is awkward
-            try {
-                let results = await new AddByWildcardDialog(this, this.main_editor.library).open();
-
+        button.addEventListener('click', ev => {
+            new AddByWildcardDialog(this, this.main_editor.library, results => {
                 // FIXME what if one of these names already exists?
                 for (let [name, path] of results) {
                     this.role.add_static_pose(name, path);
@@ -1421,8 +1234,7 @@ class PictureFrameEditor extends RoleEditor {
                 // TODO this seems like it should be part of update_assets, but for ordering reasons it's called explicitly in set_library
                 let director = this.main_editor.player.director;
                 director.role_to_actor.get(this.role).sync_with_role(director);
-            }
-            catch (e) {}
+            }).open();
         });
 
         let button2 = mk('button', "Add all poses to script (comic mode)");
@@ -1749,27 +1561,26 @@ class CharacterEditor extends PictureFrameEditor {
             if (! dialogue_boxes.length) {
                 dialogue_boxes.push(null);
             }
-            let overlay = new PopupMenuOverlay(
-                dialogue_boxes,
-                role => {
+            let overlay = new PopupListOverlay({
+                items: dialogue_boxes,
+                make_label: role => {
                     return role ? role.name : "(no dialogue boxes available)";
                 },
-            );
-            overlay.position({
-                event: ev,
-                parent_element: prop_editor,
+                on_select: role => {
+                    this.role.dialogue_box = role;
+                    if (role) {
+                        prop_editor.textContent = role.name;
+                        prop_editor.classList.remove('--missing');
+                    }
+                    else {
+                        prop_editor.textContent = 'Must select a dialogue box to display text in!';
+                        prop_editor.classList.add('--missing');
+                    }
+                },
+                current: this.role.dialogue_box,
             });
-            overlay.promise.then(role => {
-                this.role.dialogue_box = role;
-                if (role) {
-                    prop_editor.textContent = role.name;
-                    prop_editor.classList.remove('--missing');
-                }
-                else {
-                    prop_editor.textContent = 'Must select a dialogue box to display text in!';
-                    prop_editor.classList.add('--missing');
-                }
-            }, () => {});
+            overlay.open();
+            overlay.set_position(prop_editor);
         });
 
         dd.append(prop_editor);
@@ -1955,7 +1766,7 @@ class AssetsPanel extends Panel {
         this.item_index = {};
 
         let paths = Object.keys(library.assets);
-        human_friendly_sort(paths);
+        paths.sort(filename_sort);
 
         for (let path of paths) {
             let asset = library.assets[path];
@@ -2007,31 +1818,32 @@ class RolesPanel extends Panel {
         button.innerHTML = svg_icon_from_path("M 8,1 V 15 M 1,8 H 15");
         button.addEventListener('click', ev => {
             // FIXME more general handling of popup list
-            let overlay = new PopupMenuOverlay(
-                ROLE_EDITOR_TYPES,
-                role_editor_type => {
+            let overlay = new PopupListOverlay({
+                items: ROLE_EDITOR_TYPES,
+                make_label: role_editor_type => {
                     if (! role_editor_type.role_type_name)
                         return null;
                     // TODO add explanations of these things too
                     return role_editor_type.role_type_name;
                 },
-                ev,
-            );
-            overlay.promise.then(role_editor_type => {
-                // Generate a name
-                let n = 1;
-                let name;
-                while (true) {
-                    name = `${role_editor_type.role_type_name} ${n}`;
-                    if (this.editor.script.role_index[name] === undefined) {
-                        break;
+                on_select: role_editor_type => {
+                    // Generate a name
+                    let n = 1;
+                    let name;
+                    while (true) {
+                        name = `${role_editor_type.role_type_name} ${n}`;
+                        if (this.editor.script.role_index[name] === undefined) {
+                            break;
+                        }
+                        n++;
                     }
-                    n++;
-                }
 
-                let role = role_editor_type.create_role(name);
-                this.editor.script.add_role(role);
-            }, () => {});
+                    let role = role_editor_type.create_role(name);
+                    this.editor.script.add_role(role);
+                },
+            });
+            overlay.open();
+            overlay.set_position(button);
         });
         this.nav.appendChild(button);
     }
@@ -2162,6 +1974,7 @@ class ScriptPanel extends Panel {
             let i = parseInt(arg.getAttribute('data-arg-index'), 10);
             let arg_def = step.kind.args[i];
             let arg_type = STEP_ARGUMENT_TYPES[arg_def.type];
+            // FIXME this has zero reason to use promises
             let promise = arg_type.edit(arg, step.args[i], step, ev);
             // FIXME ahh you could conceivably double-click on the same element again if it edits inline, like prose does...
             promise.then(new_value => {

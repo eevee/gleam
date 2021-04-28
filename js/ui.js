@@ -135,6 +135,7 @@ export class Overlay {
 export class TransientOverlay extends Overlay {
     open() {
         let overlay = super.open();
+        overlay.classList.add('--transient');
 
         overlay.addEventListener('click', ev => {
             this.close();
@@ -153,9 +154,92 @@ export class PopupOverlay extends TransientOverlay {
 }
 
 export class PopupListOverlay extends TransientOverlay {
-    constructor() {
-        let root = mk('div.popup');
-        super(root);
+    constructor({items, make_label, on_select, current = null}) {
+        let list = mk('ol.popup-list');
+        let current_el = null;
+        for (let [i, item] of items.entries()) {
+            let label = make_label(item);
+            if (label === null || label === undefined)
+                continue;
+
+            let li = mk('li', {'data-index': i});
+            if (label instanceof Array) {
+                li.append(...label);
+            }
+            else {
+                li.append(label);
+            }
+            list.append(li);
+
+            if (item === current && current_el === null) {
+                li.classList.add('-current');
+                current_el = li;
+            }
+        }
+
+        list.addEventListener('click', ev => {
+            let li = ev.target.closest('li');
+            if (! li || ! list.contains(li))
+                return;
+
+            if (li === this.current_el) {
+                this.close();
+                return;
+            }
+
+            let i = parseInt(li.getAttribute('data-index'), 10);
+            let item = this.items[i];
+            this.on_select(item, i);
+            this.close();
+        });
+
+        super(list);
+        this.items = items;
+        this.current_el = current_el;
+        this.on_select = on_select;
+    }
+
+    set_position(relto) {
+        // TODO cap top/bottom if this goes off the edge of the screen
+        let anchor = relto.getBoundingClientRect();
+        let rect = this.root.getBoundingClientRect();
+
+        // Set a min-width equal to the width of the anchor; this is handy for places like a
+        // Character's dialogue box selection, where the list will then match the size of the area
+        // you click to spawn it
+        this.root.style.minWidth = `${anchor.width}px`;
+
+        // Prefer left anchoring, but use right if that would go off the screen
+        if (anchor.left + rect.width > document.body.clientWidth) {
+            this.root.style.right = `${document.body.clientWidth - anchor.right}px`;
+        }
+        else {
+            this.root.style.left = `${anchor.left}px`;
+        }
+
+        // Open vertically in whichever direction has more space (with a slight bias towards opening
+        // downwards).  If we would then run off the screen, also set the other anchor to constrain
+        // the height.
+        let top_space = anchor.top - 0;
+        let bottom_space = document.body.clientHeight - anchor.bottom;
+        if (top_space > bottom_space) {
+            this.root.style.bottom = `${document.body.clientHeight - anchor.top}px`;
+            if (rect.height > top_space) {
+                this.root.style.top = `${0}px`;
+            }
+            if (this.current_el) {
+                this.current_el.scrollIntoView({block: 'end'});
+            }
+        }
+        else {
+            this.root.style.top = `${anchor.bottom}px`;
+            if (rect.height > bottom_space) {
+                this.root.style.bottom = `${0}px`;
+            }
+            if (this.current_el) {
+                this.current_el.scrollIntoView({block: 'start'});
+            }
+        }
     }
 }
 
@@ -187,6 +271,7 @@ export class DialogOverlay extends Overlay {
         let button = mk('button', {type: 'button'}, label);
         button.addEventListener('click', onclick);
         this.footer.append(button);
+        return button;
     }
 }
 

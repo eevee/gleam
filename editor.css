@@ -149,6 +149,33 @@ dl.gleam-editor-propmap > dd {
     right: 0;
     background: #fff4;
 }
+.overlay.--transient {
+    background: none;
+}
+
+.popup {
+}
+.popup-list {
+    position: absolute;
+    overflow-x: clip;
+    overflow-y: auto;
+    margin: 4px 0;
+    border: 1px solid #444;
+    color: black;
+    background: white;
+    box-shadow: 0 1px 4px 0 #0004;
+}
+.popup-list > li {
+    padding: 0.25em 0.5em;
+    cursor: pointer;
+}
+.popup-list > li:hover {
+    background: hsl(45, 75%, 90%);
+}
+.popup-list > li.-current {
+    box-shadow: inset 0 0 0 2px hsl(45, 75%, 60%);
+}
+
 .dialog {
     display: flex;
     flex-direction: column;
@@ -207,7 +234,19 @@ dl.gleam-editor-propmap > dd {
 .dialog-import-dialogue .gleam-editor-step.-import-dialogue-error {
     background: #ffe0e0;
 }
-
+.dialog-add-by-wildcard .-files {
+    height: 20em;
+    overflow-y: scroll;
+    border: 1px solid #999;
+    background: #f4f4f4;
+}
+.dialog-add-by-wildcard .-files li {
+    padding: 0.25em 0.33em;
+    color: #808080;
+}
+.dialog-add-by-wildcard .-files li .-match {
+    color: black;
+}
 
 .nonliteral {
     font-style: italic;
@@ -1036,22 +1075,6 @@ ul.composite-arg-variants label {
     background: #0009;
     transition: background 0.2s;
 }
-.gleam-editor-arg-enum-poses {
-    position: absolute;
-    min-width: 8em;
-    max-height: 50vh;
-    overflow-x: hidden;
-    overflow-y: auto;
-    box-shadow: 0 0 0 1px #444, 0 1px 4px 2px #0004;
-}
-.gleam-editor-arg-enum-poses li {
-    background: #e8e8e8;
-    padding: 0.25em 0.5em;
-    cursor: pointer;
-}
-.gleam-editor-arg-enum-poses li:hover {
-    background: hsl(45, 75%, 90%);
-}
 
 
 /* Overlaid dialogs */
@@ -1079,20 +1102,6 @@ ul.composite-arg-variants label {
 }
 .gleam-editor-dialog > footer button {
     font-size: 1.25em;
-}
-/* Specific to bulk-add and other file selection */
-.gleam-editor-dialog .-files {
-    height: 20em;
-    overflow-y: scroll;
-    border: 1px solid #999;
-    background: #f4f4f4;
-}
-.gleam-editor-dialog .-files li {
-    padding: 0.25em 0.33em;
-    color: #808080;
-}
-.gleam-editor-dialog .-files li .-match {
-    color: black;
 }
 
 
