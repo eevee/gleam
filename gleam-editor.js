@@ -2428,7 +2428,8 @@ class ScriptPanel extends Panel {
                 mk('h2', role_editor.role.name),
                 dl);
             let dd_map = {};
-            for (let key of Object.keys(role_editor.role.TWIDDLES)) {
+            let dummy_state = role_editor.role.generate_initial_state();
+            for (let key of Object.keys(dummy_state)) {
                 // TODO display name?  maybe not
                 let dd = mk('dd');
                 dd_map[key] = dd;
