@@ -189,13 +189,14 @@ dl.gleam-editor-propmap > dd {
     box-shadow: 0 1px 3px #000c;
 }
 .dialog > header {
-    padding: 0.5em;
+    margin: 1em;
+    margin-bottom: 0;
+    padding-bottom: 0.5em;
     line-height: 1;
-    background: hsl(225, 20%, 40%);
-    color: white;
+    border-bottom: 1px solid #ccc;
 }
 .dialog > header h1 {
-    font-size: 1em;
+    font-size: 1.5em;
 }
 .dialog > footer {
     display: flex;
@@ -203,15 +204,24 @@ dl.gleam-editor-propmap > dd {
     gap: 0.5em;
 
     padding: 0.5em;
-    background: #d0d0d0;
+    background: #ddd;
 }
 .dialog > header:empty,
 .dialog > footer:empty {
     display: none;
 }
+.dialog > footer button[type=submit] {
+    background: hsl(225, 50%, 30%);
+}
 .dialog > section {
     overflow: auto;
     padding: 1em;
+}
+.dialog > section > *:first-child {
+    margin-top: 0;
+}
+.dialog > section > *:last-child {
+    margin-bottom: 0;
 }
 .dialog pre.error {
     color: #400000;
@@ -1053,55 +1063,6 @@ textarea.gleam-editor-arg-prose {
 }
 ul.composite-arg-variants label {
     display: block;
-}
-
-
-/* Overlay */
-.gleam-editor-overlay {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    color: black;
-    background: transparent;
-
-    /* Center contents, which are assumed to be a single item */
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-}
-.gleam-editor-overlay.--modal {
-    background: #0009;
-    transition: background 0.2s;
-}
-
-
-/* Overlaid dialogs */
-.gleam-editor-dialog {
-    background: white;
-    border: 1px solid black;
-    box-shadow: 0 2px 2px #0009;
-    padding: 1em;
-}
-.gleam-editor-dialog > header {
-    padding-bottom: 0.5em;
-    margin-bottom: 1em;
-    border-bottom: 1px solid #c0c0c0;
-}
-.gleam-editor-dialog > header h1 {
-    font-size: 1.5em;
-}
-.gleam-editor-dialog > footer {
-    /* XXX i really hate this "fighting the surrounding margin" thing */
-    margin: -1em;
-    padding: 0.5em 1em;
-    margin-top: 1em;
-    background: #d8d8d8;
-    text-align: right;
-}
-.gleam-editor-dialog > footer button {
-    font-size: 1.25em;
 }
 
 

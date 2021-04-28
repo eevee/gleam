@@ -1,7 +1,7 @@
 import {html, render} from 'https://unpkg.com/lit-html?module';
 import {repeat} from 'https://unpkg.com/lit-html/directives/repeat.js?module';
 
-import {Overlay as Overlay2, DialogOverlay, PopupListOverlay, accept_drop} from './js/ui.js';
+import {DialogOverlay, PopupListOverlay, accept_drop} from './js/ui.js';
 import {mk} from './js/util.js';
 
 if (! window.Gleam) {
@@ -77,67 +77,6 @@ class FauxRadioSet {
     }
 }
 
-// Wrapper around a modal that lives above everything else, e.g. a fake popup
-// menu or a dialog.  Note that the constructor also displays the overlay!
-// TODO maybe it shouldn't?
-// TODO unsure about ergonomics
-// FIXME this very poorly handles a very long list, i think?
-// FIXME remove this in favor of the one from LL
-class Overlay {
-    /**
-     * @param {HTMLElement} element
-     * @param {boolean} is_transient
-     */
-    constructor(element, is_transient) {
-        this.is_transient = is_transient;
-        this.element = element;
-
-        this.container = mk('div.gleam-editor-overlay');
-        this.container.appendChild(element);
-        document.body.appendChild(this.container);
-
-        if (is_transient) {
-            // Remove a transient overlay when clicking outside the element
-            this.container.addEventListener('click', ev => {
-                this.dismiss();
-            });
-            // But ignore any click on the element itself
-            element.addEventListener('click', ev => {
-                ev.stopPropagation();
-            });
-        }
-        else {
-            // Force reflow so the modal transition happens
-            // TODO this is ugly, maybe idk use an animation instead
-            // TODO this isn't much of a transition either?
-            this.container.offsetTop;
-            this.container.classList.add('--modal');
-        }
-
-        // Create a promise to contain our state
-        this.promise = new Promise((resolve, reject) => {
-            this._resolve = resolve;
-            this._reject = reject;
-        });
-    }
-
-    // Resolve the Promise with a value, then close the overlay
-    choose(value) {
-        this._resolve(value);
-        this._close();
-    }
-
-    // Reject the Promise, then close the overlay
-    dismiss() {
-        this._reject();
-        this._close();
-    }
-
-    // Close and destroy the overlay, WITHOUT touching the Promise
-    _close() {
-        this.container.remove();
-    }
-}
 
 /**
  * @param {string} initial_value
@@ -792,100 +731,62 @@ class AddByWildcardDialog extends DialogOverlay {
     }
 }
 
-class MetadataDialog extends Overlay {
-    constructor(metadata) {
-        let cancel_button = mk('button.-cancel', {type: 'button'}, "Cancel");
-        cancel_button.addEventListener('click', ev => {
-            this.dismiss();
-        });
-
-        let dialog = mk('form.gleam-editor-dialog',
-            mk('header', mk('h1', "Edit title")),
+class MetadataDialog extends DialogOverlay {
+    constructor(editor) {
+        super();
+        let script = editor.script;
+        this.set_title("Edit title");
+        this.main.append(
             mk('dl.gleam-editor-propmap',
                 mk('dt', "Title: "),
-                mk('dd', mk('input', {type: 'text', name: 'title', value: metadata.title || ''})),
+                mk('dd', mk('input', {type: 'text', name: 'title', value: script.title ?? ''})),
                 mk('dt', "Subtitle: "),
-                mk('dd', mk('input', {type: 'text', name: 'subtitle', value: metadata.subtitle || ''})),
+                mk('dd', mk('input', {type: 'text', name: 'subtitle', value: script.subtitle ?? ''})),
                 mk('dt', "Author: "),
-                mk('dd', mk('input', {type: 'text', name: 'author', value: metadata.author || ''})),
-            ),
-            mk('footer',
-                cancel_button,
-                mk('button.-confirm', {type: 'submit'}, "Save"),
+                mk('dd', mk('input', {type: 'text', name: 'author', value: script.author ?? ''})),
             ),
         );
 
-        dialog.addEventListener('submit', ev => {
-            let results = {};
-            let form = this.element;
-            results['title'] = form.elements['title'].value || null;
-            results['subtitle'] = form.elements['subtitle'].value || null;
-            results['author'] = form.elements['author'].value || null;
-            this.choose(results);
+        this.add_button("Cancel", ev => {
+            this.close();
         });
-        // Allow pressing Esc on a field to abandon the dialog
-        dialog.addEventListener('keydown', ev => {
-            if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
-                return;
-
-            if (ev.key === 'Escape') {
-                ev.preventDefault();
-                ev.stopPropagation();
-                this.dismiss();
-            }
+        this.add_submit_button("Save", ev => {
+            script.title = this.root.elements['title'].value || null;
+            script.subtitle = this.root.elements['subtitle'].value || null;
+            script.author = this.root.elements['author'].value || null;
+            editor.update_script_metadata();
+            this.close();
         });
-
-        super(dialog, false);
     }
 }
 
-class StageSizeDialog extends Overlay {
-    constructor(script) {
-        // TODO boy a lot of this is repetitive
-        let cancel_button = mk('button.-cancel', {type: 'button'}, "Cancel");
-        cancel_button.addEventListener('click', ev => {
-            this.dismiss();
-        });
-
-        let dialog = mk('form.gleam-editor-dialog',
-            mk('header', mk('h1', "Change size")),
+class StageSizeDialog extends DialogOverlay {
+    constructor(editor) {
+        super();
+        let script = editor.script;
+        this.set_title("Change size");
+        this.main.append(
             mk('dl.gleam-editor-propmap',
                 mk('dt', "Width"),
                 mk('dd', mk('input', {type: 'number', name: 'width', min: 1, value: script.width || 800})),
                 mk('dt', "Height"),
                 mk('dd', mk('input', {type: 'number', name: 'height', min: 1, value: script.height || 600})),
             ),
-            // TODO consider a button for using the greatest size of all image assets or something
-            mk('footer',
-                cancel_button,
-                mk('button.-confirm', {type: 'submit'}, "Save"),
-            ),
         );
 
-        dialog.addEventListener('submit', ev => {
+        // TODO consider a button for using the greatest size of all image assets or something
+        this.add_button("Cancel", ev => {
+            this.close();
+        });
+        this.add_submit_button("Save", ev => {
             // TODO probably worth some validation; 'min' provides some but doesn't enforce it i
             // think
-            let form = this.element;
-            script.width = parseInt(form.elements['width'].value, 10);
-            script.height = parseInt(form.elements['height'].value, 10);
-            // TODO i think i'd like to de-async most of the dialogs, since most of the time the
-            // continuation just does a single obvious thing anyway
-            this.choose();
+            script.width = parseInt(this.root.elements['width'].value, 10);
+            script.height = parseInt(this.root.elements['height'].value, 10);
+            editor.player.update_container_size();
+            editor.auto_scale_player();
+            this.close();
         });
-        // Allow pressing Esc on a field to abandon the dialog
-        // TODO ok this is /extremely/ duplicated
-        dialog.addEventListener('keydown', ev => {
-            if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
-                return;
-
-            if (ev.key === 'Escape') {
-                ev.preventDefault();
-                ev.stopPropagation();
-                this.dismiss();
-            }
-        });
-
-        super(dialog, false);
     }
 }
 
@@ -991,6 +892,38 @@ class ImportDialogueDialog extends DialogOverlay {
         for (let step of steps) {
             script.insert_step(step, script.steps.length);
         }
+    }
+}
+
+class PublishDialog extends DialogOverlay {
+    constructor(editor) {
+        super();
+        this.set_title("Publish");
+
+        let json = editor.script.to_json();
+        let blob = new Blob([JSON.stringify(json, null, 2)], {type: 'text/json'});
+        this.url = URL.createObjectURL(blob);
+        let a = mk('a', {
+            href: this.url,
+            download: 'gleam-script.json',
+        }, "gleam-script.json");
+
+        // TODO dang i wish i could drag this to the local folder?
+        // TODO wait.  can't i...  create this myself.
+        this.main.append(
+            mk('p', "Save this file in the same directory as your assets, gleam-player.css, gleam-player.js, and index.html:"),
+            mk('p', a),
+        );
+
+        this.add_button("Done", ev => {
+            this.close();
+        });
+    }
+
+    close() {
+        // NOTE: This dialog is not reusable!
+        URL.revokeObjectURL(this.url);
+        super.close();
     }
 }
 
@@ -2415,18 +2348,11 @@ class Editor {
             button.addEventListener('click', onclick);
             return button;
         };
-        make_button("Change stage size", async ev => {
-            await new StageSizeDialog(this.script).promise;
-            this.player.update_container_size();
-            this.auto_scale_player();
+        make_button("Change stage size", ev => {
+            new StageSizeDialog(this).open();
         });
         make_button("Edit title", ev => {
-            new MetadataDialog(this.script).promise.then(metadata => {
-                this.script.title = metadata.title;
-                this.script.subtitle = metadata.subtitle;
-                this.script.author = metadata.author;
-                this.update_script_metadata();
-            }, () => {});
+            new MetadataDialog(this).open();
         });
         make_button("Import dialogue", ev => {
             new ImportDialogueDialog(this).open();
@@ -2438,19 +2364,7 @@ class Editor {
             }
         });
         make_button("Publish", ev => {
-            let json = this.script.to_json();
-            let blob = new Blob([JSON.stringify(json, null, 2)], {type: 'text/json'});
-            let url = URL.createObjectURL(blob);
-            let a = mk('a', {
-                href: url,
-                download: 'gleam-script.json',
-            }, "gleam-script.json");
-            // TODO dang i wish i could drag this to the local folder?
-            // TODO wait.  can't i...  create this myself.
-            let dialog = mk('div.gleam-editor-dialog', mk('p', "Save this file in the same directory as your assets, gleam-player.css, gleam-player.js, and index.html:"), a);
-            new Overlay(dialog, true).promise.finally(() => {
-                URL.revokeObjectURL(url);
-            });
+            new PublishDialog(this).open();
         });
 
         window.addEventListener('resize', ev => {
@@ -2503,6 +2417,7 @@ class Editor {
 
     update_script_metadata() {
         // TODO kind of a mess, should hold refs, etc., but the layout isn't set yet
+        // TODO doesn't update the pause screen in the player, jesus christ
         let meta = document.body.querySelector('#gleam-editor-header-metadata');
         // TODO show author?  show slot?
         meta.querySelector('h2').textContent = this.script.title || '(untitled)';

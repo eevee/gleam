@@ -101,7 +101,7 @@ export class Overlay {
 
         // Allow pressing Esc on a field to abandon the dialog
         // TODO this should really bind to the body and only work when the dialog is visible, OR add
-        // tabindex to the root itself
+        // tabindex to the root itself -- see what LL currently has
         this.root.addEventListener('keydown', ev => {
             if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey)
                 return;
@@ -270,6 +270,17 @@ export class DialogOverlay extends Overlay {
     add_button(label, onclick) {
         let button = mk('button', {type: 'button'}, label);
         button.addEventListener('click', onclick);
+        this.footer.append(button);
+        return button;
+    }
+
+    /**
+     * @param {string} label
+     * @param {function} onsubmit
+     */
+    add_submit_button(label, onsubmit) {
+        let button = mk('button', {type: 'submit'}, label);
+        this.root.addEventListener('submit', onsubmit);
         this.footer.append(button);
         return button;
     }
