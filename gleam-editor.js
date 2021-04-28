@@ -391,9 +391,9 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
         return asset.url;
     }
 
+    // FIXME the caller never explicitly knows if this is a bogus image
+    // FIXME this seems to have different semantics from Remote, especially wrt asset.url and asset.promise
     /**
-     * FIXME the caller never explicitly knows if this is a bogus image
-     * FIXME this seems to have different semantics from Remote, especially wrt asset.url and asset.promise
      * @param {string} path
      * @param {HTMLElement} element
      * @return {HTMLElement}
