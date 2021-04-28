@@ -165,17 +165,18 @@ class Role {
         };
     }
 
+    // Create an object representing the initial default state (and also documenting its keys),
+    // which should put the role in a "blank" state
     generate_initial_state() {
-        let state = {};
-        for (let [key, twiddle] of Object.entries(this.TWIDDLES)) {
-            if (twiddle.initial instanceof Function) {
-                state[key] = twiddle.initial(this);
-            }
-            else {
-                state[key] = twiddle.initial;
-            }
-        }
-        return state;
+        console.warn("Role did not define generate_initial_state:", this);
+        return {};
+    }
+
+    // Given a previous beat's state, create a starting state for the next beat.  Note that this
+    // will be mutated by the next beat's construction, so it should NEVER return its argument!
+    // By default this returns a shallow copy.
+    propagate_state(prev) {
+        return {...prev};
     }
 
     // Create an Actor to play out this Role
@@ -183,7 +184,6 @@ class Role {
         return new this.constructor.Actor(this, director);
     }
 }
-Role.prototype.TWIDDLES = {};
 Role._ROLE_TYPES = {};
 Role.Actor = null;
 
@@ -194,14 +194,6 @@ class Actor {
         this.state = role.generate_initial_state();
 
         this.element = element;
-    }
-
-    make_initial_state() {
-        let state = {};
-        for (let [key, twiddle] of Object.entries(this.TWIDDLES)) {
-            state[key] = twiddle.initial;
-        }
-        return state;
     }
 
     update(dt) {}
@@ -229,7 +221,6 @@ class Actor {
 
     unpause() {}
 }
-Actor.prototype.TWIDDLES = {};
 // Must also be defined on subclasses:
 Actor.STEP_KINDS = null;
 Actor.LEGACY_JSON_ACTIONS = null;
@@ -259,9 +250,11 @@ class Step {
 
 
 class Stage extends Role {
+    generate_initial_state() {
+        return {};
+    }
 }
 Stage.register('stage');
-Stage.prototype.TWIDDLES = {};
 Stage.STEP_KINDS = {
     pause: {
         display_name: "pause",
@@ -303,15 +296,20 @@ Stage.Actor = class StageActor extends Actor {
 
 // Full-screen transition actor
 class Curtain extends Role {
+    generate_initial_state() {
+        return {
+            // Whether the curtain is currently visible.  Only lasts one beat.
+            lowered: false,
+        };
+    }
+    propagate_state(prev) {
+        return {
+            ...prev,
+            lowered: false,
+        };
+    }
 }
 Curtain.register('curtain');
-Curtain.prototype.TWIDDLES = {
-    lowered: {
-        initial: false,
-        type: Boolean,
-        propagate: false,
-    },
-};
 Curtain.STEP_KINDS = {
     lower: {
         display_name: 'lower',
@@ -381,15 +379,20 @@ class Mural extends Role {
         json.markup = this.markup;
         return json;
     }
+
+    generate_initial_state() {
+        return {
+            visible: false,
+        };
+    }
+    propagate_state(prev) {
+        return {
+            ...prev,
+            visible: false,
+        };
+    }
 }
 Mural.register('mural');
-Mural.prototype.TWIDDLES = {
-    visible: {
-        initial: false,
-        type: Boolean,
-        propagate: false,
-    },
-};
 Mural.STEP_KINDS = {
     show: {
         display_name: 'show',
@@ -495,23 +498,26 @@ class DialogueBox extends Role {
         json.speed = 60;
         return json;
     }
+
+    generate_initial_state() {
+        return {
+            // Text currently being displayed.  If null, the dialogue box is hidden.
+            // Only lasts one beat.
+            phrase: null,
+            // Speaker's name.
+            speaker: null,
+            color: null,
+            position: null,
+        };
+    }
+    propagate_state(prev) {
+        return {
+            ...prev,
+            phrase: null,
+        };
+    }
 }
 DialogueBox.register('dialogue-box');
-DialogueBox.prototype.TWIDDLES = {
-    phrase: {
-        initial: null,
-        propagate: null,
-    },
-    speaker: {
-        initial: null,
-    },
-    color: {
-        initial: null,
-    },
-    position: {
-        initial: null,
-    },
-};
 DialogueBox.STEP_KINDS = {};
 DialogueBox.LEGACY_JSON_ACTIONS = {};
 DialogueBox.Actor = class DialogueBoxActor extends Actor {
@@ -1128,14 +1134,14 @@ class Jukebox extends Role {
             loop: loop,
         };
     }
+
+    generate_initial_state() {
+        return {
+            track: null,
+        };
+    }
 }
 Jukebox.register('jukebox');
-Jukebox.prototype.TWIDDLES = {
-    track: {
-        initial: null,
-        // XXX type?  index into Jukebox.tracks
-    },
-};
 Jukebox.STEP_KINDS = {
     play: {
         display_name: "play",
@@ -1412,6 +1418,42 @@ class PictureFrame extends Role {
         };
     }
 
+    generate_initial_state() {
+        let composites = {};
+        for (let [pose_name, pose] of Object.entries(this.poses)) {
+            if (pose.type !== 'composite')
+                continue;
+
+            composites[pose_name] = {};
+            for (let layername of pose.order) {
+                composites[pose_name][layername] = false;  // TODO default
+            }
+        }
+
+        return {
+            // TODO this used to have a 'check' method as a twiddle, unclear if it does now (and
+            // also that's really a step thing) but it wasn't called anywhere anyway!!
+            pose: null,
+            // Map of pose name => { layer name => visible variant, or false if none }
+            composites,
+        };
+    }
+    propagate_state(prev) {
+        // Deep-copy the composites, since steps can deep-modify it
+        let composites = {};
+        for (let [pose_name, variants] of Object.entries(prev.composites)) {
+            composites[pose_name] = {};
+            for (let [layername, variant] of Object.entries(variants)) {
+                composites[pose_name][layername] = variant;
+            }
+        }
+
+        return {
+            ...prev,
+            composites,
+        };
+    }
+
     // -- Editor mutation --
 
     _rename_pose(old_pose_name, new_pose_name) {
@@ -1425,46 +1467,6 @@ class PictureFrame extends Role {
     }
 }
 PictureFrame.register('picture-frame');
-PictureFrame.prototype.TWIDDLES = {
-    pose: {
-        initial: null,
-        // XXX type?  index into PictureFrame.poses
-        check(actor, value) {
-            if (value !== null && actor.poses[value] === undefined) {
-                return `No such pose: ${value}`;
-            }
-        }
-    },
-    composites: {
-        // Map of pose => { layer => variant }
-        initial(role) {
-            let value = {};
-            for (let [pose_name, pose] of Object.entries(role.poses)) {
-                if (pose.type !== 'composite')
-                    continue;
-
-                value[pose_name] = {};
-                for (let layername of pose.order) {
-                    value[pose_name][layername] = false;  // TODO default
-                }
-            }
-            return value;
-        },
-        check() {
-            // TODO!!!!
-        },
-        propagate(prev_value) {
-            let value = {};
-            for (let [pose_name, variants] of Object.entries(prev_value)) {
-                value[pose_name] = {};
-                for (let [layername, variant] of Object.entries(variants)) {
-                    value[pose_name][layername] = variant;
-                }
-            }
-            return value;
-        },
-    },
-};
 // TODO ok so the thing here, is, that, uh, um
 // - i need conversion from "legacy" json actions
 // - i need to know what to show in the ui
@@ -1799,10 +1801,6 @@ class Character extends PictureFrame {
     // FIXME i think i should also be saving the dialogue box name?  and, dialogue name/color/etc which don't even appear in the constructor
 }
 Character.register('character');
-// XXX aha, this could be a problem.  a character is a delegate; it doesn't have any actual twiddles of its own!
-// in the old code (by which i mean, round two), the character even OWNS the pictureframe...
-// so "Character:say" is really two twiddle updates on the dialogue box: the phrase AND the speaker whose style to use.  hrm.
-//Character.prototype.TWIDDLES = {};
 Character.STEP_KINDS = {
     pose: PictureFrame.STEP_KINDS.show,
     leave: PictureFrame.STEP_KINDS.hide,
@@ -1813,24 +1811,6 @@ Character.STEP_KINDS = {
             display_name: 'phrase',
             type: 'prose',
             nullable: false,
-        }],
-        twiddles: [{
-            delegate: 'dialogue_box',
-            key: 'phrase',
-            arg: 0,
-        }, {
-            // TODO these should probably be twiddles themselves?
-            delegate: 'dialogue_box',
-            key: 'color',
-            prop: 'dialogue_color',
-        }, {
-            delegate: 'dialogue_box',
-            key: 'speaker',
-            prop: 'dialogue_name',
-        }, {
-            delegate: 'dialogue_box',
-            key: 'position',
-            prop: 'dialogue_position',
         }],
         check() {
             // TODO check it's a string?  check for dialogue box?
@@ -1845,7 +1825,7 @@ Character.STEP_KINDS = {
             let dstate = beat.get(dbox);
             dstate.color = role.dialogue_color;
             dstate.speaker = role.dialogue_name;
-            dstate.color = role.dialogue_color;
+            dstate.position = role.dialogue_position;
             dstate.phrase = phrase;
         },
     },
@@ -1886,24 +1866,10 @@ class Beat {
     // Create the next beat, as a duplicate of this one
     create_next() {
         // Eagerly-clone, in case of propagation
+        // TODO what if...  we did not eagerly clone?
         let states = new Map();
         for (let [role, prev_state] of this.states) {
-            let state = {};
-            for (let [key, twiddle] of Object.entries(role.TWIDDLES)) {
-                if (twiddle.propagate === undefined) {
-                    // Keep using the current value
-                    state[key] = prev_state[key];
-                }
-                else if (twiddle.propagate instanceof Function) {
-                    // Custom propagation (probably a deep clone)
-                    state[key] = twiddle.propagate(prev_state[key]);
-                }
-                else {
-                    // Revert to the given propagate value
-                    state[key] = twiddle.propagate;
-                }
-            }
-            states.set(role, state);
+            states.set(role, role.propagate_state(prev_state));
         }
 
         return new Beat(states, this.last_step_index + 1);
