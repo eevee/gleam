@@ -228,7 +228,7 @@ class Actor {
 
         this.element = element;
     }
-    
+
     update(dt) {}
 
     // Return false to interrupt the advance
@@ -3031,8 +3031,8 @@ class Player {
         this.container.style.height = `${this.script.height}px`;
     }
 
+    // TODO this is not ideal, exactly; figure out a broader styling concept, later
     /**
-     * TODO this is not ideal, exactly; figure out a broader styling concept, later
      * @param {string} family
      */
     set_default_font(family) {

@@ -77,12 +77,12 @@ class FauxRadioSet {
     }
 }
 
+// TODO maybe the overlay should be an object.
+// TODO maybe the overlay should be able to operate as a promise
+// TODO the overlay should be able to position itself by the mouse cursor, if opened in response to a click
+// TODO a transient overlay should probably disappear on document blur?
 /**
  * Very basic overlay handling
- * TODO maybe the overlay should be an object.
- * TODO maybe the overlay should be able to operate as a promise
- * TODO the overlay should be able to position itself by the mouse cursor, if opened in response to a click
- * TODO a transient overlay should probably disappear on document blur?
  * @param {HTMLElement} element
  */
 function open_overlay(element) {
@@ -2648,9 +2648,9 @@ class Editor {
         this.load_script(new MutableScript, new NullAssetLibrary);
     }
 
+    // TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
+    // TODO this /has/ to be a MutableScript passed in, but boy that's awkward?  should enforce here?  can i cast it, change the prototype???
     /**
-     * TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
-     * TODO this /has/ to be a MutableScript passed in, but boy that's awkward?  should enforce here?  can i cast it, change the prototype???
      * @param {MutableScript} script
      * @param {AssetLibrary} library
      * @param {string} slot
