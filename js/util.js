@@ -1,3 +1,7 @@
+/**
+ * @param {string} tag_selector
+ * @return {HTMLElement}
+ */
 export function mk(tag_selector, ...children) {
     let [tag, ...classes] = tag_selector.split('.');
     let el = document.createElement(tag);

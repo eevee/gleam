@@ -10,6 +10,9 @@ if (! window.Gleam) {
 
 let svg_icon_from_path = Gleam.svg_icon_from_path;
 
+/**
+ * @param {string[]} filenames
+ */
 function human_friendly_sort(filenames) {
     filenames.sort((a, b) => {
         // By some fucking miracle, JavaScript can do
@@ -19,12 +22,20 @@ function human_friendly_sort(filenames) {
 }
 
 class FauxRadioSet {
-    constructor(args) {
-        this.root = args.root;
-        this.selector = args.selector;
-        this.selected_class = args.selected_class;
-        this.identifier = args.identifier;
-        this.onselect = args.onselect;
+
+    /**
+     * @param {HTMLElement} root
+     * @param {string} selector
+     * @param {string} identifier
+     * @param {function} onselect
+     * @param {string} selected_class
+     */
+    constructor({root, selector, identifier, onselect, selected_class}) {
+        this.root = root;
+        this.selector = selector;
+        this.selected_class = selected_class;
+        this.identifier = identifier;
+        this.onselect = onselect;
         this.selected = null;
         this.selected_node = null;
 
@@ -66,11 +77,14 @@ class FauxRadioSet {
     }
 }
 
-// Very basic overlay handling
 // TODO maybe the overlay should be an object.
 // TODO maybe the overlay should be able to operate as a promise
 // TODO the overlay should be able to position itself by the mouse cursor, if opened in response to a click
 // TODO a transient overlay should probably disappear on document blur?
+/**
+ * Very basic overlay handling
+ * @param {HTMLElement} element
+ */
 function open_overlay(element) {
     let overlay = mk('div.gleam-editor-overlay');
     overlay.appendChild(element);
@@ -88,6 +102,9 @@ function open_overlay(element) {
     return overlay;
 }
 
+/**
+ * @param {EventTarget} element
+ */
 function close_overlay(element) {
     let overlay = element.closest('.gleam-editor-overlay');
     if (overlay) {
@@ -105,6 +122,10 @@ function close_overlay(element) {
 // FIXME this very poorly handles a very long list, i think?
 // FIXME remove this in favor of the one from LL
 class Overlay {
+    /**
+     * @param {HTMLElement} element
+     * @param {boolean} is_transient
+     */
     constructor(element, is_transient) {
         this.is_transient = is_transient;
         this.element = element;
@@ -157,6 +178,11 @@ class Overlay {
 }
 
 class PopupMenuOverlay extends Overlay {
+    /**
+     * @param {{}} options
+     * @param {function} make_label
+     * @param {MouseEvent} mouse_event
+     */
     constructor(options, make_label, mouse_event = null) {
         // FIXME genericize this class
         let list = mk('ol.gleam-editor-arg-enum-poses');
@@ -195,13 +221,14 @@ class PopupMenuOverlay extends Overlay {
         }
     }
 
-    // Align the popup, presumably to a parent element
-    position(args) {
-        let ev = args.event;
-        let relto = args.parent_element;
-
-        if (relto) {
-            let rect = relto.getBoundingClientRect();
+    /**
+     * Align the popup, presumably to a parent element
+     * @param {MouseEvent} event
+     * @param {HTMLElement} parent_element
+     */
+    position({event, parent_element}) {
+        if (parent_element) {
+            let rect = parent_element.getBoundingClientRect();
             this.element.style.left = `${rect.left}px`;
             this.element.style.width = `${rect.width}px`;
             if (document.body.clientHeight - rect.bottom > 96) {
@@ -211,13 +238,17 @@ class PopupMenuOverlay extends Overlay {
                 this.element.style.bottom = `${document.body.clientHeight - rect.top + 2}px`;
             }
         }
-        else if (ev) {
-            this.element.style.left = `${Math.min(ev.clientX, document.body.clientWidth - this.element.offsetWidth)}px`;
-            this.element.style.top = `${Math.min(ev.clientY, document.body.clientHeight - this.element.offsetHeight)}px`;
+        else if (event) {
+            this.element.style.left = `${Math.min(event.clientX, document.body.clientWidth - this.element.offsetWidth)}px`;
+            this.element.style.top = `${Math.min(event.clientY, document.body.clientHeight - this.element.offsetHeight)}px`;
         }
     }
 }
 
+/**
+ * @param {string} initial_value
+ * @param {function} onchange
+ */
 function make_inline_string_editor(initial_value, onchange) {
     let el = mk('input.gleam-editor-inline', {
         type: 'text',
@@ -338,6 +369,10 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
         read_directory(this.directory_entry, '');
     }
 
+    /**
+     * @param {string} path
+     * @return {URL}
+     */
     async get_url_for_path(path) {
         // Have to finish reading the directory first
         await this.done_reading_promise;
@@ -358,6 +393,11 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
 
     // FIXME the caller never explicitly knows if this is a bogus image
     // FIXME this seems to have different semantics from Remote, especially wrt asset.url and asset.promise
+    /**
+     * @param {string} path
+     * @param {HTMLElement} element
+     * @return {HTMLElement}
+     */
     load_image(path, element) {
         element = element || mk('img');
         element.classList.add('--missing');
@@ -372,6 +412,11 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
         return element;
     }
 
+    /**
+     * @param {string} path
+     * @param {HTMLElement} element
+     * @return {HTMLElement}
+     */
     load_audio(path, element) {
         element = element || mk('audio', {preload: 'auto'});
         element.setAttribute('data-path', path);
@@ -772,6 +817,10 @@ const STEP_ARGUMENT_TYPES = {
 // TODO i wonder if this would make more sense as a feature on the assets panel?  filter files by wildcard, then select all and drag them over.  i don't know how to do multi drag though
 // FIXME this is inappropriate for jukebox
 class AddByWildcardDialog {
+    /**
+     * @param {RoleEditor} role_editor
+     * @param {AssetLibrary} library
+     */
     constructor(role_editor, library) {
         this.role_editor = role_editor;
         this.library = library;
@@ -1021,6 +1070,9 @@ class StageSizeDialog extends Overlay {
 }
 
 class ImportDialogueDialog extends DialogOverlay {
+    /**
+     * @param {Editor} editor
+     */
     constructor(editor) {
         super();
         this.editor = editor;
@@ -1101,6 +1153,9 @@ class ImportDialogueDialog extends DialogOverlay {
         });
     }
 
+    /**
+     * @param {string} name
+     */
     normalize_role_name(name) {
         return name.toLowerCase().replace(/ +/g, '_');
     }
@@ -1124,6 +1179,10 @@ class ImportDialogueDialog extends DialogOverlay {
 // Editors for individual role types
 
 class RoleEditor {
+    /**
+     * @param {Editor} main_editor
+     * @param {Role} role
+     */
     constructor(main_editor, role) {
         this.main_editor = main_editor;
         this.role = role;
@@ -1780,6 +1839,10 @@ const ROLE_EDITOR_TYPE_MAP = new Map(ROLE_EDITOR_TYPES.map(role_editor_type => [
 // Main editor
 
 class Panel {
+    /**
+     * @param {Editor} editor
+     * @param {HTMLElement} container
+     */
     constructor(editor, container) {
         this.editor = editor;
         this.container = container;
@@ -1790,6 +1853,10 @@ class Panel {
 
 // Panel containing the list of assets
 class AssetsPanel extends Panel {
+    /**
+     * @param {Editor} editor
+     * @param {HTMLElement} container
+     */
     constructor(editor, container) {
         super(editor, container);
         this.source_text = this.body.querySelector('#gleam-editor-assets-source');
@@ -1907,6 +1974,10 @@ class AssetsPanel extends Panel {
 
 
 class RolesPanel extends Panel {
+    /**
+     * @param {Editor} editor
+     * @param {HTMLElement} container
+     */
     constructor(editor, container) {
         super(editor, container);
 
@@ -1965,6 +2036,9 @@ class RolesPanel extends Panel {
         this.nav.appendChild(button);
     }
 
+    /**
+     * @param {Role} role
+     */
     add_role(role) {
         let role_editor_type = ROLE_EDITOR_TYPE_MAP.get(role.constructor);
         let role_editor = new role_editor_type(this.editor, role);
@@ -1973,6 +2047,10 @@ class RolesPanel extends Panel {
         this.list.appendChild(role_editor.container);
     }
 
+    /**
+     * @param {Script} script
+     * @param {Director} director
+     */
     load_script(script, director) {
         this.role_editors = [];
         this.role_to_editor.clear();
@@ -1994,6 +2072,10 @@ class RolesPanel extends Panel {
 
 // Panel containing the script, which is a list of steps grouped into beats
 class ScriptPanel extends Panel {
+    /**
+     * @param {Editor} editor
+     * @param {HTMLElement} container
+     */
     constructor(editor, container) {
         super(editor, container);
 
@@ -2285,6 +2367,10 @@ class ScriptPanel extends Panel {
         });
     }
 
+    /**
+     * @param {Script} script
+     * @param {Director} director
+     */
     load_script(script, director) {
         // Recreate the step list from scratch
         this.beats_list.textContent = '';
@@ -2353,6 +2439,9 @@ class ScriptPanel extends Panel {
         }
     }
 
+    /**
+     * @param {Number} index
+     */
     select_beat(index) {
         if (index < 0 || index >= this.editor.script.beats.length) {
             index = null;
@@ -2382,6 +2471,9 @@ class ScriptPanel extends Panel {
         }
     }
 
+    /**
+     * @param {Step} step
+     */
     _insert_step_element(step) {
         let element = this.step_to_element.get(step);
         if (! element) {
@@ -2419,6 +2511,9 @@ class ScriptPanel extends Panel {
         }
     }
 
+    /**
+     * @param {Step} step
+     */
     _delete_step_element(step) {
         // TODO need to ensure, somehow, that this one happens /before/ the editor one (which doesn't exist yet)
         let element = this.step_to_element.get(step);
@@ -2449,6 +2544,9 @@ class ScriptPanel extends Panel {
         }
     }
 
+    /**
+     * @param {Step} step
+     */
     begin_step_drag(step) {
         this.drag = {
             // Step being dragged
@@ -2479,6 +2577,9 @@ class ScriptPanel extends Panel {
 
 
 class Editor {
+    /**
+     * @param {EditorLauncher} launcher
+     */
     constructor(launcher) {
         this.launcher = launcher;
 
@@ -2549,6 +2650,11 @@ class Editor {
 
     // TODO this obviously needs ui, some kinda "i'm downloading" indication, etc
     // TODO this /has/ to be a MutableScript passed in, but boy that's awkward?  should enforce here?  can i cast it, change the prototype???
+    /**
+     * @param {MutableScript} script
+     * @param {AssetLibrary} library
+     * @param {string} slot
+     */
     load_script(script, library, slot) {
         if (this.player) {
             // TODO explicitly ask it to destroy itself?  dunno what that would do though
@@ -2605,6 +2711,9 @@ class Editor {
         this.player.container.style.setProperty('--scale', scale);
     }
 
+    /**
+     * @param {AssetLibrary} library
+     */
     set_library(library) {
         let old_library = this.library;
         this.library = library;
@@ -2630,6 +2739,10 @@ class Editor {
         //this.main_editor.player.director.role_to_actor.get(this.role).sync_with_role(this.main_editor.player.director);
     }
 
+    /**
+     * @param {Role} role
+     * @return {Actor}
+     */
     get_actor_for_role(role) {
         return this.player.director.role_to_actor.get(role);
     }
@@ -2737,6 +2850,10 @@ class EditorLauncher {
         xhr.send();
     }
 
+    /**
+     * @param {string|number} slot
+     * @param {Script} script
+     */
     save_script(slot, script) {
         let json = script.to_json();
         json.meta._editor = {

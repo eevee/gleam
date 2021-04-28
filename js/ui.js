@@ -171,11 +171,18 @@ export class DialogOverlay extends Overlay {
         );
     }
 
+    /**
+     * @param {string} title
+     */
     set_title(title) {
         this.header.textContent = '';
         this.header.append(mk('h1', {}, title));
     }
 
+    /**
+     * @param {string} label
+     * @param {function} onclick
+     */
     add_button(label, onclick) {
         let button = mk('button', {type: 'button'}, label);
         button.addEventListener('click', onclick);
@@ -183,8 +190,14 @@ export class DialogOverlay extends Overlay {
     }
 }
 
-// Yes/no popup dialog
+/**
+ * Yes/no popup dialog
+ */
 export class ConfirmOverlay extends DialogOverlay {
+    /**
+     * @param {string} message
+     * @param {function} what
+     */
     constructor(message, what) {
         super();
         this.set_title("just checking");
