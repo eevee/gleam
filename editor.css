@@ -46,34 +46,34 @@ button {
     font-size: inherit;
     margin: 2px;
     padding: 0.25em 0.5em;
-    border: none;
+    border: 1px solid #666;
     border-radius: 0.25rem;
     color: white;
-    background: #404040;
-    box-shadow: 0 2px #606060;
+    background: #333;
+    box-shadow: 0 2px 0 #666;
     cursor: pointer;
 }
 button:enabled:hover {
-    background: #383838;
+    background: #444;
+    border-color: #999;
 }
 button:enabled:hover,
 button:enabled:focus {
-    box-shadow:
-        0 0 0 1px #606060,
-        0 2px 0 1px #606060;
+    box-shadow: 0 2px 0 #999;
 }
 button:enabled:active {
-    box-shadow: 0 0 0 1px #606060;
+    box-shadow: none;
     transform: translateY(2px);
 }
 button.gleam-big-button {
     font-size: 2em;
 }
 button:disabled {
-    box-shadow: none;
     cursor: auto;
-    color: #c0c0c0;
-    background: #202020;
+    color: #ccc;
+    background: #222;
+    border-color: #333;
+    box-shadow: none;
 }
 
 input[type=text] {
