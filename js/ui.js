@@ -1,4 +1,4 @@
-import {mk} from './util.js';
+import {mk} from './player/util.js';
 
 export function accept_drop(args) {
     let target = args.target;
