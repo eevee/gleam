@@ -3,10 +3,10 @@
 <head>
     <meta charset="utf8">
     <title>GLEAM visual novel creator</title>
-    <link rel="stylesheet" type="text/css" href="editor.css">
-    <link rel="stylesheet" type="text/css" href="player.css">
+    <link rel="stylesheet" type="text/css" href="css/editor.css">
+    <link rel="stylesheet" type="text/css" href="css/player.css">
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-    <script src="gleam-player.js"></script>
+    <script src="build/gleam-player.js"></script>
 </head>
 <body>
 <main id="gleam-editor-launcher">
@@ -132,7 +132,7 @@
     </section>
 </main>
     <script type="module">
-        import { attach_editor } from './gleam-editor.js';
+        import { attach_editor } from './js/gleam-editor.js';
         // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
         window.addEventListener('load', ev => {
             let launcher = attach_editor();

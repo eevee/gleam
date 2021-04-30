@@ -1,8 +1,8 @@
 import {html, render} from 'https://unpkg.com/lit-html?module';
 import {repeat} from 'https://unpkg.com/lit-html/directives/repeat.js?module';
 
-import {DialogOverlay, PopupListOverlay, accept_drop} from './js/ui.js';
-import {mk} from './js/util.js';
+import {DialogOverlay, PopupListOverlay, accept_drop} from './ui.js';
+import {mk} from './player/util.js';
 
 if (! window.Gleam) {
     throw new Error("Gleam player must be loaded first!");
