@@ -1,9 +1,11 @@
-// Given a path, gets a relevant file.  Mainly exists to abstract over the
-// difference between loading a live script from a Web source and pulling from
-// the user's hard drive.
 // TODO should wire this into player's initial 'loading' screen
 // TODO need to SOMEHOW let asset panel know when a thing happens here?  except, wait, it's the asset panel that makes things happen.  maybe a little kerjiggering can fix that then.
 // FIXME this just, needs a lot of work.
+/**
+ * Given a path, gets a relevant file.  Mainly exists to abstract over the
+ *difference between loading a live script from a Web source and pulling from
+ * the user's hard drive.
+ */
 export default class AssetLibrary {
   constructor() {
     this.assets = {};
