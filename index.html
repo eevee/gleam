@@ -5,8 +5,6 @@
     <title>GLEAM visual novel creator</title>
     <link rel="stylesheet" type="text/css" href="css/editor.css">
     <link rel="stylesheet" type="text/css" href="css/player.css">
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-    <script src="build/gleam-player.js"></script>
 </head>
 <body>
 <main id="gleam-editor-launcher">
@@ -132,7 +130,7 @@
     </section>
 </main>
     <script type="module">
-        import { attach_editor } from './js/gleam-editor.js';
+        import { attach_editor } from './build/gleam-editor.js';
         // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
         window.addEventListener('load', ev => {
             let launcher = attach_editor();
@@ -144,13 +142,13 @@
             let script;
             if (json) {
                 // TODO error handling here, probably
-                script = Gleam.MutableScript.from_json(JSON.parse(json));
+                script = MutableScript.from_json(JSON.parse(json));
             }
             else {
-                script = new Gleam.MutableScript;
-                script.add_role(new Gleam.Stage('stage'));
+                script = new MutableScript;
+                script.add_role(new Stage('stage'));
             }
-            editor.load_script(script, new Gleam.NullAssetLibrary);
+            editor.load_script(script, new NullAssetLibrary);
             return;
             //*/
 
@@ -160,11 +158,11 @@
             let root = 'res/prompt2-itchyitchy-final/';
             let root_url = new URL(root, document.location);
             //root_url = new URL('https://apps.veekun.com/flora-cutscenes/res/prompt2-itchyitchy-final/');
-            let library = new Gleam.RemoteAssetLibrary(root_url);
+            let library = new RemoteAssetLibrary(root_url);
             let xhr = new XMLHttpRequest;
             xhr.addEventListener('load', ev => {
                 // FIXME handle errors yadda yadda
-                let script = Gleam.MutableScript.from_legacy_json(JSON.parse(xhr.responseText));
+                let script = MutableScript.from_legacy_json(JSON.parse(xhr.responseText));
                 editor.load_script(script, library);
             });
             // XXX lol

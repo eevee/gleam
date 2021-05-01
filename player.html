@@ -3,21 +3,25 @@
 <head>
     <meta charset="utf8">
     <title>GLEAM</title>
-    <link rel="stylesheet" type="text/css" href="player.css">
-    <script src="build/gleam-player.js"></script>
+    <link rel="stylesheet" type="text/css" href="css/player.css">
 </head>
 <body class="gleam-body">
-    <script>
+    <script type="module">
         // FIXME give a real api for this.  question is, how do i inject into the editor AND the player
+        import {
+            RemoteAssetLibrary,
+            Script,
+            Player,
+        } from "./build/gleam-player.js";
         window.addEventListener('load', ev => {
             let root_url = new URL('https://apps.veekun.com/flora-cutscenes/res/prompt2-itchyitchy-final/');
             root_url = new URL('/res/circlet-of-the-sun/', window.location);
-            let library = new Gleam.RemoteAssetLibrary(root_url);
+            let library = new RemoteAssetLibrary(root_url);
             let xhr = new XMLHttpRequest;
             xhr.addEventListener('load', ev => {
                 // FIXME handle errors yadda yadda
-                let script = Gleam.Script.from_json(JSON.parse(xhr.responseText));
-                let player = new Gleam.Player(script, library);
+                let script = Script.from_json(JSON.parse(xhr.responseText));
+                let player = new Player(script, library);
                 player.inject(document.body);
             });
             // XXX lol
