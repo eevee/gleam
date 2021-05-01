@@ -20,7 +20,11 @@ import {
     Director,
     Player,
 } from './player/gleam-player.js'
-import {DialogOverlay, PopupListOverlay, accept_drop} from './ui.js';
+import {
+    DialogOverlay,
+    PopupListOverlay,
+    accept_drop,
+} from './ui.js';
 
 /**
  * @param {string} a
