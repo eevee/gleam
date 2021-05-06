@@ -30,12 +30,8 @@ import Step from "./step";
 import {mk, svg_icon_from_path} from "./util";
 import {VERSION} from "./version";
 
-window.Gleam = (function() {
-
-let ret = {
-    VERSION: VERSION,
-};
-for (let obj of [
+export {
+    VERSION,
     mk,
     svg_icon_from_path,
 
@@ -58,9 +54,4 @@ for (let obj of [
     Script,
     Director,
     Player,
-])
-{
-    ret[obj.name] = obj;
 }
-return ret;
-})();

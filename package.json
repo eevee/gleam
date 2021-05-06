@@ -4,5 +4,9 @@
   },
   "scripts": {
     "build": "rollup --config"
+  },
+  "dependencies": {
+    "lit-html": "^1.4.0",
+    "sortablejs": "^1.13.0"
   }
 }

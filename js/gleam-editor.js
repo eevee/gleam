@@ -1,14 +1,30 @@
-import {html, render} from 'https://unpkg.com/lit-html?module';
-import {repeat} from 'https://unpkg.com/lit-html/directives/repeat.js?module';
-
-import {DialogOverlay, PopupListOverlay, accept_drop} from './ui.js';
-import {mk} from './player/util.js';
-
-if (! window.Gleam) {
-    throw new Error("Gleam player must be loaded first!");
-}
-
-let svg_icon_from_path = Gleam.svg_icon_from_path;
+import "../node_modules/sortablejs/Sortable.js"
+import {html, render} from "../node_modules/lit-html/lit-html.js";
+import {
+    mk,
+    svg_icon_from_path,
+    Step,
+    Beat,
+    Role,
+    Actor,
+    Stage,
+    Curtain,
+    Mural,
+    DialogueBox,
+    Jukebox,
+    PictureFrame,
+    Character,
+    AssetLibrary,
+    RemoteAssetLibrary,
+    Script,
+    Director,
+    Player,
+} from './player/gleam-player.js'
+import {
+    DialogOverlay,
+    PopupListOverlay,
+    accept_drop,
+} from './ui.js';
 
 /**
  * @param {string} a
@@ -120,7 +136,7 @@ function make_inline_string_editor(initial_value, onchange) {
 }
 
 // Dummy implementation that can't find any files, used in a fresh editor
-class NullAssetLibrary extends Gleam.AssetLibrary {
+class NullAssetLibrary extends AssetLibrary {
     load_image(path, element) {
         let asset = this.asset(path);
         asset.used = true;
@@ -155,7 +171,7 @@ function _entry_to_url(entry) {
     }
 }
 // FIXME 'used' isn't really handled very well; there's no way to "un-use" something.  but there's also no way to delete a pose/track yet
-class EntryAssetLibrary extends Gleam.AssetLibrary {
+class EntryAssetLibrary extends AssetLibrary {
     constructor(directory_entry) {
         super();
         this.directory_entry = directory_entry;
@@ -262,7 +278,7 @@ class EntryAssetLibrary extends Gleam.AssetLibrary {
     }
 }
 
-class FileAssetLibrary extends Gleam.AssetLibrary {
+class FileAssetLibrary extends AssetLibrary {
     constructor(files) {
         super();
         for (let file of files) {
@@ -315,7 +331,7 @@ class FileAssetLibrary extends Gleam.AssetLibrary {
 }
 
 // Subclass of Script that knows how to edit itself
-class MutableScript extends Gleam.Script {
+class MutableScript extends Script {
     add_role(role) {
         // FIXME abort if name is already in use
         this._add_role(role);
@@ -341,7 +357,7 @@ class MutableScript extends Gleam.Script {
             return this.beats[beat_index - 1].create_next();
         }
         else {
-            return Gleam.Beat.create_first(this.roles);
+            return Beat.create_first(this.roles);
         }
     }
 
@@ -840,8 +856,8 @@ class ImportDialogueDialog extends DialogOverlay {
                     if (role) {
                         // TODO this should be optional
                         // FIXME it's also technically invalid, fool
-                        add_step(new Gleam.Step(role, 'pose', []));
-                        add_step(new Gleam.Step(role, 'say', [phrase]));
+                        add_step(new Step(role, 'pose', []));
+                        add_step(new Step(role, 'say', [phrase]));
                         continue;
                     }
                     else {
@@ -854,7 +870,7 @@ class ImportDialogueDialog extends DialogOverlay {
 
                 // Fallback case
                 if (fail_reason) {
-                    let el = add_step(new Gleam.Step(stage, 'note', [`[${fail_reason}] ${paragraph}`]));
+                    let el = add_step(new Step(stage, 'note', [`[${fail_reason}] ${paragraph}`]));
                     el.classList.add('-import-dialogue-error');
                 }
             }
@@ -974,7 +990,7 @@ class RoleEditor {
                 // TODO?
                 args.push(null);
             }
-            this.main_editor.script_panel.begin_step_drag(new Gleam.Step(this.role, step_kind_name, args));
+            this.main_editor.script_panel.begin_step_drag(new Step(this.role, step_kind_name, args));
         });
     }
 
@@ -1056,24 +1072,24 @@ class RoleEditor {
 // Note that this has no role_type_name, which prevents you from creating one
 class StageEditor extends RoleEditor {
 }
-StageEditor.prototype.ROLE_TYPE = Gleam.Stage;
+StageEditor.prototype.ROLE_TYPE = Stage;
 StageEditor.prototype.CLASS_NAME = 'gleam-editor-role-stage';
 
 class CurtainEditor extends RoleEditor {
 }
-CurtainEditor.prototype.ROLE_TYPE = Gleam.Curtain;
+CurtainEditor.prototype.ROLE_TYPE = Curtain;
 CurtainEditor.role_type_name = 'curtain';
 CurtainEditor.prototype.CLASS_NAME = 'gleam-editor-role-curtain';
 
 class MuralEditor extends RoleEditor {
 }
-MuralEditor.prototype.ROLE_TYPE = Gleam.Mural;
+MuralEditor.prototype.ROLE_TYPE = Mural;
 MuralEditor.role_type_name = 'mural';
 MuralEditor.prototype.CLASS_NAME = 'gleam-editor-role-mural';
 
 class DialogueBoxEditor extends RoleEditor {
 }
-DialogueBoxEditor.prototype.ROLE_TYPE = Gleam.DialogueBox;
+DialogueBoxEditor.prototype.ROLE_TYPE = DialogueBox;
 DialogueBoxEditor.role_type_name = 'dialogue box';
 DialogueBoxEditor.prototype.CLASS_NAME = 'gleam-editor-role-dialoguebox';
 
@@ -1134,7 +1150,7 @@ class JukeboxEditor extends RoleEditor {
         this.track_list.append(fragment);
     }
 }
-JukeboxEditor.prototype.ROLE_TYPE = Gleam.Jukebox;
+JukeboxEditor.prototype.ROLE_TYPE = Jukebox;
 JukeboxEditor.role_type_name = 'jukebox';
 JukeboxEditor.prototype.CLASS_NAME = 'gleam-editor-role-jukebox';
 
@@ -1178,8 +1194,8 @@ class PictureFrameEditor extends RoleEditor {
             // TODO insert_step does a lot of work; would be nice to extend it
             // to insert_steps, which adds a block of steps in bulk somewhere
             for (let [name, pose] of Object.entries(this.role.poses)) {
-                script.insert_step(new Gleam.Step(this.role, 'show', [name]), script.steps.length);
-                script.insert_step(new Gleam.Step(stage, 'pause', []), script.steps.length);
+                script.insert_step(new Step(this.role, 'show', [name]), script.steps.length);
+                script.insert_step(new Step(stage, 'pause', []), script.steps.length);
             }
         });
 
@@ -1426,7 +1442,7 @@ class PictureFrameEditor extends RoleEditor {
         this.render_pose_editor();
     }
 }
-PictureFrameEditor.prototype.ROLE_TYPE = Gleam.PictureFrame;
+PictureFrameEditor.prototype.ROLE_TYPE = PictureFrame;
 PictureFrameEditor.role_type_name = 'picture frame';
 PictureFrameEditor.prototype.CLASS_NAME = 'gleam-editor-role-pictureframe';
 
@@ -1490,7 +1506,7 @@ class CharacterEditor extends PictureFrameEditor {
         }
         prop_editor.addEventListener('click', ev => {
             let dialogue_boxes = this.main_editor.script.roles.filter(
-                role => role instanceof Gleam.DialogueBox);
+                role => role instanceof DialogueBox);
             if (! dialogue_boxes.length) {
                 dialogue_boxes.push(null);
             }
@@ -1561,7 +1577,7 @@ class CharacterEditor extends PictureFrameEditor {
         }
     }
 }
-CharacterEditor.prototype.ROLE_TYPE = Gleam.Character;
+CharacterEditor.prototype.ROLE_TYPE = Character;
 CharacterEditor.role_type_name = 'character';
 CharacterEditor.prototype.CLASS_NAME = 'gleam-editor-role-character';
 
@@ -1688,7 +1704,7 @@ class AssetsPanel extends Panel {
         else if (library instanceof FileAssetLibrary) {
             this.source_text.textContent = 'local files';
         }
-        else if (library instanceof Gleam.RemoteAssetLibrary) {
+        else if (library instanceof RemoteAssetLibrary) {
             this.source_text.textContent = 'via the web';
         }
         else {
@@ -2392,7 +2408,7 @@ class Editor {
         this.script_slot = slot;
         this.script = script;
         this.library = library;
-        this.player = new Gleam.Player(this.script, library);
+        this.player = new Player(this.script, library);
         // XXX stupid hack, disable the loading overlay, which for local files will almost certainly not work
         this.player.loaded = true;
         this.player.loading_overlay.hide();
@@ -2541,7 +2557,7 @@ class EditorLauncher {
 
             // Create a fresh new script
             let script = new MutableScript;
-            script.add_role(new Gleam.Stage('stage'));
+            script.add_role(new Stage('stage'));
             script.title = this.new_form.elements['title'].value;
             script.subtitle = this.new_form.elements['subtitle'].value;
             script.author = this.new_form.elements['author'].value;
@@ -2563,11 +2579,11 @@ class EditorLauncher {
         let root_url = new URL(root, document.location);
         //root_url = new URL('https://apps.veekun.com/flora-cutscenes/res/prompt2-itchyitchy-final/');
         // TODO should get the asset root from the script...?  that's a thing in old ones but not so much new ones
-        let library = new Gleam.RemoteAssetLibrary(root_url);
+        let library = new RemoteAssetLibrary(root_url);
         let xhr = new XMLHttpRequest;
         xhr.addEventListener('load', ev => {
             // FIXME handle errors yadda yadda
-            let script = Gleam.MutableScript.from_legacy_json(JSON.parse(xhr.responseText));
+            let script = MutableScript.from_legacy_json(JSON.parse(xhr.responseText));
             // FIXME editor doesn't know how to handle something not already in a save slot
             this.editor.load_script(script, library, null);
             // TODO show some kinda loading indicator
